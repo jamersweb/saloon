@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Appointment;
 use App\Models\AttendanceLog;
 use App\Models\Customer;
+use App\Models\Feedback;
 use App\Models\LeaveRequest;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
@@ -16,25 +17,51 @@ class DashboardController extends Controller
 {
     public function index(Request $request): Response
     {
+        $user = $request->user();
+        $isStaff = $user?->hasRole('staff') ?? false;
+        $isManagerOrOwner = $user?->hasRole('manager', 'owner') ?? false;
+        $isCustomer = $user?->hasRole('customer') ?? false;
+
         $period = $request->string('period')->toString();
         if (! in_array($period, ['today', 'week', 'month'], true)) {
             $period = 'today';
         }
 
         [$dateFrom, $dateTo, $periodLabel] = $this->resolveDateRange($period);
+        $staffProfileId = $user?->staffProfile?->id;
 
-        $appointmentsInPeriod = Appointment::query()
+        $appointmentsQuery = Appointment::query()
+            ->when($isStaff && $staffProfileId, fn ($query) => $query->where('staff_profile_id', $staffProfileId));
+
+        $appointmentsInPeriod = (clone $appointmentsQuery)
             ->whereBetween('scheduled_start', [$dateFrom, $dateTo])
             ->count();
 
         $pendingLeaves = LeaveRequest::query()
+            ->when($isStaff && $staffProfileId, fn ($query) => $query->where('staff_profile_id', $staffProfileId))
             ->where('status', 'pending')
             ->count();
 
         $lateInPeriod = AttendanceLog::query()
+            ->when($isStaff && $staffProfileId, fn ($query) => $query->where('staff_profile_id', $staffProfileId))
             ->whereBetween('attendance_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
             ->where('late_minutes', '>', 0)
             ->count();
+
+        $staffFeedbackQuery = Feedback::query()
+            ->with(['staffProfile.user:id,name', 'customer:id,name'])
+            ->where('direction', 'staff_to_customer');
+        $customerReviewQuery = Feedback::query()
+            ->with(['staffProfile.user:id,name', 'customer:id,name'])
+            ->where('direction', 'customer_to_staff');
+
+        if ($isStaff && $staffProfileId) {
+            $staffFeedbackQuery->where('staff_profile_id', $staffProfileId);
+            $customerReviewQuery->where('staff_profile_id', $staffProfileId);
+        } elseif ($isCustomer && ! $isManagerOrOwner) {
+            $customerReviewQuery->where('created_by_user_id', $user?->id);
+            $staffFeedbackQuery->where('created_by_user_id', $user?->id);
+        }
 
         return Inertia::render('Dashboard', [
             'selectedPeriod' => $period,
@@ -51,7 +78,7 @@ class DashboardController extends Controller
                 'pending_leaves' => $pendingLeaves,
                 'late_staff_in_period' => $lateInPeriod,
             ],
-            'upcomingAppointments' => Appointment::query()
+            'upcomingAppointments' => (clone $appointmentsQuery)
                 ->with(['service:id,name', 'staffProfile.user:id,name'])
                 ->whereBetween('scheduled_start', [$dateFrom, $dateTo])
                 ->orderBy('scheduled_start')
@@ -64,6 +91,48 @@ class DashboardController extends Controller
                     'status' => $appointment->status,
                     'service_name' => $appointment->service?->name,
                     'staff_name' => $appointment->staffProfile?->user?->name,
+                ]),
+            'staffFeedbackOptions' => [
+                'customers' => Customer::query()
+                    ->select('id', 'name')
+                    ->where('is_active', true)
+                    ->orderBy('name')
+                    ->limit(200)
+                    ->get(),
+                'staffProfiles' => StaffProfile::query()
+                    ->with('user:id,name')
+                    ->where('is_active', true)
+                    ->orderBy('employee_code')
+                    ->limit(200)
+                    ->get()
+                    ->map(fn (StaffProfile $profile) => [
+                        'id' => $profile->id,
+                        'name' => $profile->user?->name,
+                        'employee_code' => $profile->employee_code,
+                    ]),
+            ],
+            'staffToCustomerFeedback' => $staffFeedbackQuery
+                ->latest()
+                ->limit(12)
+                ->get()
+                ->map(fn (Feedback $feedback) => [
+                    'id' => $feedback->id,
+                    'created_at' => $feedback->created_at,
+                    'staff_name' => $feedback->staffProfile?->user?->name ?? $feedback->reviewer_name,
+                    'customer_name' => $feedback->customer?->name,
+                    'comment' => $feedback->comment,
+                ]),
+            'customerToStaffReviews' => $customerReviewQuery
+                ->latest()
+                ->limit(12)
+                ->get()
+                ->map(fn (Feedback $feedback) => [
+                    'id' => $feedback->id,
+                    'created_at' => $feedback->created_at,
+                    'reviewer_name' => $feedback->reviewer_name,
+                    'staff_name' => $feedback->staffProfile?->user?->name,
+                    'rating' => $feedback->rating,
+                    'comment' => $feedback->comment,
                 ]),
         ]);
     }

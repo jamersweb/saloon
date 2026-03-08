@@ -6,6 +6,7 @@ use App\Http\Controllers\BookingRuleController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CrmAutomationController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LeaveRequestController;
 use App\Http\Controllers\LoyaltyController;
@@ -49,6 +50,12 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/leave-requests', [LeaveRequestController::class, 'index'])->name('leave-requests.index');
         Route::post('/leave-requests', [LeaveRequestController::class, 'store'])->name('leave-requests.store');
+
+        Route::post('/feedback/staff-to-customer', [FeedbackController::class, 'storeStaffToCustomer'])->name('feedback.staff-to-customer.store');
+    });
+
+    Route::middleware('role:owner,manager,customer')->group(function () {
+        Route::post('/feedback/customer-to-staff', [FeedbackController::class, 'storeCustomerToStaff'])->name('feedback.customer-to-staff.store');
     });
 
     Route::middleware('role:owner,manager')->group(function () {

@@ -1,5 +1,5 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 
 const periodButtons = [
     { key: 'today', label: 'Today' },
@@ -18,9 +18,29 @@ const staffPriorityKeys = [
 
 const metricLabel = (key) => key.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-export default function Dashboard({ stats, upcomingAppointments, selectedPeriod, periodLabel, range }) {
+const renderStars = (rating) => {
+    const safe = Number(rating || 0);
+    return '★'.repeat(Math.max(0, Math.min(5, safe))) + '☆'.repeat(Math.max(0, 5 - safe));
+};
+
+export default function Dashboard({
+    stats,
+    upcomingAppointments,
+    selectedPeriod,
+    periodLabel,
+    range,
+    staffFeedbackOptions,
+    staffToCustomerFeedback,
+    customerToStaffReviews,
+}) {
     const { flash, auth } = usePage().props;
-    const isStaff = auth?.user?.role?.name === 'staff';
+    const roleName = auth?.user?.role?.name;
+    const isStaff = roleName === 'staff';
+    const isCustomer = roleName === 'customer';
+    const isManagerOrOwner = ['manager', 'owner'].includes(roleName);
+
+    const staffToCustomerForm = useForm({ customer_id: '', comment: '' });
+    const customerToStaffForm = useForm({ staff_profile_id: '', rating: '5', comment: '' });
 
     const switchPeriod = (period) => {
         router.get(route('dashboard'), { period }, { preserveState: true, replace: true });
@@ -133,6 +153,116 @@ export default function Dashboard({ stats, upcomingAppointments, selectedPeriod,
                         </table>
                     </div>
                 </section>
+
+                {(isStaff || isCustomer) && (
+                    <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        {isStaff && (
+                            <div className="ta-card p-5">
+                                <h3 className="text-base font-semibold text-slate-800">Staff Feedback to Customer</h3>
+                                <p className="mt-1 text-sm text-slate-500">Send service notes to customer records.</p>
+                                <form
+                                    className="mt-4 space-y-3"
+                                    onSubmit={(e) => {
+                                        e.preventDefault();
+                                        staffToCustomerForm.post(route('feedback.staff-to-customer.store'), {
+                                            onSuccess: () => staffToCustomerForm.reset('customer_id', 'comment'),
+                                        });
+                                    }}
+                                >
+                                    <div>
+                                        <label className="ta-field-label">Customer</label>
+                                        <select className="ta-input" value={staffToCustomerForm.data.customer_id} onChange={(e) => staffToCustomerForm.setData('customer_id', e.target.value)} required>
+                                            <option value="">Select customer</option>
+                                            {(staffFeedbackOptions?.customers || []).map((customer) => (
+                                                <option key={customer.id} value={customer.id}>{customer.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="ta-field-label">Feedback Comment</label>
+                                        <textarea className="ta-input min-h-[110px]" placeholder="Write feedback for this customer" value={staffToCustomerForm.data.comment} onChange={(e) => staffToCustomerForm.setData('comment', e.target.value)} required />
+                                    </div>
+                                    <button className="ta-btn-primary" disabled={staffToCustomerForm.processing}>Submit Feedback</button>
+                                </form>
+                            </div>
+                        )}
+
+                        {isCustomer && (
+                            <div className="ta-card p-5">
+                                <h3 className="text-base font-semibold text-slate-800">Review Staff</h3>
+                                <p className="mt-1 text-sm text-slate-500">Share your experience with the team.</p>
+                                <form
+                                    className="mt-4 space-y-3"
+                                    onSubmit={(e) => {
+                                        e.preventDefault();
+                                        customerToStaffForm.post(route('feedback.customer-to-staff.store'), {
+                                            onSuccess: () => customerToStaffForm.reset('staff_profile_id', 'rating', 'comment'),
+                                        });
+                                    }}
+                                >
+                                    <div>
+                                        <label className="ta-field-label">Staff Member</label>
+                                        <select className="ta-input" value={customerToStaffForm.data.staff_profile_id} onChange={(e) => customerToStaffForm.setData('staff_profile_id', e.target.value)} required>
+                                            <option value="">Select staff</option>
+                                            {(staffFeedbackOptions?.staffProfiles || []).map((staff) => (
+                                                <option key={staff.id} value={staff.id}>{staff.employee_code} - {staff.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="ta-field-label">Rating</label>
+                                        <select className="ta-input" value={customerToStaffForm.data.rating} onChange={(e) => customerToStaffForm.setData('rating', e.target.value)} required>
+                                            <option value="5">5 - Excellent</option>
+                                            <option value="4">4 - Good</option>
+                                            <option value="3">3 - Average</option>
+                                            <option value="2">2 - Poor</option>
+                                            <option value="1">1 - Very Poor</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="ta-field-label">Review Comment</label>
+                                        <textarea className="ta-input min-h-[110px]" placeholder="Tell us about your experience" value={customerToStaffForm.data.comment} onChange={(e) => customerToStaffForm.setData('comment', e.target.value)} required />
+                                    </div>
+                                    <button className="ta-btn-primary" disabled={customerToStaffForm.processing}>Submit Review</button>
+                                </form>
+                            </div>
+                        )}
+                    </section>
+                )}
+
+                {(isStaff || isManagerOrOwner || isCustomer) && (
+                    <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <div className="ta-card overflow-hidden">
+                            <div className="border-b border-slate-200 px-5 py-4">
+                                <h3 className="text-sm font-semibold text-slate-700">Customer Reviews About Staff</h3>
+                            </div>
+                            <div className="max-h-80 overflow-auto px-5 py-3 text-sm">
+                                {customerToStaffReviews?.length ? customerToStaffReviews.map((row) => (
+                                    <div key={row.id} className="border-b border-slate-100 py-3 last:border-0">
+                                        <p className="font-semibold text-slate-700">{row.staff_name || 'Staff'} • <span className="text-amber-600">{renderStars(row.rating)}</span></p>
+                                        <p className="text-xs text-slate-500">By {row.reviewer_name || 'Customer'} on {new Date(row.created_at).toLocaleString()}</p>
+                                        <p className="mt-1 text-slate-600">{row.comment}</p>
+                                    </div>
+                                )) : <p className="text-slate-500">No customer reviews yet.</p>}
+                            </div>
+                        </div>
+
+                        <div className="ta-card overflow-hidden">
+                            <div className="border-b border-slate-200 px-5 py-4">
+                                <h3 className="text-sm font-semibold text-slate-700">Staff Feedback To Customers</h3>
+                            </div>
+                            <div className="max-h-80 overflow-auto px-5 py-3 text-sm">
+                                {staffToCustomerFeedback?.length ? staffToCustomerFeedback.map((row) => (
+                                    <div key={row.id} className="border-b border-slate-100 py-3 last:border-0">
+                                        <p className="font-semibold text-slate-700">{row.staff_name || 'Staff'} to {row.customer_name || 'Customer'}</p>
+                                        <p className="text-xs text-slate-500">{new Date(row.created_at).toLocaleString()}</p>
+                                        <p className="mt-1 text-slate-600">{row.comment}</p>
+                                    </div>
+                                )) : <p className="text-slate-500">No staff feedback yet.</p>}
+                            </div>
+                        </div>
+                    </section>
+                )}
             </div>
         </AuthenticatedLayout>
     );
