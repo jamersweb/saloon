@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+    font-family: 'Alex';
+    src: url('/fonts/alex.otf') format('opentype'),
+         url('/fonts/alex.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@layer base {
+    :root {
+        --vina-ivory: #D7D0C8;
+        --vina-champagne: #E4CDB6;
+        --vina-taupe: #A98D86;
+        --vina-rose-gold: #DFA194;
+        --vina-mauve: #C87374;
+        --vina-leather: #745250;
+    }
+
+    body {
+        @apply bg-slate-50 text-slate-800;
+        font-family: 'Alex', 'Times New Roman', serif;
+        background-image: radial-gradient(circle at top right, color-mix(in srgb, var(--vina-champagne) 45%, white 55%), transparent 55%);
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Alex', 'Times New Roman', serif;
+        letter-spacing: 0.01em;
+    }
+}
+
+@layer components {
+    .vina-brand-mark {
+        font-family: 'Alex', 'Times New Roman', serif;
+        color: var(--vina-leather);
+    }
+
+    .ta-card {
+        @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+        box-shadow: 0 10px 25px -18px color-mix(in srgb, var(--vina-leather) 50%, transparent);
+    }
+
+    .ta-input {
+        @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100;
+    }
+
+    .ta-btn-primary {
+        @apply rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60;
+    }
+
+    .ta-btn-secondary {
+        @apply rounded-xl border border-slate-300 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200;
+    }
+}
