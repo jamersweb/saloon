@@ -20,11 +20,19 @@ class EnsureUserHasRole
             abort(403);
         }
 
-        if (! $user->hasRole(...$roles)) {
-            $permissionKey = Permissions::routePermissionKey($request->route()?->getName());
-            if (! $permissionKey || ! $user->hasPermission($permissionKey)) {
+        $permissionKey = Permissions::routePermissionKey($request->route()?->getName());
+
+        // Routes mapped to permissions are enforced by permissions first, regardless of role label.
+        if ($permissionKey) {
+            if (! $user->hasPermission($permissionKey)) {
                 abort(403);
             }
+
+            return $next($request);
+        }
+
+        if (! $user->hasRole(...$roles)) {
+            abort(403);
         }
 
         return $next($request);

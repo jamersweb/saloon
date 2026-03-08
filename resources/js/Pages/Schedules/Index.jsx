@@ -33,12 +33,12 @@ export default function SchedulesIndex({ staffProfiles, schedules }) {
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create or Assign Shift</h3>
                     <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('schedules.store'), { onSuccess: () => createForm.reset() }); }} className="grid gap-3 md:grid-cols-7">
-                        <div><select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)} required><option value="">Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.employee_code} {s.name}</option>)}</select>{fieldError(createForm, 'staff_profile_id')}</div>
-                        <div><input className="ta-input" type="date" value={createForm.data.schedule_date} onChange={(e) => createForm.setData('schedule_date', e.target.value)} required />{fieldError(createForm, 'schedule_date')}</div>
-                        <div><input className="ta-input" type="time" value={createForm.data.start_time} onChange={(e) => createForm.setData('start_time', e.target.value)} />{fieldError(createForm, 'start_time')}</div>
-                        <div><input className="ta-input" type="time" value={createForm.data.end_time} onChange={(e) => createForm.setData('end_time', e.target.value)} />{fieldError(createForm, 'end_time')}</div>
-                        <div><input className="ta-input" type="time" value={createForm.data.break_start} onChange={(e) => createForm.setData('break_start', e.target.value)} />{fieldError(createForm, 'break_start')}</div>
-                        <div><input className="ta-input" type="time" value={createForm.data.break_end} onChange={(e) => createForm.setData('break_end', e.target.value)} />{fieldError(createForm, 'break_end')}</div>
+                        <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)} required><option value="">Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.employee_code} {s.name}</option>)}</select>{fieldError(createForm, 'staff_profile_id')}</div>
+                        <div><label className="ta-field-label">Schedule Date</label><input className="ta-input" type="date" value={createForm.data.schedule_date} onChange={(e) => createForm.setData('schedule_date', e.target.value)} required />{fieldError(createForm, 'schedule_date')}</div>
+                        <div><label className="ta-field-label">Start Time</label><input className="ta-input" type="time" value={createForm.data.start_time} onChange={(e) => createForm.setData('start_time', e.target.value)} />{fieldError(createForm, 'start_time')}</div>
+                        <div><label className="ta-field-label">End Time</label><input className="ta-input" type="time" value={createForm.data.end_time} onChange={(e) => createForm.setData('end_time', e.target.value)} />{fieldError(createForm, 'end_time')}</div>
+                        <div><label className="ta-field-label">Break Start</label><input className="ta-input" type="time" value={createForm.data.break_start} onChange={(e) => createForm.setData('break_start', e.target.value)} />{fieldError(createForm, 'break_start')}</div>
+                        <div><label className="ta-field-label">Break End</label><input className="ta-input" type="time" value={createForm.data.break_end} onChange={(e) => createForm.setData('break_end', e.target.value)} />{fieldError(createForm, 'break_end')}</div>
                         <button className="ta-btn-primary" disabled={createForm.processing}>Save</button>
                         <div className="md:col-span-7 flex items-center gap-3"><label className="text-sm text-slate-600"><input type="checkbox" checked={createForm.data.is_day_off} onChange={(e) => createForm.setData('is_day_off', e.target.checked)} className="mr-2" />Day off</label><input className="ta-input flex-1" placeholder="Notes" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} /></div>
                     </form>
@@ -53,10 +53,10 @@ export default function SchedulesIndex({ staffProfiles, schedules }) {
                     <section className="ta-card p-5">
                         <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Schedule #{editingId}</h3>
                         <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('schedules.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-6">
-                            <div><input className="ta-input" type="time" value={editForm.data.start_time} onChange={(e) => editForm.setData('start_time', e.target.value)} />{fieldError(editForm, 'start_time')}</div>
-                            <div><input className="ta-input" type="time" value={editForm.data.end_time} onChange={(e) => editForm.setData('end_time', e.target.value)} />{fieldError(editForm, 'end_time')}</div>
-                            <div><input className="ta-input" type="time" value={editForm.data.break_start} onChange={(e) => editForm.setData('break_start', e.target.value)} />{fieldError(editForm, 'break_start')}</div>
-                            <div><input className="ta-input" type="time" value={editForm.data.break_end} onChange={(e) => editForm.setData('break_end', e.target.value)} />{fieldError(editForm, 'break_end')}</div>
+                            <div><label className="ta-field-label">Start Time</label><input className="ta-input" type="time" value={editForm.data.start_time} onChange={(e) => editForm.setData('start_time', e.target.value)} />{fieldError(editForm, 'start_time')}</div>
+                            <div><label className="ta-field-label">End Time</label><input className="ta-input" type="time" value={editForm.data.end_time} onChange={(e) => editForm.setData('end_time', e.target.value)} />{fieldError(editForm, 'end_time')}</div>
+                            <div><label className="ta-field-label">Break Start</label><input className="ta-input" type="time" value={editForm.data.break_start} onChange={(e) => editForm.setData('break_start', e.target.value)} />{fieldError(editForm, 'break_start')}</div>
+                            <div><label className="ta-field-label">Break End</label><input className="ta-input" type="time" value={editForm.data.break_end} onChange={(e) => editForm.setData('break_end', e.target.value)} />{fieldError(editForm, 'break_end')}</div>
                             <div className="md:col-span-2 flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_day_off} onChange={(e) => editForm.setData('is_day_off', e.target.checked)} className="mr-2" />Day off</label></div>
                             <div className="md:col-span-6"><input className="ta-input" placeholder="Notes" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} />{fieldError(editForm, 'notes')}</div>
                             <div className="md:col-span-6 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button></div>
@@ -67,3 +67,12 @@ export default function SchedulesIndex({ staffProfiles, schedules }) {
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+
+
+
+

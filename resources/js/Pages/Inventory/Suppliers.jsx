@@ -34,10 +34,10 @@ export default function SuppliersIndex({ suppliers }) {
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Supplier</h3>
                     <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('suppliers.store'), { onSuccess: () => createForm.reset('name', 'contact_person', 'phone', 'email', 'address') }); }} className="grid gap-3 md:grid-cols-6">
-                        <div><input className="ta-input" placeholder="Supplier name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
-                        <div><input className="ta-input" placeholder="Contact person" value={createForm.data.contact_person} onChange={(e) => createForm.setData('contact_person', e.target.value)} />{fieldError(createForm, 'contact_person')}</div>
-                        <div><input className="ta-input" placeholder="Phone" value={createForm.data.phone} onChange={(e) => createForm.setData('phone', e.target.value)} />{fieldError(createForm, 'phone')}</div>
-                        <div><input className="ta-input" placeholder="Email" value={createForm.data.email} onChange={(e) => createForm.setData('email', e.target.value)} />{fieldError(createForm, 'email')}</div>
+                        <div><label className="ta-field-label">Supplier Name</label><input className="ta-input" placeholder="Supplier name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
+                        <div><label className="ta-field-label">Contact Person</label><input className="ta-input" placeholder="Contact person" value={createForm.data.contact_person} onChange={(e) => createForm.setData('contact_person', e.target.value)} />{fieldError(createForm, 'contact_person')}</div>
+                        <div><label className="ta-field-label">Phone</label><input className="ta-input" placeholder="Phone" value={createForm.data.phone} onChange={(e) => createForm.setData('phone', e.target.value)} />{fieldError(createForm, 'phone')}</div>
+                        <div><label className="ta-field-label">Email</label><input className="ta-input" placeholder="Email" value={createForm.data.email} onChange={(e) => createForm.setData('email', e.target.value)} />{fieldError(createForm, 'email')}</div>
                         <div className="md:col-span-2"><input className="ta-input" placeholder="Address" value={createForm.data.address} onChange={(e) => createForm.setData('address', e.target.value)} />{fieldError(createForm, 'address')}</div>
                         <button className="ta-btn-primary" disabled={createForm.processing || !canManage}>Add Supplier</button>
                     </form>
@@ -68,10 +68,10 @@ export default function SuppliersIndex({ suppliers }) {
                     <section className="ta-card p-5">
                         <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Supplier #{editingId}</h3>
                         <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('suppliers.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-6">
-                            <div><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
-                            <div><input className="ta-input" value={editForm.data.contact_person} onChange={(e) => editForm.setData('contact_person', e.target.value)} />{fieldError(editForm, 'contact_person')}</div>
-                            <div><input className="ta-input" value={editForm.data.phone} onChange={(e) => editForm.setData('phone', e.target.value)} />{fieldError(editForm, 'phone')}</div>
-                            <div><input className="ta-input" value={editForm.data.email} onChange={(e) => editForm.setData('email', e.target.value)} />{fieldError(editForm, 'email')}</div>
+                            <div><label className="ta-field-label">Name</label><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
+                            <div><label className="ta-field-label">Contact Person</label><input className="ta-input" value={editForm.data.contact_person} onChange={(e) => editForm.setData('contact_person', e.target.value)} />{fieldError(editForm, 'contact_person')}</div>
+                            <div><label className="ta-field-label">Phone</label><input className="ta-input" value={editForm.data.phone} onChange={(e) => editForm.setData('phone', e.target.value)} />{fieldError(editForm, 'phone')}</div>
+                            <div><label className="ta-field-label">Email</label><input className="ta-input" value={editForm.data.email} onChange={(e) => editForm.setData('email', e.target.value)} />{fieldError(editForm, 'email')}</div>
                             <div className="md:col-span-2"><input className="ta-input" value={editForm.data.address} onChange={(e) => editForm.setData('address', e.target.value)} />{fieldError(editForm, 'address')}</div>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label></div>
                             <div className="md:col-span-6 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button></div>
@@ -82,3 +82,11 @@ export default function SuppliersIndex({ suppliers }) {
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+
+
+

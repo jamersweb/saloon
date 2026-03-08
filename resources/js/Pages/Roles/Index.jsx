@@ -48,10 +48,12 @@ export default function RolesIndex({ roles, permissionCatalog }) {
                     >
                         <div className="grid gap-3 md:grid-cols-2">
                             <div>
+                                <label className="ta-field-label">Role Name</label>
                                 <input className="ta-input" placeholder="Role name (e.g. frontdesk_agent)" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />
                                 {fieldError(createForm, 'name')}
                             </div>
                             <div>
+                                <label className="ta-field-label">Role Label</label>
                                 <input className="ta-input" placeholder="Role label (e.g. Frontdesk Agent)" value={createForm.data.label} onChange={(e) => createForm.setData('label', e.target.value)} required />
                                 {fieldError(createForm, 'label')}
                             </div>
@@ -123,6 +125,7 @@ export default function RolesIndex({ roles, permissionCatalog }) {
                             editForm.put(route('roles.update', editingRoleId), { onSuccess: () => setEditingRoleId(null) });
                         }} className="space-y-4">
                             <div>
+                                <label className="ta-field-label">Label</label>
                                 <input className="ta-input" value={editForm.data.label} onChange={(e) => editForm.setData('label', e.target.value)} required />
                                 {fieldError(editForm, 'label')}
                             </div>
@@ -153,4 +156,13 @@ export default function RolesIndex({ roles, permissionCatalog }) {
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+
+
+
+
 

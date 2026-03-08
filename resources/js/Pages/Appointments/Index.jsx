@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -50,10 +50,10 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Booking Rules</h3>
                     <form onSubmit={(e) => { e.preventDefault(); rulesForm.patch(route('booking-rules.update')); }} className="grid gap-3 md:grid-cols-3">
-                        <div><input className="ta-input" type="number" min="5" max="120" value={rulesForm.data.slot_interval_minutes} onChange={(e) => rulesForm.setData('slot_interval_minutes', e.target.value)} placeholder="Slot interval (minutes)" required />{fieldError(rulesForm, 'slot_interval_minutes')}</div>
-                        <div><input className="ta-input" type="number" min="0" max="10080" value={rulesForm.data.min_advance_minutes} onChange={(e) => rulesForm.setData('min_advance_minutes', e.target.value)} placeholder="Min advance (minutes)" required />{fieldError(rulesForm, 'min_advance_minutes')}</div>
-                        <div><input className="ta-input" type="number" min="1" max="365" value={rulesForm.data.max_advance_days} onChange={(e) => rulesForm.setData('max_advance_days', e.target.value)} placeholder="Max advance (days)" required />{fieldError(rulesForm, 'max_advance_days')}</div>
-                        <div><input className="ta-input" type="number" min="0" max="168" value={rulesForm.data.cancellation_cutoff_hours} onChange={(e) => rulesForm.setData('cancellation_cutoff_hours', e.target.value)} placeholder="Cancellation cutoff (hours)" required />{fieldError(rulesForm, 'cancellation_cutoff_hours')}</div>
+                        <div><label className="ta-field-label">Slot Interval Minutes</label><input className="ta-input" type="number" min="5" max="120" value={rulesForm.data.slot_interval_minutes} onChange={(e) => rulesForm.setData('slot_interval_minutes', e.target.value)} placeholder="Slot interval (minutes)" required />{fieldError(rulesForm, 'slot_interval_minutes')}</div>
+                        <div><label className="ta-field-label">Min Advance Minutes</label><input className="ta-input" type="number" min="0" max="10080" value={rulesForm.data.min_advance_minutes} onChange={(e) => rulesForm.setData('min_advance_minutes', e.target.value)} placeholder="Min advance (minutes)" required />{fieldError(rulesForm, 'min_advance_minutes')}</div>
+                        <div><label className="ta-field-label">Max Advance Days</label><input className="ta-input" type="number" min="1" max="365" value={rulesForm.data.max_advance_days} onChange={(e) => rulesForm.setData('max_advance_days', e.target.value)} placeholder="Max advance (days)" required />{fieldError(rulesForm, 'max_advance_days')}</div>
+                        <div><label className="ta-field-label">Cancellation Cutoff Hours</label><input className="ta-input" type="number" min="0" max="168" value={rulesForm.data.cancellation_cutoff_hours} onChange={(e) => rulesForm.setData('cancellation_cutoff_hours', e.target.value)} placeholder="Cancellation cutoff (hours)" required />{fieldError(rulesForm, 'cancellation_cutoff_hours')}</div>
                         <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={rulesForm.data.public_requires_approval} onChange={(e) => rulesForm.setData('public_requires_approval', e.target.checked)} />Public booking requires approval</label>
                         <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={rulesForm.data.allow_customer_cancellation} onChange={(e) => rulesForm.setData('allow_customer_cancellation', e.target.checked)} />Allow customer cancellation</label>
                         <button className="ta-btn-primary md:col-span-3" disabled={rulesForm.processing || !canManageRules}>Save Booking Rules</button>
@@ -63,21 +63,21 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Appointment</h3>
                     <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('appointments.store'), { onSuccess: () => createForm.reset() }); }} className="grid gap-3 md:grid-cols-4">
-                        <div><input className="ta-input" placeholder="Customer name" value={createForm.data.customer_name} onChange={(e) => createForm.setData('customer_name', e.target.value)} required />{fieldError(createForm, 'customer_name')}</div>
-                        <div><input className="ta-input" placeholder="Phone" value={createForm.data.customer_phone} onChange={(e) => createForm.setData('customer_phone', e.target.value)} required />{fieldError(createForm, 'customer_phone')}</div>
-                        <div><input className="ta-input" placeholder="Email" value={createForm.data.customer_email} onChange={(e) => createForm.setData('customer_email', e.target.value)} />{fieldError(createForm, 'customer_email')}</div>
-                        <div><select className="ta-input" value={createForm.data.service_id} onChange={(e) => createForm.setData('service_id', e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.duration_minutes}m)</option>)}</select>{fieldError(createForm, 'service_id')}</div>
-                        <div><select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(createForm, 'staff_profile_id')}</div>
-                        <div><input className="ta-input" type="datetime-local" value={createForm.data.scheduled_start} onChange={(e) => createForm.setData('scheduled_start', e.target.value)} required />{fieldError(createForm, 'scheduled_start')}</div>
-                        <div><input className="ta-input" type="datetime-local" value={createForm.data.scheduled_end} onChange={(e) => createForm.setData('scheduled_end', e.target.value)} />{fieldError(createForm, 'scheduled_end')}</div>
-                        <div><select className="ta-input" value={createForm.data.status} onChange={(e) => createForm.setData('status', e.target.value)}><option value="confirmed">confirmed</option><option value="pending">pending</option></select>{fieldError(createForm, 'status')}</div>
+                        <div><label className="ta-field-label">Customer Name</label><input className="ta-input" placeholder="Customer name" value={createForm.data.customer_name} onChange={(e) => createForm.setData('customer_name', e.target.value)} required />{fieldError(createForm, 'customer_name')}</div>
+                        <div><label className="ta-field-label">Phone</label><input className="ta-input" placeholder="Phone" value={createForm.data.customer_phone} onChange={(e) => createForm.setData('customer_phone', e.target.value)} required />{fieldError(createForm, 'customer_phone')}</div>
+                        <div><label className="ta-field-label">Email</label><input className="ta-input" placeholder="Email" value={createForm.data.customer_email} onChange={(e) => createForm.setData('customer_email', e.target.value)} />{fieldError(createForm, 'customer_email')}</div>
+                        <div><label className="ta-field-label">Service</label><select className="ta-input" value={createForm.data.service_id} onChange={(e) => createForm.setData('service_id', e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.duration_minutes}m)</option>)}</select>{fieldError(createForm, 'service_id')}</div>
+                        <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(createForm, 'staff_profile_id')}</div>
+                        <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={createForm.data.scheduled_start} onChange={(e) => createForm.setData('scheduled_start', e.target.value)} required />{fieldError(createForm, 'scheduled_start')}</div>
+                        <div><label className="ta-field-label">Scheduled End</label><input className="ta-input" type="datetime-local" value={createForm.data.scheduled_end} onChange={(e) => createForm.setData('scheduled_end', e.target.value)} />{fieldError(createForm, 'scheduled_end')}</div>
+                        <div><label className="ta-field-label">Status</label><select className="ta-input" value={createForm.data.status} onChange={(e) => createForm.setData('status', e.target.value)}><option value="confirmed">confirmed</option><option value="pending">pending</option></select>{fieldError(createForm, 'status')}</div>
                         <div className="md:col-span-4"><input className="ta-input" placeholder="Notes" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} />{fieldError(createForm, 'notes')}</div>
                         <button className="ta-btn-primary" disabled={createForm.processing}>Create</button>
                     </form>
                 </section>
 
                 <section className="ta-card p-4">
-                    <label className="mr-2 text-sm font-medium text-slate-600">Filter status:</label>
+                    <label className="ta-field-label mr-2">Filter Status</label>
                     <select className="ta-input inline-block w-auto min-w-[180px]" value={statusFilter || ''} onChange={(e) => changeFilter(e.target.value)}>
                         <option value="">All</option>
                         {Object.keys(statusLabels).map((status) => <option key={status} value={status}>{status}</option>)}
@@ -93,14 +93,14 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
                     <section className="ta-card p-5">
                         <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Appointment #{editingId}</h3>
                         <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('appointments.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-4">
-                            <div><input className="ta-input" value={editForm.data.customer_name} onChange={(e) => editForm.setData('customer_name', e.target.value)} required />{fieldError(editForm, 'customer_name')}</div>
-                            <div><input className="ta-input" value={editForm.data.customer_phone} onChange={(e) => editForm.setData('customer_phone', e.target.value)} required />{fieldError(editForm, 'customer_phone')}</div>
-                            <div><input className="ta-input" value={editForm.data.customer_email} onChange={(e) => editForm.setData('customer_email', e.target.value)} />{fieldError(editForm, 'customer_email')}</div>
-                            <div><select className="ta-input" value={editForm.data.service_id} onChange={(e) => editForm.setData('service_id', e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'service_id')}</div>
-                            <div><select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'staff_profile_id')}</div>
-                            <div><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_start} onChange={(e) => editForm.setData('scheduled_start', e.target.value)} required />{fieldError(editForm, 'scheduled_start')}</div>
-                            <div><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onChange={(e) => editForm.setData('scheduled_end', e.target.value)} />{fieldError(editForm, 'scheduled_end')}</div>
-                            <div><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
+                            <div><label className="ta-field-label">Customer Name</label><input className="ta-input" value={editForm.data.customer_name} onChange={(e) => editForm.setData('customer_name', e.target.value)} required />{fieldError(editForm, 'customer_name')}</div>
+                            <div><label className="ta-field-label">Customer Phone</label><input className="ta-input" value={editForm.data.customer_phone} onChange={(e) => editForm.setData('customer_phone', e.target.value)} required />{fieldError(editForm, 'customer_phone')}</div>
+                            <div><label className="ta-field-label">Customer Email</label><input className="ta-input" value={editForm.data.customer_email} onChange={(e) => editForm.setData('customer_email', e.target.value)} />{fieldError(editForm, 'customer_email')}</div>
+                            <div><label className="ta-field-label">Service</label><select className="ta-input" value={editForm.data.service_id} onChange={(e) => editForm.setData('service_id', e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'service_id')}</div>
+                            <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'staff_profile_id')}</div>
+                            <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_start} onChange={(e) => editForm.setData('scheduled_start', e.target.value)} required />{fieldError(editForm, 'scheduled_start')}</div>
+                            <div><label className="ta-field-label">Scheduled End</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onChange={(e) => editForm.setData('scheduled_end', e.target.value)} />{fieldError(editForm, 'scheduled_end')}</div>
+                            <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
                             <div className="md:col-span-4"><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
                             <div className="md:col-span-4 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button></div>
                         </form>
@@ -110,3 +110,13 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+
+
+
+
+

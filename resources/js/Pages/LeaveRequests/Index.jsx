@@ -41,6 +41,7 @@ export default function LeaveRequestsIndex({ leaveRequests, staffProfiles }) {
                         className="grid gap-3 md:grid-cols-5"
                     >
                         <div>
+                            <label className="ta-field-label">Staff Profile</label>
                             {isStaff ? (
                                 <div className="ta-input flex items-center bg-slate-50">{myProfileName}</div>
                             ) : (
@@ -52,14 +53,17 @@ export default function LeaveRequestsIndex({ leaveRequests, staffProfiles }) {
                             {fieldError(createForm, 'staff_profile_id')}
                         </div>
                         <div>
+                            <label className="ta-field-label">Start Date</label>
                             <input className="ta-input" type="date" value={createForm.data.start_date} onChange={(e) => createForm.setData('start_date', e.target.value)} required />
                             {fieldError(createForm, 'start_date')}
                         </div>
                         <div>
+                            <label className="ta-field-label">End Date</label>
                             <input className="ta-input" type="date" value={createForm.data.end_date} onChange={(e) => createForm.setData('end_date', e.target.value)} required />
                             {fieldError(createForm, 'end_date')}
                         </div>
                         <div>
+                            <label className="ta-field-label">Reason</label>
                             <input className="ta-input" placeholder="Reason" value={createForm.data.reason} onChange={(e) => createForm.setData('reason', e.target.value)} required />
                             {fieldError(createForm, 'reason')}
                         </div>
@@ -110,3 +114,12 @@ export default function LeaveRequestsIndex({ leaveRequests, staffProfiles }) {
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+
+
+
+

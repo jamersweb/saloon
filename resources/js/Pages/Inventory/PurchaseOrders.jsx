@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -52,8 +52,7 @@ export default function PurchaseOrdersIndex({ suppliers, items, purchaseOrders }
     const FormLines = ({ form }) => (
         <div className="space-y-2">
             {form.data.items.map((line, idx) => (
-                <div key={idx} className="grid gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-4">
-                    <select className="ta-input" value={line.inventory_item_id} onChange={(e) => updateLine(form, idx, 'inventory_item_id', e.target.value)} required>
+                <div key={idx} className="grid gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-4"><label className="ta-field-label">Inventory Item</label><select className="ta-input" value={line.inventory_item_id} onChange={(e) => updateLine(form, idx, 'inventory_item_id', e.target.value)} required>
                         <option value="">Select item</option>
                         {items.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.sku})</option>)}
                     </select>
@@ -76,10 +75,10 @@ export default function PurchaseOrdersIndex({ suppliers, items, purchaseOrders }
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Purchase Order</h3>
                     <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('purchase-orders.store'), { onSuccess: () => createForm.reset('notes', 'expected_date') }); }} className="space-y-4">
                         <div className="grid gap-3 md:grid-cols-4">
-                            <div><select className="ta-input" value={createForm.data.supplier_id} onChange={(e) => createForm.setData('supplier_id', e.target.value)} required><option value="">Select supplier</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(createForm, 'supplier_id')}</div>
-                            <div><input className="ta-input" type="date" value={createForm.data.order_date} onChange={(e) => createForm.setData('order_date', e.target.value)} required />{fieldError(createForm, 'order_date')}</div>
-                            <div><input className="ta-input" type="date" value={createForm.data.expected_date} onChange={(e) => createForm.setData('expected_date', e.target.value)} />{fieldError(createForm, 'expected_date')}</div>
-                            <div><input className="ta-input" placeholder="Notes" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} />{fieldError(createForm, 'notes')}</div>
+                            <div><label className="ta-field-label">Supplier</label><select className="ta-input" value={createForm.data.supplier_id} onChange={(e) => createForm.setData('supplier_id', e.target.value)} required><option value="">Select supplier</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(createForm, 'supplier_id')}</div>
+                            <div><label className="ta-field-label">Order Date</label><input className="ta-input" type="date" value={createForm.data.order_date} onChange={(e) => createForm.setData('order_date', e.target.value)} required />{fieldError(createForm, 'order_date')}</div>
+                            <div><label className="ta-field-label">Expected Date</label><input className="ta-input" type="date" value={createForm.data.expected_date} onChange={(e) => createForm.setData('expected_date', e.target.value)} />{fieldError(createForm, 'expected_date')}</div>
+                            <div><label className="ta-field-label">Notes</label><input className="ta-input" placeholder="Notes" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} />{fieldError(createForm, 'notes')}</div>
                         </div>
 
                         <FormLines form={createForm} />
@@ -96,10 +95,10 @@ export default function PurchaseOrdersIndex({ suppliers, items, purchaseOrders }
                         <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Draft Purchase Order #{editingId}</h3>
                         <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('purchase-orders.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="space-y-4">
                             <div className="grid gap-3 md:grid-cols-4">
-                                <div><select className="ta-input" value={editForm.data.supplier_id} onChange={(e) => editForm.setData('supplier_id', e.target.value)} required><option value="">Select supplier</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'supplier_id')}</div>
-                                <div><input className="ta-input" type="date" value={editForm.data.order_date} onChange={(e) => editForm.setData('order_date', e.target.value)} required />{fieldError(editForm, 'order_date')}</div>
-                                <div><input className="ta-input" type="date" value={editForm.data.expected_date || ''} onChange={(e) => editForm.setData('expected_date', e.target.value)} />{fieldError(editForm, 'expected_date')}</div>
-                                <div><input className="ta-input" placeholder="Notes" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} />{fieldError(editForm, 'notes')}</div>
+                                <div><label className="ta-field-label">Supplier</label><select className="ta-input" value={editForm.data.supplier_id} onChange={(e) => editForm.setData('supplier_id', e.target.value)} required><option value="">Select supplier</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'supplier_id')}</div>
+                                <div><label className="ta-field-label">Order Date</label><input className="ta-input" type="date" value={editForm.data.order_date} onChange={(e) => editForm.setData('order_date', e.target.value)} required />{fieldError(editForm, 'order_date')}</div>
+                                <div><label className="ta-field-label">Expected Date</label><input className="ta-input" type="date" value={editForm.data.expected_date || ''} onChange={(e) => editForm.setData('expected_date', e.target.value)} />{fieldError(editForm, 'expected_date')}</div>
+                                <div><label className="ta-field-label">Notes</label><input className="ta-input" placeholder="Notes" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} />{fieldError(editForm, 'notes')}</div>
                             </div>
 
                             <FormLines form={editForm} />
@@ -121,7 +120,7 @@ export default function PurchaseOrdersIndex({ suppliers, items, purchaseOrders }
                             <div key={po.id} className="rounded-xl border border-slate-200 p-4">
                                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                     <div>
-                                        <p className="text-sm font-semibold text-slate-700">{po.po_number} � {po.supplier_name}</p>
+                                        <p className="text-sm font-semibold text-slate-700">{po.po_number} • {po.supplier_name}</p>
                                         <p className="text-xs text-slate-500">Order: {po.order_date} | Expected: {po.expected_date || '-'} | Total: {po.total_cost}</p>
                                     </div>
                                     <div className="flex gap-2">
@@ -146,3 +145,13 @@ export default function PurchaseOrdersIndex({ suppliers, items, purchaseOrders }
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+
+
+
+
+

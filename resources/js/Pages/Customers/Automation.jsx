@@ -1,4 +1,4 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -48,8 +48,8 @@ export default function Automation({ tags, customers, dueServices, recentLogs, s
                     <div className="mb-4 flex flex-wrap gap-2">{tags.map((tag) => <span key={tag.id} className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span>)}</div>
 
                     <form className="grid gap-3 md:grid-cols-4" onSubmit={(e) => { e.preventDefault(); assignForm.post(route('customers.automation.tags.assign')); }}>
-                        <select className="ta-input" value={assignForm.data.customer_id} onChange={(e) => assignForm.setData('customer_id', e.target.value)} required><option value="">Select customer</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-                        <select className="ta-input" value={assignForm.data.customer_tag_id} onChange={(e) => assignForm.setData('customer_tag_id', e.target.value)} required><option value="">Select tag</option>{tags.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+                        <label className="ta-field-label">Customer</label><select className="ta-input" value={assignForm.data.customer_id} onChange={(e) => assignForm.setData('customer_id', e.target.value)} required><option value="">Select customer</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                        <label className="ta-field-label">Customer Tag</label><select className="ta-input" value={assignForm.data.customer_tag_id} onChange={(e) => assignForm.setData('customer_tag_id', e.target.value)} required><option value="">Select tag</option>{tags.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
                         <button className="ta-btn-primary" disabled={assignForm.processing || !canManage}>Assign Tag</button>
                     </form>
                 </section>
@@ -62,8 +62,8 @@ export default function Automation({ tags, customers, dueServices, recentLogs, s
 
                     <form className="mb-4 grid gap-3 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); ruleForm.post(route('customers.automation.segment-rules.store'), { onSuccess: () => ruleForm.reset('name', 'threshold_value', 'lookback_days') }); }}>
                         <input className="ta-input" placeholder="Rule name" value={ruleForm.data.name} onChange={(e) => ruleForm.setData('name', e.target.value)} required />
-                        <select className="ta-input" value={ruleForm.data.customer_tag_id} onChange={(e) => ruleForm.setData('customer_tag_id', e.target.value)} required><option value="">Target tag</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
-                        <select className="ta-input" value={ruleForm.data.criteria} onChange={(e) => ruleForm.setData('criteria', e.target.value)}><option value="inactivity_days">Inactivity Days</option><option value="min_spend">Min Spend</option><option value="min_visits">Min Visits</option></select>
+                        <label className="ta-field-label">Customer Tag</label><select className="ta-input" value={ruleForm.data.customer_tag_id} onChange={(e) => ruleForm.setData('customer_tag_id', e.target.value)} required><option value="">Target tag</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
+                        <label className="ta-field-label">Criteria</label><select className="ta-input" value={ruleForm.data.criteria} onChange={(e) => ruleForm.setData('criteria', e.target.value)}><option value="inactivity_days">Inactivity Days</option><option value="min_spend">Min Spend</option><option value="min_visits">Min Visits</option></select>
                         <input className="ta-input" type="number" min="1" placeholder="Threshold" value={ruleForm.data.threshold_value} onChange={(e) => ruleForm.setData('threshold_value', e.target.value)} required />
                         <input className="ta-input" type="number" min="1" placeholder="Lookback days (opt)" value={ruleForm.data.lookback_days} onChange={(e) => ruleForm.setData('lookback_days', e.target.value)} />
                         <button className="ta-btn-primary" disabled={ruleForm.processing || !canManage}>Create Rule</button>
@@ -72,8 +72,8 @@ export default function Automation({ tags, customers, dueServices, recentLogs, s
                     {editingRuleId && (
                         <form className="mb-4 grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); editRuleForm.put(route('customers.automation.segment-rules.update', editingRuleId), { onSuccess: () => setEditingRuleId(null) }); }}>
                             <input className="ta-input" value={editRuleForm.data.name} onChange={(e) => editRuleForm.setData('name', e.target.value)} required />
-                            <select className="ta-input" value={editRuleForm.data.customer_tag_id} onChange={(e) => editRuleForm.setData('customer_tag_id', e.target.value)} required><option value="">Target tag</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
-                            <select className="ta-input" value={editRuleForm.data.criteria} onChange={(e) => editRuleForm.setData('criteria', e.target.value)}><option value="inactivity_days">Inactivity Days</option><option value="min_spend">Min Spend</option><option value="min_visits">Min Visits</option></select>
+                            <label className="ta-field-label">Customer Tag</label><select className="ta-input" value={editRuleForm.data.customer_tag_id} onChange={(e) => editRuleForm.setData('customer_tag_id', e.target.value)} required><option value="">Target tag</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
+                            <label className="ta-field-label">Criteria</label><select className="ta-input" value={editRuleForm.data.criteria} onChange={(e) => editRuleForm.setData('criteria', e.target.value)}><option value="inactivity_days">Inactivity Days</option><option value="min_spend">Min Spend</option><option value="min_visits">Min Visits</option></select>
                             <input className="ta-input" type="number" min="1" value={editRuleForm.data.threshold_value} onChange={(e) => editRuleForm.setData('threshold_value', e.target.value)} required />
                             <input className="ta-input" type="number" min="1" value={editRuleForm.data.lookback_days || ''} onChange={(e) => editRuleForm.setData('lookback_days', e.target.value === '' ? null : e.target.value)} />
                             <div className="flex gap-2"><button className="ta-btn-primary" disabled={editRuleForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingRuleId(null)}>Cancel</button></div>
@@ -93,7 +93,7 @@ export default function Automation({ tags, customers, dueServices, recentLogs, s
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Tags</th></tr></thead>
-                            <tbody>{customers.map((customer) => <tr key={customer.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{customer.name}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2">{customer.tags.map((tag) => <button key={tag.id} className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ backgroundColor: tag.color }} onClick={() => removeTag(customer.id, tag.id)}>{tag.name} ×</button>)}{customer.tags.length === 0 && <span className="text-xs text-slate-400">No tags</span>}</div></td></tr>)}</tbody>
+                            <tbody>{customers.map((customer) => <tr key={customer.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{customer.name}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2">{customer.tags.map((tag) => <button key={tag.id} className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ backgroundColor: tag.color }} onClick={() => removeTag(customer.id, tag.id)}>{tag.name} Ã—</button>)}{customer.tags.length === 0 && <span className="text-xs text-slate-400">No tags</span>}</div></td></tr>)}</tbody>
                         </table>
                     </div>
                 </section>
@@ -131,16 +131,16 @@ export default function Automation({ tags, customers, dueServices, recentLogs, s
 
                     <form className="mb-4 grid gap-3 md:grid-cols-4" onSubmit={(e) => { e.preventDefault(); templateForm.post(route('customers.automation.campaign-templates.store'), { onSuccess: () => templateForm.reset('name', 'content') }); }}>
                         <input className="ta-input" placeholder="Template name" value={templateForm.data.name} onChange={(e) => templateForm.setData('name', e.target.value)} required />
-                        <select className="ta-input" value={templateForm.data.channel} onChange={(e) => templateForm.setData('channel', e.target.value)}><option value="sms">SMS</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select>
+                        <label className="ta-field-label">Channel</label><select className="ta-input" value={templateForm.data.channel} onChange={(e) => templateForm.setData('channel', e.target.value)}><option value="sms">SMS</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select>
                         <input className="ta-input md:col-span-2" placeholder="Message (use {name})" value={templateForm.data.content} onChange={(e) => templateForm.setData('content', e.target.value)} required />
                         <button className="ta-btn-primary md:col-span-4" disabled={templateForm.processing || !canManage}>Create Template</button>
                     </form>
 
                     <form className="mb-4 grid gap-3 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); campaignForm.post(route('customers.automation.campaigns.store'), { onSuccess: () => campaignForm.reset('name', 'scheduled_at') }); }}>
                         <input className="ta-input" placeholder="Campaign name" value={campaignForm.data.name} onChange={(e) => campaignForm.setData('name', e.target.value)} required />
-                        <select className="ta-input" value={campaignForm.data.campaign_template_id} onChange={(e) => campaignForm.setData('campaign_template_id', e.target.value)} required><option value="">Template</option>{campaignTemplates.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name} ({t.channel})</option>)}</select>
-                        <select className="ta-input" value={campaignForm.data.audience_type} onChange={(e) => campaignForm.setData('audience_type', e.target.value)}><option value="all">All active customers</option><option value="tag">By tag</option><option value="due_service">Due services</option><option value="inactivity_days">Inactivity days</option></select>
-                        <select className="ta-input" value={campaignForm.data.customer_tag_id} onChange={(e) => campaignForm.setData('customer_tag_id', e.target.value)} disabled={campaignForm.data.audience_type !== 'tag'}><option value="">Tag (if tag audience)</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
+                        <label className="ta-field-label">Campaign Template</label><select className="ta-input" value={campaignForm.data.campaign_template_id} onChange={(e) => campaignForm.setData('campaign_template_id', e.target.value)} required><option value="">Template</option>{campaignTemplates.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name} ({t.channel})</option>)}</select>
+                        <label className="ta-field-label">Audience Type</label><select className="ta-input" value={campaignForm.data.audience_type} onChange={(e) => campaignForm.setData('audience_type', e.target.value)}><option value="all">All active customers</option><option value="tag">By tag</option><option value="due_service">Due services</option><option value="inactivity_days">Inactivity days</option></select>
+                        <label className="ta-field-label">Customer Tag</label><select className="ta-input" value={campaignForm.data.customer_tag_id} onChange={(e) => campaignForm.setData('customer_tag_id', e.target.value)} disabled={campaignForm.data.audience_type !== 'tag'}><option value="">Tag (if tag audience)</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
                         <input className="ta-input" type="number" min="1" placeholder="Inactivity days" value={campaignForm.data.inactivity_days} onChange={(e) => campaignForm.setData('inactivity_days', e.target.value)} disabled={campaignForm.data.audience_type !== 'inactivity_days'} />
                         <input className="ta-input" type="datetime-local" value={campaignForm.data.scheduled_at} onChange={(e) => campaignForm.setData('scheduled_at', e.target.value)} />
                         <button className="ta-btn-primary md:col-span-6" disabled={campaignForm.processing || !canManage}>Create Campaign</button>
@@ -167,3 +167,9 @@ export default function Automation({ tags, customers, dueServices, recentLogs, s
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+

@@ -69,14 +69,14 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Inventory Item</h3>
                     <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('inventory.store'), { onSuccess: () => createForm.reset('sku', 'name', 'category', 'cost_price', 'selling_price') }); }} className="grid gap-3 md:grid-cols-5">
-                        <div><input className="ta-input" placeholder="SKU" value={createForm.data.sku} onChange={(e) => createForm.setData('sku', e.target.value)} required />{fieldError(createForm, 'sku')}</div>
-                        <div><input className="ta-input" placeholder="Item name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
-                        <div><input className="ta-input" placeholder="Category" value={createForm.data.category} onChange={(e) => createForm.setData('category', e.target.value)} />{fieldError(createForm, 'category')}</div>
-                        <div><input className="ta-input" placeholder="Unit (pcs, ml, etc.)" value={createForm.data.unit} onChange={(e) => createForm.setData('unit', e.target.value)} required />{fieldError(createForm, 'unit')}</div>
-                        <div><input className="ta-input" type="number" step="0.01" min="0" placeholder="Cost price" value={createForm.data.cost_price} onChange={(e) => createForm.setData('cost_price', e.target.value)} required />{fieldError(createForm, 'cost_price')}</div>
-                        <div><input className="ta-input" type="number" step="0.01" min="0" placeholder="Selling price" value={createForm.data.selling_price} onChange={(e) => createForm.setData('selling_price', e.target.value)} required />{fieldError(createForm, 'selling_price')}</div>
-                        <div><input className="ta-input" type="number" min="0" placeholder="Opening stock" value={createForm.data.stock_quantity} onChange={(e) => createForm.setData('stock_quantity', e.target.value)} required />{fieldError(createForm, 'stock_quantity')}</div>
-                        <div><input className="ta-input" type="number" min="0" placeholder="Reorder level" value={createForm.data.reorder_level} onChange={(e) => createForm.setData('reorder_level', e.target.value)} required />{fieldError(createForm, 'reorder_level')}</div>
+                        <div><label className="ta-field-label">Sku</label><input className="ta-input" placeholder="SKU" value={createForm.data.sku} onChange={(e) => createForm.setData('sku', e.target.value)} required />{fieldError(createForm, 'sku')}</div>
+                        <div><label className="ta-field-label">Item Name</label><input className="ta-input" placeholder="Item name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
+                        <div><label className="ta-field-label">Category</label><input className="ta-input" placeholder="Category" value={createForm.data.category} onChange={(e) => createForm.setData('category', e.target.value)} />{fieldError(createForm, 'category')}</div>
+                        <div><label className="ta-field-label">Unit</label><input className="ta-input" placeholder="Unit (pcs, ml, etc.)" value={createForm.data.unit} onChange={(e) => createForm.setData('unit', e.target.value)} required />{fieldError(createForm, 'unit')}</div>
+                        <div><label className="ta-field-label">Cost Price</label><input className="ta-input" type="number" step="0.01" min="0" placeholder="Cost price" value={createForm.data.cost_price} onChange={(e) => createForm.setData('cost_price', e.target.value)} required />{fieldError(createForm, 'cost_price')}</div>
+                        <div><label className="ta-field-label">Selling Price</label><input className="ta-input" type="number" step="0.01" min="0" placeholder="Selling price" value={createForm.data.selling_price} onChange={(e) => createForm.setData('selling_price', e.target.value)} required />{fieldError(createForm, 'selling_price')}</div>
+                        <div><label className="ta-field-label">Opening Stock</label><input className="ta-input" type="number" min="0" placeholder="Opening stock" value={createForm.data.stock_quantity} onChange={(e) => createForm.setData('stock_quantity', e.target.value)} required />{fieldError(createForm, 'stock_quantity')}</div>
+                        <div><label className="ta-field-label">Reorder Level</label><input className="ta-input" type="number" min="0" placeholder="Reorder level" value={createForm.data.reorder_level} onChange={(e) => createForm.setData('reorder_level', e.target.value)} required />{fieldError(createForm, 'reorder_level')}</div>
                         <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={createForm.data.is_active} onChange={(e) => createForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label></div>
                         <button className="ta-btn-primary" disabled={createForm.processing || !canManage}>Add Item</button>
                     </form>
@@ -108,14 +108,14 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                     <section className="ta-card p-5">
                         <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Item #{editingId}</h3>
                         <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('inventory.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-5">
-                            <div><input className="ta-input" value={editForm.data.sku} onChange={(e) => editForm.setData('sku', e.target.value)} required />{fieldError(editForm, 'sku')}</div>
-                            <div><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
-                            <div><input className="ta-input" value={editForm.data.category} onChange={(e) => editForm.setData('category', e.target.value)} />{fieldError(editForm, 'category')}</div>
-                            <div><input className="ta-input" value={editForm.data.unit} onChange={(e) => editForm.setData('unit', e.target.value)} required />{fieldError(editForm, 'unit')}</div>
-                            <div><input className="ta-input" type="number" step="0.01" min="0" value={editForm.data.cost_price} onChange={(e) => editForm.setData('cost_price', e.target.value)} required />{fieldError(editForm, 'cost_price')}</div>
-                            <div><input className="ta-input" type="number" step="0.01" min="0" value={editForm.data.selling_price} onChange={(e) => editForm.setData('selling_price', e.target.value)} required />{fieldError(editForm, 'selling_price')}</div>
-                            <div><input className="ta-input" type="number" min="0" value={editForm.data.stock_quantity} onChange={(e) => editForm.setData('stock_quantity', e.target.value)} required />{fieldError(editForm, 'stock_quantity')}</div>
-                            <div><input className="ta-input" type="number" min="0" value={editForm.data.reorder_level} onChange={(e) => editForm.setData('reorder_level', e.target.value)} required />{fieldError(editForm, 'reorder_level')}</div>
+                            <div><label className="ta-field-label">Sku</label><input className="ta-input" value={editForm.data.sku} onChange={(e) => editForm.setData('sku', e.target.value)} required />{fieldError(editForm, 'sku')}</div>
+                            <div><label className="ta-field-label">Name</label><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
+                            <div><label className="ta-field-label">Category</label><input className="ta-input" value={editForm.data.category} onChange={(e) => editForm.setData('category', e.target.value)} />{fieldError(editForm, 'category')}</div>
+                            <div><label className="ta-field-label">Unit</label><input className="ta-input" value={editForm.data.unit} onChange={(e) => editForm.setData('unit', e.target.value)} required />{fieldError(editForm, 'unit')}</div>
+                            <div><label className="ta-field-label">Cost Price</label><input className="ta-input" type="number" step="0.01" min="0" value={editForm.data.cost_price} onChange={(e) => editForm.setData('cost_price', e.target.value)} required />{fieldError(editForm, 'cost_price')}</div>
+                            <div><label className="ta-field-label">Selling Price</label><input className="ta-input" type="number" step="0.01" min="0" value={editForm.data.selling_price} onChange={(e) => editForm.setData('selling_price', e.target.value)} required />{fieldError(editForm, 'selling_price')}</div>
+                            <div><label className="ta-field-label">Stock Quantity</label><input className="ta-input" type="number" min="0" value={editForm.data.stock_quantity} onChange={(e) => editForm.setData('stock_quantity', e.target.value)} required />{fieldError(editForm, 'stock_quantity')}</div>
+                            <div><label className="ta-field-label">Reorder Level</label><input className="ta-input" type="number" min="0" value={editForm.data.reorder_level} onChange={(e) => editForm.setData('reorder_level', e.target.value)} required />{fieldError(editForm, 'reorder_level')}</div>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label></div>
                             <div className="md:col-span-5 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button></div>
                         </form>
@@ -126,10 +126,10 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                     <section className="ta-card p-5">
                         <h3 className="mb-4 text-sm font-semibold text-slate-700">Adjust Stock</h3>
                         <form onSubmit={(e) => { e.preventDefault(); adjustForm.post(route('inventory.adjust', adjustingId), { onSuccess: () => setAdjustingId(null) }); }} className="grid gap-3 md:grid-cols-5">
-                            <div><select className="ta-input" value={adjustForm.data.type} onChange={(e) => adjustForm.setData('type', e.target.value)}><option value="in">Stock In (+)</option><option value="out">Stock Out (-)</option><option value="adjustment">Adjustment (+/-)</option></select>{fieldError(adjustForm, 'type')}</div>
-                            <div><input className="ta-input" type="number" placeholder="Quantity" value={adjustForm.data.quantity} onChange={(e) => adjustForm.setData('quantity', e.target.value)} required />{fieldError(adjustForm, 'quantity')}</div>
-                            <div><input className="ta-input" placeholder="Reference" value={adjustForm.data.reference} onChange={(e) => adjustForm.setData('reference', e.target.value)} />{fieldError(adjustForm, 'reference')}</div>
-                            <div><input className="ta-input" placeholder="Notes" value={adjustForm.data.notes} onChange={(e) => adjustForm.setData('notes', e.target.value)} />{fieldError(adjustForm, 'notes')}</div>
+                            <div><label className="ta-field-label">Type</label><select className="ta-input" value={adjustForm.data.type} onChange={(e) => adjustForm.setData('type', e.target.value)}><option value="in">Stock In (+)</option><option value="out">Stock Out (-)</option><option value="adjustment">Adjustment (+/-)</option></select>{fieldError(adjustForm, 'type')}</div>
+                            <div><label className="ta-field-label">Quantity</label><input className="ta-input" type="number" placeholder="Quantity" value={adjustForm.data.quantity} onChange={(e) => adjustForm.setData('quantity', e.target.value)} required />{fieldError(adjustForm, 'quantity')}</div>
+                            <div><label className="ta-field-label">Reference</label><input className="ta-input" placeholder="Reference" value={adjustForm.data.reference} onChange={(e) => adjustForm.setData('reference', e.target.value)} />{fieldError(adjustForm, 'reference')}</div>
+                            <div><label className="ta-field-label">Notes</label><input className="ta-input" placeholder="Notes" value={adjustForm.data.notes} onChange={(e) => adjustForm.setData('notes', e.target.value)} />{fieldError(adjustForm, 'notes')}</div>
                             <div className="flex gap-2"><button className="ta-btn-primary" disabled={adjustForm.processing || !canManage}>Apply</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setAdjustingId(null)}>Cancel</button></div>
                         </form>
                     </section>
@@ -159,3 +159,12 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+
+
+
+

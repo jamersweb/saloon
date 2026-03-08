@@ -8,32 +8,98 @@ export default function AttendanceIndex({ logs, staffProfiles }) {
     const clockInForm = useForm({ staff_profile_id: '' });
     const clockOutForm = useForm({ staff_profile_id: '' });
 
+    const todayLog = logs?.[0];
+
     return (
-        <AuthenticatedLayout header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Attendance</h2>}>
+        <AuthenticatedLayout header="Attendance">
             <Head title="Attendance" />
-            <div className="py-8"><div className="mx-auto max-w-7xl space-y-6 sm:px-6 lg:px-8">
-                {flash?.status && <div className="rounded bg-green-100 p-3 text-green-700">{flash.status}</div>}
-                {Object.keys(errors).length > 0 && <div className="rounded bg-red-100 p-3 text-red-700">{Object.values(errors)[0]}</div>}
-                <div className="grid gap-3 rounded bg-white p-4 shadow md:grid-cols-3">
-                    <form onSubmit={(e) => { e.preventDefault(); clockInForm.post(route('attendance.clock-in')); }} className="space-y-2">
+            <div className="space-y-6">
+                {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
+                {Object.keys(errors).length > 0 && <div className="ta-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{Object.values(errors)[0]}</div>}
+
+                <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="ta-card p-4">
+                        <p className="text-xs uppercase text-slate-500">Today</p>
+                        <p className="mt-2 text-lg font-semibold text-slate-800">{todayLog?.attendance_date?.slice(0, 10) || 'No record yet'}</p>
+                    </div>
+                    <div className="ta-card p-4">
+                        <p className="text-xs uppercase text-slate-500">Clock In</p>
+                        <p className="mt-2 text-lg font-semibold text-slate-800">{todayLog?.clock_in || '--:--'}</p>
+                    </div>
+                    <div className="ta-card p-4">
+                        <p className="text-xs uppercase text-slate-500">Clock Out</p>
+                        <p className="mt-2 text-lg font-semibold text-slate-800">{todayLog?.clock_out || '--:--'}</p>
+                    </div>
+                </section>
+
+                <section className="grid gap-4 md:grid-cols-2">
+                    <form onSubmit={(e) => { e.preventDefault(); clockInForm.post(route('attendance.clock-in')); }} className="ta-card space-y-3 p-5">
+                        <h3 className="text-sm font-semibold text-slate-700">Clock In</h3>
+                        <label className="ta-field-label">Staff Profile</label>
                         {isStaff ? (
-                            <div className="w-full rounded border bg-slate-50 p-2 text-sm text-slate-600">{myProfileName}</div>
+                            <div className="ta-input flex items-center bg-slate-50">{myProfileName}</div>
                         ) : (
-                            <select className="w-full rounded border p-2" value={clockInForm.data.staff_profile_id} onChange={(e) => clockInForm.setData('staff_profile_id', e.target.value)}><option value="">My profile</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+                            <select className="ta-input" value={clockInForm.data.staff_profile_id} onChange={(e) => clockInForm.setData('staff_profile_id', e.target.value)}>
+                                <option value="">My profile</option>
+                                {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
                         )}
-                        <button className="w-full rounded bg-indigo-600 py-2 text-white">Clock In</button>
+                        <button className="ta-btn-primary w-full" disabled={clockInForm.processing}>Clock In</button>
                     </form>
-                    <form onSubmit={(e) => { e.preventDefault(); clockOutForm.post(route('attendance.clock-out')); }} className="space-y-2">
+
+                    <form onSubmit={(e) => { e.preventDefault(); clockOutForm.post(route('attendance.clock-out')); }} className="ta-card space-y-3 p-5">
+                        <h3 className="text-sm font-semibold text-slate-700">Clock Out</h3>
+                        <label className="ta-field-label">Staff Profile</label>
                         {isStaff ? (
-                            <div className="w-full rounded border bg-slate-50 p-2 text-sm text-slate-600">{myProfileName}</div>
+                            <div className="ta-input flex items-center bg-slate-50">{myProfileName}</div>
                         ) : (
-                            <select className="w-full rounded border p-2" value={clockOutForm.data.staff_profile_id} onChange={(e) => clockOutForm.setData('staff_profile_id', e.target.value)}><option value="">My profile</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+                            <select className="ta-input" value={clockOutForm.data.staff_profile_id} onChange={(e) => clockOutForm.setData('staff_profile_id', e.target.value)}>
+                                <option value="">My profile</option>
+                                {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
                         )}
-                        <button className="w-full rounded bg-gray-700 py-2 text-white">Clock Out</button>
+                        <button className="ta-btn-secondary w-full" disabled={clockOutForm.processing}>Clock Out</button>
                     </form>
-                </div>
-                <div className="overflow-auto rounded bg-white p-4 shadow"><table className="min-w-full text-sm"><thead><tr className="border-b text-left"><th className="py-2">Date</th><th>Staff</th><th>In</th><th>Out</th><th>Late</th></tr></thead><tbody>{logs.map((l) => <tr key={l.id} className="border-b"><td className="py-2">{l.attendance_date?.slice(0, 10)}</td><td>{l.staff_name}</td><td>{l.clock_in}</td><td>{l.clock_out}</td><td>{l.late_minutes}</td></tr>)}</tbody></table></div>
-            </div></div>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <h3 className="text-sm font-semibold text-slate-700">Attendance Log</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th className="px-5 py-3">Date</th>
+                                    <th className="px-5 py-3">Staff</th>
+                                    <th className="px-5 py-3">In</th>
+                                    <th className="px-5 py-3">Out</th>
+                                    <th className="px-5 py-3">Late</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {logs.length === 0 && (
+                                    <tr>
+                                        <td className="px-5 py-4 text-slate-500" colSpan="5">No attendance records available.</td>
+                                    </tr>
+                                )}
+                                {logs.map((l) => (
+                                    <tr key={l.id} className="border-t border-slate-100">
+                                        <td className="px-5 py-3 text-slate-600">{l.attendance_date?.slice(0, 10)}</td>
+                                        <td className="px-5 py-3 font-medium text-slate-700">{l.staff_name}</td>
+                                        <td className="px-5 py-3 text-slate-600">{l.clock_in || '--:--'}</td>
+                                        <td className="px-5 py-3 text-slate-600">{l.clock_out || '--:--'}</td>
+                                        <td className="px-5 py-3 text-slate-600">{l.late_minutes || 0} min</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
         </AuthenticatedLayout>
     );
 }
+
+
+

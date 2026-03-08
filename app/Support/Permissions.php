@@ -11,6 +11,8 @@ class Permissions
     {
         return [
             'can_operate_frontdesk' => 'Operate appointments, customers, attendance, and leave requests',
+            'can_manage_attendance' => 'View and update attendance records',
+            'can_manage_leave_requests' => 'Create and view leave requests',
             'can_manage_services' => 'Manage services',
             'can_manage_staff' => 'Manage staff profiles',
             'can_manage_schedules' => 'Manage schedules and booking rules',
@@ -33,6 +35,8 @@ class Permissions
             'owner' => array_keys(self::all()),
             'manager' => [
                 'can_operate_frontdesk',
+                'can_manage_attendance',
+                'can_manage_leave_requests',
                 'can_manage_services',
                 'can_manage_staff',
                 'can_manage_schedules',
@@ -44,7 +48,8 @@ class Permissions
                 'can_review_leave_requests',
             ],
             'staff' => [
-                'can_operate_frontdesk',
+                'can_manage_attendance',
+                'can_manage_leave_requests',
             ],
             default => [],
         };
@@ -60,13 +65,18 @@ class Permissions
             return 'can_manage_crm_automation';
         }
 
-        if (str_starts_with($routeName, 'appointments.')
-            || str_starts_with($routeName, 'customers.')
-            || str_starts_with($routeName, 'attendance.')
-            || str_starts_with($routeName, 'leave-requests.')) {
+        if (str_starts_with($routeName, 'appointments.') || str_starts_with($routeName, 'customers.')) {
+            return 'can_operate_frontdesk';
+        }
+
+        if (str_starts_with($routeName, 'attendance.')) {
+            return 'can_manage_attendance';
+        }
+
+        if (str_starts_with($routeName, 'leave-requests.')) {
             return str_starts_with($routeName, 'leave-requests.review')
                 ? 'can_review_leave_requests'
-                : 'can_operate_frontdesk';
+                : 'can_manage_leave_requests';
         }
 
         return match (true) {

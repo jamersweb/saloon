@@ -34,12 +34,12 @@ export default function ServicesIndex({ services }) {
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Service</h3>
                     <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('services.store'), { onSuccess: () => createForm.reset() }); }} className="grid gap-3 md:grid-cols-7">
-                        <div><input className="ta-input" placeholder="Service name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
-                        <div><input className="ta-input" placeholder="Category" value={createForm.data.category} onChange={(e) => createForm.setData('category', e.target.value)} />{fieldError(createForm, 'category')}</div>
-                        <div><input className="ta-input" type="number" min="5" placeholder="Duration" value={createForm.data.duration_minutes} onChange={(e) => createForm.setData('duration_minutes', e.target.value)} required />{fieldError(createForm, 'duration_minutes')}</div>
-                        <div><input className="ta-input" type="number" min="0" placeholder="Buffer" value={createForm.data.buffer_minutes} onChange={(e) => createForm.setData('buffer_minutes', e.target.value)} />{fieldError(createForm, 'buffer_minutes')}</div>
-                        <div><input className="ta-input" type="number" min="1" placeholder="Repeat days" value={createForm.data.repeat_after_days ?? ''} onChange={(e) => createForm.setData('repeat_after_days', e.target.value === '' ? null : e.target.value)} />{fieldError(createForm, 'repeat_after_days')}</div>
-                        <div><input className="ta-input" type="number" step="0.01" min="0" placeholder="Price" value={createForm.data.price} onChange={(e) => createForm.setData('price', e.target.value)} required />{fieldError(createForm, 'price')}</div>
+                        <div><label className="ta-field-label">Service Name</label><input className="ta-input" placeholder="Service name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
+                        <div><label className="ta-field-label">Category</label><input className="ta-input" placeholder="Category" value={createForm.data.category} onChange={(e) => createForm.setData('category', e.target.value)} />{fieldError(createForm, 'category')}</div>
+                        <div><label className="ta-field-label">Duration</label><input className="ta-input" type="number" min="5" placeholder="Duration" value={createForm.data.duration_minutes} onChange={(e) => createForm.setData('duration_minutes', e.target.value)} required />{fieldError(createForm, 'duration_minutes')}</div>
+                        <div><label className="ta-field-label">Buffer</label><input className="ta-input" type="number" min="0" placeholder="Buffer" value={createForm.data.buffer_minutes} onChange={(e) => createForm.setData('buffer_minutes', e.target.value)} />{fieldError(createForm, 'buffer_minutes')}</div>
+                        <div><label className="ta-field-label">Repeat Days</label><input className="ta-input" type="number" min="1" placeholder="Repeat days" value={createForm.data.repeat_after_days ?? ''} onChange={(e) => createForm.setData('repeat_after_days', e.target.value === '' ? null : e.target.value)} />{fieldError(createForm, 'repeat_after_days')}</div>
+                        <div><label className="ta-field-label">Price</label><input className="ta-input" type="number" step="0.01" min="0" placeholder="Price" value={createForm.data.price} onChange={(e) => createForm.setData('price', e.target.value)} required />{fieldError(createForm, 'price')}</div>
                         <button className="ta-btn-primary" disabled={createForm.processing}>Add</button>
                     </form>
                 </section>
@@ -58,12 +58,12 @@ export default function ServicesIndex({ services }) {
                     <section className="ta-card p-5">
                         <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Service #{editingId}</h3>
                         <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('services.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-7">
-                            <div><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
-                            <div><input className="ta-input" value={editForm.data.category} onChange={(e) => editForm.setData('category', e.target.value)} />{fieldError(editForm, 'category')}</div>
-                            <div><input className="ta-input" type="number" min="5" value={editForm.data.duration_minutes} onChange={(e) => editForm.setData('duration_minutes', e.target.value)} required />{fieldError(editForm, 'duration_minutes')}</div>
-                            <div><input className="ta-input" type="number" min="0" value={editForm.data.buffer_minutes} onChange={(e) => editForm.setData('buffer_minutes', e.target.value)} />{fieldError(editForm, 'buffer_minutes')}</div>
-                            <div><input className="ta-input" type="number" min="1" value={editForm.data.repeat_after_days ?? ''} onChange={(e) => editForm.setData('repeat_after_days', e.target.value === '' ? null : e.target.value)} />{fieldError(editForm, 'repeat_after_days')}</div>
-                            <div><input className="ta-input" type="number" step="0.01" min="0" value={editForm.data.price} onChange={(e) => editForm.setData('price', e.target.value)} required />{fieldError(editForm, 'price')}</div>
+                            <div><label className="ta-field-label">Name</label><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
+                            <div><label className="ta-field-label">Category</label><input className="ta-input" value={editForm.data.category} onChange={(e) => editForm.setData('category', e.target.value)} />{fieldError(editForm, 'category')}</div>
+                            <div><label className="ta-field-label">Duration Minutes</label><input className="ta-input" type="number" min="5" value={editForm.data.duration_minutes} onChange={(e) => editForm.setData('duration_minutes', e.target.value)} required />{fieldError(editForm, 'duration_minutes')}</div>
+                            <div><label className="ta-field-label">Buffer Minutes</label><input className="ta-input" type="number" min="0" value={editForm.data.buffer_minutes} onChange={(e) => editForm.setData('buffer_minutes', e.target.value)} />{fieldError(editForm, 'buffer_minutes')}</div>
+                            <div><label className="ta-field-label">Repeat After Days</label><input className="ta-input" type="number" min="1" value={editForm.data.repeat_after_days ?? ''} onChange={(e) => editForm.setData('repeat_after_days', e.target.value === '' ? null : e.target.value)} />{fieldError(editForm, 'repeat_after_days')}</div>
+                            <div><label className="ta-field-label">Price</label><input className="ta-input" type="number" step="0.01" min="0" value={editForm.data.price} onChange={(e) => editForm.setData('price', e.target.value)} required />{fieldError(editForm, 'price')}</div>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label>{fieldError(editForm, 'is_active')}</div>
                             <div className="md:col-span-6 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button></div>
                         </form>
@@ -73,3 +73,11 @@ export default function ServicesIndex({ services }) {
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+
+
+

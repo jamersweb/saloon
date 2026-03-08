@@ -33,13 +33,13 @@ export default function StaffIndex({ staffProfiles, roles }) {
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Staff Member</h3>
                     <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('staff.store'), { onSuccess: () => createForm.reset() }); }} className="grid gap-3 md:grid-cols-4">
-                        <div><input className="ta-input" placeholder="Full name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
-                        <div><input className="ta-input" placeholder="Email" value={createForm.data.email} onChange={(e) => createForm.setData('email', e.target.value)} required />{fieldError(createForm, 'email')}</div>
-                        <div><input className="ta-input" placeholder="Employee code" value={createForm.data.employee_code} onChange={(e) => createForm.setData('employee_code', e.target.value)} required />{fieldError(createForm, 'employee_code')}</div>
-                        <div><input className="ta-input" placeholder="Phone" value={createForm.data.phone} onChange={(e) => createForm.setData('phone', e.target.value)} />{fieldError(createForm, 'phone')}</div>
-                        <div><select className="ta-input" value={createForm.data.role_id} onChange={(e) => createForm.setData('role_id', e.target.value)} required><option value="">Role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select>{fieldError(createForm, 'role_id')}</div>
+                        <div><label className="ta-field-label">Full Name</label><input className="ta-input" placeholder="Full name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
+                        <div><label className="ta-field-label">Email</label><input className="ta-input" placeholder="Email" value={createForm.data.email} onChange={(e) => createForm.setData('email', e.target.value)} required />{fieldError(createForm, 'email')}</div>
+                        <div><label className="ta-field-label">Employee Code</label><input className="ta-input" placeholder="Employee code" value={createForm.data.employee_code} onChange={(e) => createForm.setData('employee_code', e.target.value)} required />{fieldError(createForm, 'employee_code')}</div>
+                        <div><label className="ta-field-label">Phone</label><input className="ta-input" placeholder="Phone" value={createForm.data.phone} onChange={(e) => createForm.setData('phone', e.target.value)} />{fieldError(createForm, 'phone')}</div>
+                        <div><label className="ta-field-label">Role</label><select className="ta-input" value={createForm.data.role_id} onChange={(e) => createForm.setData('role_id', e.target.value)} required><option value="">Role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select>{fieldError(createForm, 'role_id')}</div>
                         <div className="md:col-span-2"><input className="ta-input" placeholder="Skills (comma separated)" value={createForm.data.skills} onChange={(e) => createForm.setData('skills', e.target.value)} />{fieldError(createForm, 'skills')}</div>
-                        <div><input className="ta-input" placeholder="Optional password" value={createForm.data.password} onChange={(e) => createForm.setData('password', e.target.value)} />{fieldError(createForm, 'password')}</div>
+                        <div><label className="ta-field-label">Optional Password</label><input className="ta-input" placeholder="Optional password" value={createForm.data.password} onChange={(e) => createForm.setData('password', e.target.value)} />{fieldError(createForm, 'password')}</div>
                         <button className="ta-btn-primary" disabled={createForm.processing}>Add Staff</button>
                     </form>
                 </section>
@@ -53,10 +53,10 @@ export default function StaffIndex({ staffProfiles, roles }) {
                     <section className="ta-card p-5">
                         <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Staff #{editingId}</h3>
                         <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('staff.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-4">
-                            <div><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
-                            <div><input className="ta-input" value={editForm.data.email} onChange={(e) => editForm.setData('email', e.target.value)} required />{fieldError(editForm, 'email')}</div>
-                            <div><select className="ta-input" value={editForm.data.role_id} onChange={(e) => editForm.setData('role_id', e.target.value)} required><option value="">Role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select>{fieldError(editForm, 'role_id')}</div>
-                            <div><input className="ta-input" value={editForm.data.phone} onChange={(e) => editForm.setData('phone', e.target.value)} />{fieldError(editForm, 'phone')}</div>
+                            <div><label className="ta-field-label">Name</label><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
+                            <div><label className="ta-field-label">Email</label><input className="ta-input" value={editForm.data.email} onChange={(e) => editForm.setData('email', e.target.value)} required />{fieldError(editForm, 'email')}</div>
+                            <div><label className="ta-field-label">Role</label><select className="ta-input" value={editForm.data.role_id} onChange={(e) => editForm.setData('role_id', e.target.value)} required><option value="">Role</option>{roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select>{fieldError(editForm, 'role_id')}</div>
+                            <div><label className="ta-field-label">Phone</label><input className="ta-input" value={editForm.data.phone} onChange={(e) => editForm.setData('phone', e.target.value)} />{fieldError(editForm, 'phone')}</div>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label>{fieldError(editForm, 'is_active')}</div>
                             <div className="md:col-span-4"><input className="ta-input" value={editForm.data.skills} onChange={(e) => editForm.setData('skills', e.target.value)} placeholder="Skills (comma separated)" />{fieldError(editForm, 'skills')}</div>
                             <div className="md:col-span-4 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button></div>
@@ -67,3 +67,12 @@ export default function StaffIndex({ staffProfiles, roles }) {
         </AuthenticatedLayout>
     );
 }
+
+
+
+
+
+
+
+
+

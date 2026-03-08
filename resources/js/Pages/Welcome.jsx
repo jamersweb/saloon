@@ -7,6 +7,23 @@ export default function Welcome({ auth }) {
             <div className="relative min-h-screen overflow-hidden bg-slate-50">
                 <div className="pointer-events-none absolute -top-20 -right-24 h-80 w-80 rounded-full bg-indigo-100 blur-3xl" />
                 <div className="pointer-events-none absolute -bottom-24 -left-20 h-80 w-80 rounded-full bg-slate-200 blur-3xl" />
+                <div className="absolute right-6 top-6 z-20">
+                    {auth.user ? (
+                        <Link
+                            href={route('dashboard')}
+                            className="ta-btn-primary inline-flex items-center justify-center"
+                        >
+                            Dashboard
+                        </Link>
+                    ) : (
+                        <Link
+                            href={route('login')}
+                            className="ta-btn-primary inline-flex items-center justify-center"
+                        >
+                            Staff Login
+                        </Link>
+                    )}
+                </div>
 
                 <div className="relative mx-auto flex min-h-screen w-full max-w-6xl items-center px-6 py-12">
                     <div className="ta-card w-full p-6 md:p-10">
@@ -35,12 +52,6 @@ export default function Welcome({ auth }) {
                                     </Link>
                                 ) : (
                                     <div className="space-y-3">
-                                        <Link
-                                            href={route('login')}
-                                            className="ta-btn-primary inline-flex w-full items-center justify-center text-center"
-                                        >
-                                            Log in
-                                        </Link>
                                         <Link
                                             href={route('register')}
                                             className="ta-btn-secondary inline-flex w-full items-center justify-center text-center"

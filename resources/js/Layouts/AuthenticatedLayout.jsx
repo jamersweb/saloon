@@ -23,7 +23,7 @@ function NavGroup({ title, open, active, onToggle, children }) {
                 className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] transition ${active ? 'text-slate-700' : 'text-slate-500 hover:text-slate-700'}`}
             >
                 <span>{title}</span>
-                <span className={`text-sm transition ${open ? 'rotate-180' : ''}`}>⌄</span>
+                <span className={`text-xs transition ${open ? 'rotate-180' : ''}`}>v</span>
             </button>
             {open && <div className="space-y-1">{children}</div>}
         </section>
@@ -34,6 +34,7 @@ export default function AuthenticatedLayout({ header, children }) {
     const { auth } = usePage().props;
     const user = auth.user;
     const permissions = auth.permissions || {};
+    const isStaff = user?.role?.name === 'staff';
 
     const canManage = useMemo(
         () =>
@@ -51,7 +52,27 @@ export default function AuthenticatedLayout({ header, children }) {
         () => permissions.can_operate_frontdesk || canManage,
         [permissions, canManage]
     );
+
     const navGroups = useMemo(() => {
+        if (isStaff) {
+            return [
+                {
+                    key: 'overview',
+                    title: 'Overview',
+                    items: [{ label: 'Dashboard', href: route('dashboard'), active: route().current('dashboard') }],
+                },
+                {
+                    key: 'my-work',
+                    title: 'My Work',
+                    items: [
+                        { label: 'Attendance', href: route('attendance.index'), active: route().current('attendance.*') },
+                        { label: 'Leave Requests', href: route('leave-requests.index'), active: route().current('leave-requests.*') },
+                        { label: 'Profile', href: route('profile.edit'), active: route().current('profile.*') },
+                    ],
+                },
+            ];
+        }
+
         const groups = [
             {
                 key: 'overview',
@@ -106,7 +127,7 @@ export default function AuthenticatedLayout({ header, children }) {
                 items: group.items.filter((item) => item.visible !== false),
             }))
             .filter((group) => group.items.length > 0);
-    }, [permissions, canOperate]);
+    }, [permissions, canOperate, isStaff]);
 
     const [openGroups, setOpenGroups] = useState({});
 
@@ -120,6 +141,8 @@ export default function AuthenticatedLayout({ header, children }) {
             return next;
         });
     }, [navGroups]);
+
+    const flatNavItems = useMemo(() => navGroups.flatMap((group) => group.items), [navGroups]);
 
     return (
         <div className="min-h-screen bg-slate-50 lg:flex">
@@ -170,6 +193,19 @@ export default function AuthenticatedLayout({ header, children }) {
                                 <Dropdown.Link href={route('logout')} method="post" as="button">Log Out</Dropdown.Link>
                             </Dropdown.Content>
                         </Dropdown>
+                    </div>
+                    <div className="mx-auto border-t border-slate-100 px-4 py-2 sm:px-6 lg:hidden">
+                        <nav className="flex gap-2 overflow-x-auto pb-1">
+                            {flatNavItems.map((item) => (
+                                <Link
+                                    key={item.label}
+                                    href={item.href}
+                                    className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition ${item.active ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    {item.label}
+                                </Link>
+                            ))}
+                        </nav>
                     </div>
                 </header>
 
