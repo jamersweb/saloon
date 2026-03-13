@@ -17,13 +17,18 @@ class CommunicationLog extends Model
         'recipient',
         'message',
         'status',
+        'provider',
+        'provider_message_id',
+        'error_message',
         'sent_at',
+        'delivered_at',
     ];
 
     protected function casts(): array
     {
         return [
             'sent_at' => 'datetime',
+            'delivered_at' => 'datetime',
         ];
     }
 

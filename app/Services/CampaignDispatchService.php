@@ -4,13 +4,17 @@ namespace App\Services;
 
 use App\Models\Appointment;
 use App\Models\Campaign;
-use App\Models\CommunicationLog;
 use App\Models\Customer;
 use App\Models\CustomerDueService;
 use Illuminate\Database\Eloquent\Builder;
 
 class CampaignDispatchService
 {
+    public function __construct(
+        private readonly CommunicationDeliveryService $communicationDeliveryService,
+    ) {
+    }
+
     public function dispatch(Campaign $campaign): array
     {
         $campaign->loadMissing('template');
@@ -21,32 +25,23 @@ class CampaignDispatchService
 
         foreach ($customers as $customer) {
             $recipient = $campaign->channel === 'email' ? $customer->email : $customer->phone;
-            if (! $recipient) {
-                CommunicationLog::create([
-                    'customer_id' => $customer->id,
-                    'channel' => $campaign->channel,
-                    'context' => 'campaign:' . $campaign->id,
-                    'recipient' => null,
-                    'message' => null,
-                    'status' => 'failed',
-                    'sent_at' => now(),
-                ]);
-                $failed++;
-                continue;
-            }
 
             $message = str_replace('{name}', $customer->name, $campaign->template?->content ?? '');
 
-            CommunicationLog::create([
-                'customer_id' => $customer->id,
-                'channel' => $campaign->channel,
-                'context' => 'campaign:' . $campaign->id,
-                'recipient' => $recipient,
-                'message' => $message,
-                'status' => 'sent',
-                'sent_at' => now(),
-            ]);
-            $sent++;
+            $log = $this->communicationDeliveryService->deliver(
+                $customer,
+                $campaign->channel,
+                $recipient,
+                $message,
+                'campaign:' . $campaign->id,
+            );
+
+            if ($log->status === 'sent') {
+                $sent++;
+                continue;
+            }
+
+            $failed++;
         }
 
         $campaign->update([
@@ -84,4 +79,3 @@ class CampaignDispatchService
         };
     }
 }
-

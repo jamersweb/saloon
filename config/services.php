@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'whatsapp' => [
+        'driver' => env('WHATSAPP_DRIVER', 'log'),
+        'base_url' => env('WHATSAPP_BASE_URL', 'https://graph.facebook.com'),
+        'version' => env('WHATSAPP_API_VERSION', 'v23.0'),
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+        'token' => env('WHATSAPP_ACCESS_TOKEN'),
+    ],
+
 ];

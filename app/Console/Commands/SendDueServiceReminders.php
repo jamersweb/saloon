@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\CommunicationLog;
 use App\Models\CustomerDueService;
+use App\Services\CommunicationDeliveryService;
 use Illuminate\Console\Command;
 
 class SendDueServiceReminders extends Command
@@ -25,7 +25,7 @@ class SendDueServiceReminders extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): int
+    public function handle(CommunicationDeliveryService $communicationDeliveryService): int
     {
         $channel = $this->option('channel');
         $policy = $this->option('policy');
@@ -73,33 +73,22 @@ class SendDueServiceReminders extends Command
 
             foreach ($attemptChannels as $attemptChannel) {
                 $recipient = $this->resolveRecipient($dueService, $attemptChannel);
-                if (! $recipient) {
-                    CommunicationLog::create([
-                        'customer_id' => $dueService->customer_id,
-                        'channel' => $attemptChannel,
-                        'context' => 'due_service_reminder_auto',
-                        'recipient' => null,
-                        'message' => null,
-                        'status' => 'failed',
-                        'sent_at' => now(),
-                    ]);
-                    continue;
-                }
-
-                CommunicationLog::create([
-                    'customer_id' => $dueService->customer_id,
-                    'channel' => $attemptChannel,
-                    'context' => 'due_service_reminder_auto',
-                    'recipient' => $recipient,
-                    'message' => sprintf(
+                $log = $communicationDeliveryService->deliver(
+                    $dueService->customer,
+                    $attemptChannel,
+                    $recipient,
+                    sprintf(
                         'Hi %s, your %s service is due on %s. Reply to book your next appointment.',
                         $dueService->customer?->name ?? 'Customer',
                         $dueService->service?->name ?? 'service',
                         $dueService->due_date?->toDateString()
                     ),
-                    'status' => 'sent',
-                    'sent_at' => now(),
-                ]);
+                    'due_service_reminder_auto',
+                );
+
+                if ($log->status !== 'sent') {
+                    continue;
+                }
 
                 $dueService->update(['reminder_sent_at' => now()]);
                 $sent++;

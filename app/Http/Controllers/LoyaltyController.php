@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
+use App\Models\CustomerMembershipCard;
 use App\Models\CustomerPackage;
 use App\Models\GiftCard;
 use App\Models\GiftCardTransaction;
@@ -29,7 +30,7 @@ use Inertia\Response;
 
 class LoyaltyController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
         $cardTypes = MembershipCardType::query()
             ->orderBy('min_points')
@@ -40,6 +41,21 @@ class LoyaltyController extends Controller
             'tiers' => LoyaltyTier::query()->orderBy('min_points')->get(),
             'cardTypes' => $cardTypes,
             'packages' => ServicePackage::query()->orderBy('name')->get(),
+            'membershipCards' => CustomerMembershipCard::query()
+                ->with(['customer:id,name,phone', 'type:id,name'])
+                ->latest()
+                ->limit(200)
+                ->get()
+                ->map(fn (CustomerMembershipCard $card) => [
+                    'id' => $card->id,
+                    'customer_name' => $card->customer?->name,
+                    'customer_phone' => $card->customer?->phone,
+                    'card_type_name' => $card->type?->name,
+                    'card_number' => $card->card_number,
+                    'nfc_uid' => $card->nfc_uid,
+                    'status' => $card->status,
+                ]),
+            'nfcLookupResult' => $request->session()->get('nfc_lookup'),
             'customers' => Customer::query()
                 ->with(['loyaltyAccount.tier', 'membershipCards.type', 'packages.package', 'giftCards'])
                 ->orderBy('name')
@@ -323,7 +339,7 @@ class LoyaltyController extends Controller
             'customer_id' => ['required', 'exists:customers,id'],
             'membership_card_type_id' => ['required', 'exists:membership_card_types,id'],
             'card_number' => ['nullable', 'string', 'max:255'],
-            'nfc_uid' => ['nullable', 'string', 'max:255'],
+            'nfc_uid' => ['nullable', 'string', 'max:255', Rule::unique('customer_membership_cards', 'nfc_uid')],
             'status' => ['nullable', Rule::in(['pending', 'active', 'inactive', 'expired'])],
             'notes' => ['nullable', 'string'],
         ]);
@@ -349,6 +365,62 @@ class LoyaltyController extends Controller
         ]);
 
         return back()->with('status', 'Membership card assigned.');
+    }
+
+    public function lookupCardByNfc(Request $request, MembershipCardService $membershipCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'nfc_uid' => ['required', 'string', 'max:255'],
+        ]);
+
+        $card = $membershipCardService->findByNfcUid($data['nfc_uid']);
+
+        if (! $card) {
+            return back()
+                ->withErrors(['nfc_uid' => 'No membership card was found for this NFC UID.'])
+                ->with('nfc_lookup', null);
+        }
+
+        return back()
+            ->with('nfc_lookup', [
+                'customer_name' => $card->customer?->name,
+                'customer_phone' => $card->customer?->phone,
+                'customer_email' => $card->customer?->email,
+                'card_number' => $card->card_number,
+                'card_type_name' => $card->type?->name,
+                'card_status' => $card->status,
+                'nfc_uid' => $card->nfc_uid,
+            ])
+            ->with('status', 'NFC card located.');
+    }
+
+    public function bindCardNfc(Request $request, MembershipCardService $membershipCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'customer_membership_card_id' => ['required', 'exists:customer_membership_cards,id'],
+            'nfc_uid' => ['required', 'string', 'max:255'],
+            'replace_existing' => ['nullable', 'boolean'],
+        ]);
+
+        $card = CustomerMembershipCard::findOrFail((int) $data['customer_membership_card_id']);
+        $card = $membershipCardService->bindNfcUid(
+            $card,
+            $data['nfc_uid'],
+            $request->user()?->id,
+            (bool) ($data['replace_existing'] ?? false),
+        );
+
+        Audit::log($request->user()?->id, 'loyalty.card_nfc_bound', 'CustomerMembershipCard', $card->id, [
+            'customer_id' => $card->customer_id,
+            'nfc_uid' => $card->nfc_uid,
+            'replace_existing' => (bool) ($data['replace_existing'] ?? false),
+        ]);
+
+        return back()->with('status', 'NFC UID linked to membership card.');
     }
 
     public function storeTier(Request $request): RedirectResponse

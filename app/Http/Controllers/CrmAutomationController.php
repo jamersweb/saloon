@@ -11,6 +11,7 @@ use App\Models\CustomerDueService;
 use App\Models\CustomerSegmentRule;
 use App\Models\CustomerTag;
 use App\Services\CampaignDispatchService;
+use App\Services\CommunicationDeliveryService;
 use App\Services\DueServiceManager;
 use App\Support\Audit;
 use Carbon\Carbon;
@@ -305,7 +306,7 @@ class CrmAutomationController extends Controller
         return back()->with('status', 'Due services generated/refreshed.');
     }
 
-    public function sendReminder(Request $request, CustomerDueService $dueService): RedirectResponse
+    public function sendReminder(Request $request, CustomerDueService $dueService, CommunicationDeliveryService $communicationDeliveryService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -329,15 +330,17 @@ class CrmAutomationController extends Controller
             return back()->withErrors(['channel' => 'No recipient available for selected reminder policy.']);
         }
 
-        CommunicationLog::create([
-            'customer_id' => $dueService->customer_id,
-            'channel' => $channel,
-            'context' => 'due_service_reminder',
-            'recipient' => $recipient,
-            'message' => sprintf('Hi %s, your %s service is due on %s.', $dueService->customer?->name ?? 'Customer', $dueService->service?->name ?? 'service', $dueService->due_date?->toDateString()),
-            'status' => 'sent',
-            'sent_at' => now(),
-        ]);
+        $log = $communicationDeliveryService->deliver(
+            $dueService->customer,
+            $channel,
+            $recipient,
+            sprintf('Hi %s, your %s service is due on %s.', $dueService->customer?->name ?? 'Customer', $dueService->service?->name ?? 'service', $dueService->due_date?->toDateString()),
+            'due_service_reminder',
+        );
+
+        if ($log->status !== 'sent') {
+            return back()->withErrors(['channel' => $log->error_message ?? 'Message delivery failed.']);
+        }
 
         $dueService->update(['reminder_sent_at' => now()]);
 

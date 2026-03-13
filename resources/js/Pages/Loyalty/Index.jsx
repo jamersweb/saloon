@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, customerPackages, giftCards, recentGiftTransactions, recentLedgers, rewards, recentRedemptions, settings }) {
+export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, membershipCards, nfcLookupResult, customerPackages, giftCards, recentGiftTransactions, recentLedgers, rewards, recentRedemptions, settings }) {
     const { flash, auth } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_loyalty);
     const [editingTierId, setEditingTierId] = useState(null);
@@ -16,6 +16,8 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, cu
     const createCardTypeForm = useForm({ name: '', slug: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
     const editCardTypeForm = useForm({ name: '', slug: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
     const assignCardForm = useForm({ customer_id: '', membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'active', notes: '' });
+    const nfcLookupForm = useForm({ nfc_uid: '' });
+    const nfcBindForm = useForm({ customer_membership_card_id: '', nfc_uid: '', replace_existing: false });
     const packageForm = useForm({ name: '', description: '', usage_limit: '', initial_value: '', validity_days: '', is_active: true });
     const assignPackageForm = useForm({ customer_id: '', service_package_id: '', notes: '' });
     const consumePackageForm = useForm({ customer_package_id: '', sessions_used: 0, value_used: 0, notes: '' });
@@ -191,6 +193,43 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, cu
                         <button className="ta-btn-primary" disabled={assignCardForm.processing || !canManage}>Assign Card</button>
                         <div className="md:col-span-6"><label className="ta-field-label">Notes</label><input className="ta-input" value={assignCardForm.data.notes} onChange={(e) => assignCardForm.setData('notes', e.target.value)} placeholder="Optional assignment notes" />{fieldError(assignCardForm, 'notes')}</div>
                     </form>
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">NFC Scan Lookup</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); nfcLookupForm.post(route('loyalty.cards.nfc-lookup')); }} className="grid gap-3 md:grid-cols-4">
+                        <div className="md:col-span-3"><label className="ta-field-label">NFC UID</label><input className="ta-input" value={nfcLookupForm.data.nfc_uid} onChange={(e) => nfcLookupForm.setData('nfc_uid', e.target.value)} placeholder="Paste or scan NFC UID" required />{fieldError(nfcLookupForm, 'nfc_uid')}</div>
+                        <button className="ta-btn-primary" disabled={nfcLookupForm.processing || !canManage}>Lookup Card</button>
+                    </form>
+                    {nfcLookupResult && (
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                            <div className="font-semibold text-slate-700">{nfcLookupResult.customer_name}</div>
+                            <div className="mt-1 text-slate-600">Card: {nfcLookupResult.card_number} ({nfcLookupResult.card_type_name})</div>
+                            <div className="mt-1 text-slate-600">Status: {nfcLookupResult.card_status}</div>
+                            <div className="mt-1 text-slate-600">Phone: {nfcLookupResult.customer_phone || 'N/A'}</div>
+                            <div className="mt-1 text-slate-600">NFC UID: {nfcLookupResult.nfc_uid}</div>
+                        </div>
+                    )}
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Bind / Replace NFC UID</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); nfcBindForm.post(route('loyalty.cards.nfc-bind'), { onSuccess: () => nfcBindForm.reset('nfc_uid', 'replace_existing') }); }} className="grid gap-3 md:grid-cols-4">
+                        <div><label className="ta-field-label">Membership Card</label><select className="ta-input" value={nfcBindForm.data.customer_membership_card_id} onChange={(e) => nfcBindForm.setData('customer_membership_card_id', e.target.value)} required><option value="">Select card</option>{membershipCards.map((card) => <option key={card.id} value={card.id}>{card.customer_name} - {card.card_number || 'No number'} ({card.card_type_name})</option>)}</select>{fieldError(nfcBindForm, 'customer_membership_card_id')}</div>
+                        <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={nfcBindForm.data.nfc_uid} onChange={(e) => nfcBindForm.setData('nfc_uid', e.target.value)} placeholder="Scan new UID" required />{fieldError(nfcBindForm, 'nfc_uid')}</div>
+                        <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={nfcBindForm.data.replace_existing} onChange={(e) => nfcBindForm.setData('replace_existing', e.target.checked)} />Replace existing binding if UID is already linked</label>
+                        <button className="ta-btn-primary" disabled={nfcBindForm.processing || !canManage}>Bind NFC UID</button>
+                    </form>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">NFC Card Registry</h3></div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Card</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">NFC UID</th><th className="px-5 py-3">Status</th></tr></thead>
+                            <tbody>{membershipCards.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.customer_name}<div className="text-xs text-slate-500">{card.customer_phone || 'No phone'}</div></td><td className="px-5 py-3 text-slate-600">{card.card_number || 'Auto'}</td><td className="px-5 py-3 text-slate-600">{card.card_type_name}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.status}</td></tr>)}</tbody>
+                        </table>
+                    </div>
                 </section>
 
                 <section className="ta-card overflow-hidden">

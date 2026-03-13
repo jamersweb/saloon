@@ -118,4 +118,113 @@ class MembershipCardsTest extends TestCase
         $this->assertNotNull($eligible);
         $this->assertSame('Gold', $eligible->name);
     }
+
+    public function test_staff_can_lookup_card_by_nfc_uid(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-NFC-001',
+            'name' => 'Scan Customer',
+            'phone' => '5551212121',
+            'email' => 'scan@example.com',
+            'is_active' => true,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Platinum',
+            'slug' => 'platinum',
+            'kind' => 'physical',
+            'min_points' => 400,
+            'is_active' => true,
+        ]);
+
+        CustomerMembershipCard::create([
+            'customer_id' => $customer->id,
+            'membership_card_type_id' => $cardType->id,
+            'card_number' => 'PLAT-0001',
+            'nfc_uid' => '04AB77CD',
+            'status' => 'active',
+            'issued_at' => now()->subDay(),
+            'activated_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.nfc-lookup'), [
+                'nfc_uid' => '04ab77cd',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('nfc_lookup.customer_name', 'Scan Customer')
+            ->assertSessionHas('nfc_lookup.card_number', 'PLAT-0001');
+    }
+
+    public function test_binding_nfc_uid_can_replace_existing_link_when_requested(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Silver',
+            'slug' => 'silver',
+            'kind' => 'physical',
+            'min_points' => 100,
+            'is_active' => true,
+        ]);
+
+        $firstCustomer = Customer::create([
+            'customer_code' => 'CUST-NFC-002',
+            'name' => 'First Customer',
+            'phone' => '5555656565',
+            'is_active' => true,
+        ]);
+
+        $secondCustomer = Customer::create([
+            'customer_code' => 'CUST-NFC-003',
+            'name' => 'Second Customer',
+            'phone' => '5557878787',
+            'is_active' => true,
+        ]);
+
+        $firstCard = CustomerMembershipCard::create([
+            'customer_id' => $firstCustomer->id,
+            'membership_card_type_id' => $cardType->id,
+            'card_number' => 'SILVER-0101',
+            'nfc_uid' => '0422AA11',
+            'status' => 'active',
+            'issued_at' => now()->subWeek(),
+            'activated_at' => now()->subWeek(),
+        ]);
+
+        $secondCard = CustomerMembershipCard::create([
+            'customer_id' => $secondCustomer->id,
+            'membership_card_type_id' => $cardType->id,
+            'card_number' => 'SILVER-0202',
+            'status' => 'active',
+            'issued_at' => now()->subWeek(),
+            'activated_at' => now()->subWeek(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.nfc-bind'), [
+                'customer_membership_card_id' => $secondCard->id,
+                'nfc_uid' => '0422AA11',
+                'replace_existing' => true,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $firstCard->refresh();
+        $secondCard->refresh();
+
+        $this->assertNull($firstCard->nfc_uid);
+        $this->assertSame('0422AA11', $secondCard->nfc_uid);
+    }
 }
