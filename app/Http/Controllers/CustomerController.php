@@ -13,6 +13,21 @@ use Inertia\Response;
 
 class CustomerController extends Controller
 {
+    private const ACQUISITION_SOURCES = [
+        'Instagram',
+        'Facebook',
+        'TikTok',
+        'Google Search',
+        'Google Maps',
+        'WhatsApp',
+        'Friend Referral',
+        'Walk-in',
+        'Returning Customer',
+        'Website',
+        'Flyer / Banner',
+        'Other',
+    ];
+
     private const PROFILE_RELATIONS = [
         'loyaltyAccount.tier',
         'membershipCards.type',
@@ -58,6 +73,7 @@ class CustomerController extends Controller
             'filters' => [
                 'q' => $query,
             ],
+            'acquisitionSources' => self::ACQUISITION_SOURCES,
             'customers' => $customers->map(fn (Customer $customer) => [
                 'id' => $customer->id,
                 'customer_code' => $customer->customer_code,
@@ -108,7 +124,7 @@ class CustomerController extends Controller
             'birthday' => ['nullable', 'date'],
             'allergies' => ['nullable', 'string'],
             'notes' => ['nullable', 'string'],
-            'acquisition_source' => ['nullable', 'string', 'max:255'],
+            'acquisition_source' => ['nullable', 'string', 'in:' . implode(',', self::ACQUISITION_SOURCES)],
         ]);
 
         $customer = Customer::create([
@@ -133,7 +149,7 @@ class CustomerController extends Controller
             'birthday' => ['nullable', 'date'],
             'allergies' => ['nullable', 'string'],
             'notes' => ['nullable', 'string'],
-            'acquisition_source' => ['nullable', 'string', 'max:255'],
+            'acquisition_source' => ['nullable', 'string', 'in:' . implode(',', self::ACQUISITION_SOURCES)],
         ]);
 
         $customer->update($data);

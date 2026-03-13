@@ -41,5 +41,30 @@ class CustomerWalletAutoCreateTest extends TestCase
         $this->assertNotNull($wallet);
         $this->assertSame(0, $wallet->current_points);
     }
-}
 
+    public function test_customer_creation_accepts_configured_acquisition_source(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('customers.store'), [
+                'name' => 'Source Test',
+                'phone' => '5558883434',
+                'email' => 'source@example.com',
+                'acquisition_source' => 'Instagram',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('customers', [
+            'phone' => '5558883434',
+            'acquisition_source' => 'Instagram',
+        ]);
+    }
+}

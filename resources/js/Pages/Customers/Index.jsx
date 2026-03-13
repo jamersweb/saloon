@@ -7,7 +7,7 @@ const formatDate = (value) => value ? new Date(value).toLocaleDateString() : 'N/
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : 'N/A';
 const formatCurrency = (value) => value === null || value === undefined ? 'N/A' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value));
 
-export default function CustomersIndex({ customers, selectedCustomer, history, filters }) {
+export default function CustomersIndex({ customers, selectedCustomer, history, filters, acquisitionSources }) {
     const { flash } = usePage().props;
 
     const createForm = useForm({ name: '', phone: '', email: '', birthday: '', allergies: '', notes: '', acquisition_source: '' });
@@ -62,6 +62,14 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
                         <div><label className="ta-field-label">Name</label><input className="ta-input" placeholder="Name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
                         <div><label className="ta-field-label">Phone</label><input className="ta-input" placeholder="Phone" value={createForm.data.phone} onChange={(e) => createForm.setData('phone', e.target.value)} required />{fieldError(createForm, 'phone')}</div>
                         <div><label className="ta-field-label">Email</label><input className="ta-input" placeholder="Email" value={createForm.data.email} onChange={(e) => createForm.setData('email', e.target.value)} />{fieldError(createForm, 'email')}</div>
+                        <div>
+                            <label className="ta-field-label">How They Found Us</label>
+                            <select className="ta-input" value={createForm.data.acquisition_source} onChange={(e) => createForm.setData('acquisition_source', e.target.value)}>
+                                <option value="">Select source</option>
+                                {acquisitionSources.map((source) => <option key={source} value={source}>{source}</option>)}
+                            </select>
+                            {fieldError(createForm, 'acquisition_source')}
+                        </div>
                         <button className="ta-btn-primary w-full" disabled={createForm.processing}>Create</button>
                     </form>
                 </section>
@@ -135,7 +143,14 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
                                 <div><label className="ta-field-label">Phone</label><input className="ta-input" value={editForm.data.phone} onChange={(e) => editForm.setData('phone', e.target.value)} required />{fieldError(editForm, 'phone')}</div>
                                 <div><label className="ta-field-label">Email</label><input className="ta-input" value={editForm.data.email} onChange={(e) => editForm.setData('email', e.target.value)} placeholder="Email" />{fieldError(editForm, 'email')}</div>
                                 <div><label className="ta-field-label">Birthday</label><input className="ta-input" type="date" value={editForm.data.birthday || ''} onChange={(e) => editForm.setData('birthday', e.target.value)} />{fieldError(editForm, 'birthday')}</div>
-                                <div className="md:col-span-2"><label className="ta-field-label">Acquisition Source</label><input className="ta-input" value={editForm.data.acquisition_source || ''} onChange={(e) => editForm.setData('acquisition_source', e.target.value)} placeholder="Acquisition source" />{fieldError(editForm, 'acquisition_source')}</div>
+                                <div className="md:col-span-2">
+                                    <label className="ta-field-label">How They Found Us</label>
+                                    <select className="ta-input" value={editForm.data.acquisition_source || ''} onChange={(e) => editForm.setData('acquisition_source', e.target.value)}>
+                                        <option value="">Select source</option>
+                                        {acquisitionSources.map((source) => <option key={source} value={source}>{source}</option>)}
+                                    </select>
+                                    {fieldError(editForm, 'acquisition_source')}
+                                </div>
                                 <div className="md:col-span-2"><textarea className="ta-input min-h-[90px]" value={editForm.data.allergies || ''} onChange={(e) => editForm.setData('allergies', e.target.value)} placeholder="Allergies / sensitivities" />{fieldError(editForm, 'allergies')}</div>
                                 <div className="md:col-span-2"><textarea className="ta-input min-h-[90px]" value={editForm.data.notes || ''} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
                                 <button className="ta-btn-primary md:col-span-2" disabled={editForm.processing}>Save Profile</button>
