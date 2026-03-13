@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Appointment extends Model
 {
@@ -73,6 +75,21 @@ class Appointment extends Model
     public function bookedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'booked_by');
+    }
+
+    public function serviceExecution(): HasOne
+    {
+        return $this->hasOne(AppointmentServiceLog::class);
+    }
+
+    public function photos(): HasMany
+    {
+        return $this->hasMany(AppointmentPhoto::class)->latest();
+    }
+
+    public function productUsages(): HasMany
+    {
+        return $this->hasMany(AppointmentProductUsage::class);
     }
 
     /** @return list<string> */

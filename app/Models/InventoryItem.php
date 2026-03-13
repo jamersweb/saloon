@@ -41,6 +41,11 @@ class InventoryItem extends Model
         return $this->hasMany(PurchaseOrderItem::class);
     }
 
+    public function appointmentProductUsages(): HasMany
+    {
+        return $this->hasMany(AppointmentProductUsage::class, 'inventory_item_id');
+    }
+
     public function lowStockAlerts(): HasMany
     {
         return $this->hasMany(LowStockAlert::class);

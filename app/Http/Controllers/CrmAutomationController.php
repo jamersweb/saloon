@@ -11,6 +11,7 @@ use App\Models\CustomerDueService;
 use App\Models\CustomerSegmentRule;
 use App\Models\CustomerTag;
 use App\Services\CampaignDispatchService;
+use App\Services\DueServiceManager;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -293,46 +294,11 @@ class CrmAutomationController extends Controller
         return back()->with('status', 'Tag removed.');
     }
 
-    public function generateDueServices(Request $request): RedirectResponse
+    public function generateDueServices(Request $request, DueServiceManager $dueServiceManager): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
-        $count = 0;
-
-        DB::transaction(function () use (&$count): void {
-            $appointments = Appointment::query()
-                ->with('service:id,repeat_after_days')
-                ->where('status', Appointment::STATUS_COMPLETED)
-                ->whereNotNull('customer_id')
-                ->latest('scheduled_end')
-                ->limit(800)
-                ->get();
-
-            foreach ($appointments as $appointment) {
-                $repeatAfter = (int) ($appointment->service?->repeat_after_days ?? 0);
-                if ($repeatAfter <= 0) {
-                    continue;
-                }
-
-                $dueDate = Carbon::parse($appointment->scheduled_end ?? $appointment->scheduled_start)
-                    ->addDays($repeatAfter)
-                    ->toDateString();
-
-                CustomerDueService::firstOrCreate(
-                    [
-                        'customer_id' => $appointment->customer_id,
-                        'salon_service_id' => $appointment->service_id,
-                        'due_date' => $dueDate,
-                    ],
-                    [
-                        'last_appointment_id' => $appointment->id,
-                        'status' => 'pending',
-                    ]
-                );
-
-                $count++;
-            }
-        });
+        $count = $dueServiceManager->backfillCompletedAppointments();
 
         Audit::log($request->user()?->id, 'due_service.generated', 'CustomerDueService', null, ['rows' => $count]);
 

@@ -4,6 +4,7 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AttendanceLogController;
 use App\Http\Controllers\BookingRuleController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\CustomerPortalController;
 use App\Http\Controllers\CrmAutomationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeedbackController;
@@ -23,6 +24,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicBookingController::class, 'create'])->name('public.booking');
 Route::post('/book', [PublicBookingController::class, 'store'])->name('public.booking.store');
+Route::get('/portal/{token}', [CustomerPortalController::class, 'show'])->name('customer.portal.show');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
@@ -37,12 +39,15 @@ Route::middleware('auth')->group(function () {
         Route::get('/appointments', [AppointmentController::class, 'index'])->name('appointments.index');
         Route::post('/appointments', [AppointmentController::class, 'store'])->name('appointments.store');
         Route::put('/appointments/{appointment}', [AppointmentController::class, 'update'])->name('appointments.update');
+        Route::post('/appointments/{appointment}/service-start', [AppointmentController::class, 'startService'])->name('appointments.service-start');
+        Route::post('/appointments/{appointment}/service-complete', [AppointmentController::class, 'completeService'])->name('appointments.service-complete');
         Route::patch('/appointments/{appointment}/transition', [AppointmentController::class, 'transition'])->name('appointments.transition');
         Route::delete('/appointments/{appointment}', [AppointmentController::class, 'destroy'])->name('appointments.destroy');
 
         Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
         Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
         Route::put('/customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
+        Route::post('/customers/{customer}/portal-token', [CustomerController::class, 'issuePortalToken'])->name('customers.portal-token.store');
 
         Route::get('/attendance', [AttendanceLogController::class, 'index'])->name('attendance.index');
         Route::post('/attendance/clock-in', [AttendanceLogController::class, 'clockIn'])->name('attendance.clock-in');
@@ -96,6 +101,14 @@ Route::middleware('auth')->group(function () {
         Route::get('/loyalty', [LoyaltyController::class, 'index'])->name('loyalty.index');
         Route::post('/loyalty/tiers', [LoyaltyController::class, 'storeTier'])->name('loyalty.tiers.store');
         Route::put('/loyalty/tiers/{tier}', [LoyaltyController::class, 'updateTier'])->name('loyalty.tiers.update');
+        Route::post('/loyalty/card-types', [LoyaltyController::class, 'storeCardType'])->name('loyalty.card-types.store');
+        Route::put('/loyalty/card-types/{cardType}', [LoyaltyController::class, 'updateCardType'])->name('loyalty.card-types.update');
+        Route::post('/loyalty/cards/assign', [LoyaltyController::class, 'assignCard'])->name('loyalty.cards.assign');
+        Route::post('/loyalty/packages', [LoyaltyController::class, 'storePackage'])->name('loyalty.packages.store');
+        Route::post('/loyalty/packages/assign', [LoyaltyController::class, 'assignPackage'])->name('loyalty.packages.assign');
+        Route::post('/loyalty/packages/{customerPackage}/consume', [LoyaltyController::class, 'consumePackage'])->name('loyalty.packages.consume');
+        Route::post('/loyalty/gift-cards', [LoyaltyController::class, 'issueGiftCard'])->name('loyalty.gift-cards.store');
+        Route::post('/loyalty/gift-cards/{giftCard}/consume', [LoyaltyController::class, 'consumeGiftCard'])->name('loyalty.gift-cards.consume');
         Route::post('/loyalty/ledger', [LoyaltyController::class, 'storeLedger'])->name('loyalty.ledger.store');
         Route::post('/loyalty/rewards', [LoyaltyController::class, 'storeReward'])->name('loyalty.rewards.store');
         Route::put('/loyalty/rewards/{reward}', [LoyaltyController::class, 'updateReward'])->name('loyalty.rewards.update');

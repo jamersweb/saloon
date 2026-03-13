@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\Customer;
+use App\Services\CustomerPortalService;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -12,12 +13,21 @@ use Inertia\Response;
 
 class CustomerController extends Controller
 {
+    private const PROFILE_RELATIONS = [
+        'loyaltyAccount.tier',
+        'membershipCards.type',
+        'packages.package',
+        'giftCards',
+        'portalTokens',
+    ];
+
     public function index(Request $request): Response
     {
         $query = trim($request->string('q')->toString());
         $selectedId = $request->integer('customer_id');
 
         $customers = Customer::query()
+            ->with(self::PROFILE_RELATIONS)
             ->when($query, function ($builder) use ($query) {
                 $builder->where(function ($q) use ($query) {
                     $q->where('name', 'like', "%{$query}%")
@@ -30,7 +40,7 @@ class CustomerController extends Controller
             ->get();
 
         $selectedCustomer = $selectedId
-            ? $customers->firstWhere('id', $selectedId) ?? Customer::find($selectedId)
+            ? $customers->firstWhere('id', $selectedId) ?? Customer::query()->with(self::PROFILE_RELATIONS)->find($selectedId)
             : $customers->first();
 
         $history = collect();
@@ -54,23 +64,15 @@ class CustomerController extends Controller
                 'name' => $customer->name,
                 'phone' => $customer->phone,
                 'email' => $customer->email,
+                'points' => $customer->loyaltyAccount?->current_points ?? 0,
+                'current_card' => $customer->membershipCards->firstWhere('status', 'active')?->type?->name,
                 'allergies' => $customer->allergies,
                 'notes' => $customer->notes,
                 'acquisition_source' => $customer->acquisition_source,
                 'is_active' => $customer->is_active,
                 'birthday' => $customer->birthday?->format('Y-m-d'),
             ]),
-            'selectedCustomer' => $selectedCustomer ? [
-                'id' => $selectedCustomer->id,
-                'customer_code' => $selectedCustomer->customer_code,
-                'name' => $selectedCustomer->name,
-                'phone' => $selectedCustomer->phone,
-                'email' => $selectedCustomer->email,
-                'allergies' => $selectedCustomer->allergies,
-                'notes' => $selectedCustomer->notes,
-                'acquisition_source' => $selectedCustomer->acquisition_source,
-                'birthday' => $selectedCustomer->birthday?->format('Y-m-d'),
-            ] : null,
+            'selectedCustomer' => $selectedCustomer ? $this->serializeCustomerProfile($selectedCustomer) : null,
             'history' => $history->map(fn (Appointment $appointment) => [
                 'id' => $appointment->id,
                 'scheduled_start' => $appointment->scheduled_start,
@@ -80,6 +82,19 @@ class CustomerController extends Controller
                 'notes' => $appointment->notes,
             ]),
         ]);
+    }
+
+    public function issuePortalToken(Request $request, Customer $customer, CustomerPortalService $customerPortalService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $token = $customerPortalService->issueToken($customer, $request->user()?->id);
+
+        Audit::log($request->user()?->id, 'customer.portal_token_issued', 'CustomerPortalToken', $token->id, [
+            'customer_id' => $customer->id,
+        ]);
+
+        return back()->with('status', 'Customer portal link generated.');
     }
 
     public function store(Request $request): RedirectResponse
@@ -126,5 +141,47 @@ class CustomerController extends Controller
         Audit::log($request->user()?->id, 'customer.updated', 'Customer', $customer->id);
 
         return back()->with('status', 'Customer updated.');
+    }
+
+    private function serializeCustomerProfile(Customer $customer): array
+    {
+        $customer->loadMissing(self::PROFILE_RELATIONS);
+
+        $currentCard = $customer->membershipCards->firstWhere('status', 'active') ?? $customer->membershipCards->first();
+        $activePortalToken = $customer->portalTokens->first(function ($token) {
+            return $token->revoked_at === null && (! $token->expires_at || $token->expires_at->isFuture());
+        });
+
+        return [
+            'id' => $customer->id,
+            'customer_code' => $customer->customer_code,
+            'name' => $customer->name,
+            'phone' => $customer->phone,
+            'email' => $customer->email,
+            'allergies' => $customer->allergies,
+            'notes' => $customer->notes,
+            'acquisition_source' => $customer->acquisition_source,
+            'birthday' => $customer->birthday?->format('Y-m-d'),
+            'points' => $customer->loyaltyAccount?->current_points ?? 0,
+            'tier' => $customer->loyaltyAccount?->tier?->name,
+            'current_card' => $currentCard?->type?->name,
+            'card_status' => $currentCard?->status,
+            'card_expires_at' => $currentCard?->expires_at,
+            'active_packages' => $customer->packages->where('status', 'active')->map(fn ($package) => [
+                'name' => $package->package?->name,
+                'remaining_sessions' => $package->remaining_sessions,
+                'remaining_value' => $package->remaining_value,
+                'status' => $package->status,
+                'expires_at' => $package->expires_at,
+            ])->values(),
+            'gift_cards' => $customer->giftCards->map(fn ($giftCard) => [
+                'code' => $giftCard->code,
+                'remaining_value' => $giftCard->remaining_value,
+                'status' => $giftCard->status,
+                'expires_at' => $giftCard->expires_at,
+            ])->values(),
+            'portal_url' => $activePortalToken ? route('customer.portal.show', $activePortalToken->token) : null,
+            'portal_expires_at' => $activePortalToken?->expires_at,
+        ];
     }
 }

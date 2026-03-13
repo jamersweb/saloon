@@ -4,14 +4,23 @@ import { useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function LoyaltyIndex({ tiers, customers, recentLedgers, rewards, recentRedemptions, settings }) {
+export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, customerPackages, giftCards, recentGiftTransactions, recentLedgers, rewards, recentRedemptions, settings }) {
     const { flash, auth } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_loyalty);
     const [editingTierId, setEditingTierId] = useState(null);
+    const [editingCardTypeId, setEditingCardTypeId] = useState(null);
     const [editingRewardId, setEditingRewardId] = useState(null);
 
     const createTierForm = useForm({ name: '', min_points: 0, discount_percent: 0, earn_multiplier: 1, is_active: true });
     const editTierForm = useForm({ name: '', min_points: 0, discount_percent: 0, earn_multiplier: 1, is_active: true });
+    const createCardTypeForm = useForm({ name: '', slug: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
+    const editCardTypeForm = useForm({ name: '', slug: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
+    const assignCardForm = useForm({ customer_id: '', membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'active', notes: '' });
+    const packageForm = useForm({ name: '', description: '', usage_limit: '', initial_value: '', validity_days: '', is_active: true });
+    const assignPackageForm = useForm({ customer_id: '', service_package_id: '', notes: '' });
+    const consumePackageForm = useForm({ customer_package_id: '', sessions_used: 0, value_used: 0, notes: '' });
+    const giftCardForm = useForm({ assigned_customer_id: '', initial_value: '', notes: '' });
+    const consumeGiftCardForm = useForm({ gift_card_id: '', amount: '', reason: '', notes: '' });
     const pointsForm = useForm({ customer_id: '', points_change: '', reason: '', reference: '', notes: '' });
     const rewardForm = useForm({ name: '', description: '', points_cost: 50, stock_quantity: '', is_active: true });
     const editRewardForm = useForm({ name: '', description: '', points_cost: 50, stock_quantity: '', is_active: true });
@@ -50,6 +59,21 @@ export default function LoyaltyIndex({ tiers, customers, recentLedgers, rewards,
             is_active: Boolean(reward.is_active),
         });
         editRewardForm.clearErrors();
+    };
+
+    const startEditCardType = (cardType) => {
+        setEditingCardTypeId(cardType.id);
+        editCardTypeForm.setData({
+            name: cardType.name,
+            slug: cardType.slug,
+            kind: cardType.kind,
+            min_points: cardType.min_points,
+            direct_purchase_price: cardType.direct_purchase_price ?? '',
+            validity_days: cardType.validity_days ?? '',
+            is_active: Boolean(cardType.is_active),
+            is_transferable: Boolean(cardType.is_transferable),
+        });
+        editCardTypeForm.clearErrors();
     };
 
     return (
@@ -113,6 +137,155 @@ export default function LoyaltyIndex({ tiers, customers, recentLedgers, rewards,
                         </form>
                     </section>
                 )}
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Membership Card Type</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); createCardTypeForm.post(route('loyalty.card-types.store'), { onSuccess: () => createCardTypeForm.reset('name', 'slug', 'direct_purchase_price', 'validity_days') }); }} className="grid gap-3 md:grid-cols-6">
+                        <div><label className="ta-field-label">Name</label><input className="ta-input" value={createCardTypeForm.data.name} onChange={(e) => createCardTypeForm.setData('name', e.target.value)} required />{fieldError(createCardTypeForm, 'name')}</div>
+                        <div><label className="ta-field-label">Slug</label><input className="ta-input" value={createCardTypeForm.data.slug} onChange={(e) => createCardTypeForm.setData('slug', e.target.value)} required />{fieldError(createCardTypeForm, 'slug')}</div>
+                        <div><label className="ta-field-label">Kind</label><select className="ta-input" value={createCardTypeForm.data.kind} onChange={(e) => createCardTypeForm.setData('kind', e.target.value)}><option value="physical">Physical</option><option value="virtual">Virtual</option><option value="gift">Gift</option></select>{fieldError(createCardTypeForm, 'kind')}</div>
+                        <div><label className="ta-field-label">Min Points</label><input className="ta-input" type="number" min="0" value={createCardTypeForm.data.min_points} onChange={(e) => createCardTypeForm.setData('min_points', e.target.value)} required />{fieldError(createCardTypeForm, 'min_points')}</div>
+                        <div><label className="ta-field-label">Direct Price</label><input className="ta-input" type="number" min="0" step="0.01" value={createCardTypeForm.data.direct_purchase_price} onChange={(e) => createCardTypeForm.setData('direct_purchase_price', e.target.value)} />{fieldError(createCardTypeForm, 'direct_purchase_price')}</div>
+                        <div><label className="ta-field-label">Validity Days</label><input className="ta-input" type="number" min="1" value={createCardTypeForm.data.validity_days} onChange={(e) => createCardTypeForm.setData('validity_days', e.target.value)} />{fieldError(createCardTypeForm, 'validity_days')}</div>
+                        <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={createCardTypeForm.data.is_active} onChange={(e) => createCardTypeForm.setData('is_active', e.target.checked)} />Active</label>
+                        <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={createCardTypeForm.data.is_transferable} onChange={(e) => createCardTypeForm.setData('is_transferable', e.target.checked)} />Transferable</label>
+                        <button className="ta-btn-primary" disabled={createCardTypeForm.processing || !canManage}>Add Card Type</button>
+                    </form>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Membership Card Types</h3></div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Name</th><th className="px-5 py-3">Kind</th><th className="px-5 py-3">Min Points</th><th className="px-5 py-3">Validity</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
+                            <tbody>{cardTypes.map((cardType) => <tr key={cardType.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{cardType.name}</td><td className="px-5 py-3 text-slate-600">{cardType.kind}</td><td className="px-5 py-3 text-slate-600">{cardType.min_points}</td><td className="px-5 py-3 text-slate-600">{cardType.validity_days ? `${cardType.validity_days} days` : 'No expiry'}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${cardType.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{cardType.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700" onClick={() => startEditCardType(cardType)}>Edit</button></td></tr>)}</tbody>
+                        </table>
+                    </div>
+                </section>
+
+                {editingCardTypeId && (
+                    <section className="ta-card p-5">
+                        <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Card Type #{editingCardTypeId}</h3>
+                        <form onSubmit={(e) => { e.preventDefault(); editCardTypeForm.put(route('loyalty.card-types.update', editingCardTypeId), { onSuccess: () => setEditingCardTypeId(null) }); }} className="grid gap-3 md:grid-cols-6">
+                            <div><label className="ta-field-label">Name</label><input className="ta-input" value={editCardTypeForm.data.name} onChange={(e) => editCardTypeForm.setData('name', e.target.value)} required />{fieldError(editCardTypeForm, 'name')}</div>
+                            <div><label className="ta-field-label">Slug</label><input className="ta-input" value={editCardTypeForm.data.slug} onChange={(e) => editCardTypeForm.setData('slug', e.target.value)} required />{fieldError(editCardTypeForm, 'slug')}</div>
+                            <div><label className="ta-field-label">Kind</label><select className="ta-input" value={editCardTypeForm.data.kind} onChange={(e) => editCardTypeForm.setData('kind', e.target.value)}><option value="physical">Physical</option><option value="virtual">Virtual</option><option value="gift">Gift</option></select>{fieldError(editCardTypeForm, 'kind')}</div>
+                            <div><label className="ta-field-label">Min Points</label><input className="ta-input" type="number" min="0" value={editCardTypeForm.data.min_points} onChange={(e) => editCardTypeForm.setData('min_points', e.target.value)} required />{fieldError(editCardTypeForm, 'min_points')}</div>
+                            <div><label className="ta-field-label">Direct Price</label><input className="ta-input" type="number" min="0" step="0.01" value={editCardTypeForm.data.direct_purchase_price ?? ''} onChange={(e) => editCardTypeForm.setData('direct_purchase_price', e.target.value)} />{fieldError(editCardTypeForm, 'direct_purchase_price')}</div>
+                            <div><label className="ta-field-label">Validity Days</label><input className="ta-input" type="number" min="1" value={editCardTypeForm.data.validity_days ?? ''} onChange={(e) => editCardTypeForm.setData('validity_days', e.target.value)} />{fieldError(editCardTypeForm, 'validity_days')}</div>
+                            <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={editCardTypeForm.data.is_active} onChange={(e) => editCardTypeForm.setData('is_active', e.target.checked)} />Active</label>
+                            <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={editCardTypeForm.data.is_transferable} onChange={(e) => editCardTypeForm.setData('is_transferable', e.target.checked)} />Transferable</label>
+                            <div className="md:col-span-6 flex gap-2"><button className="ta-btn-primary" disabled={editCardTypeForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingCardTypeId(null)}>Cancel</button></div>
+                        </form>
+                    </section>
+                )}
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Assign Membership Card</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); assignCardForm.post(route('loyalty.cards.assign'), { onSuccess: () => assignCardForm.reset('card_number', 'nfc_uid', 'notes') }); }} className="grid gap-3 md:grid-cols-6">
+                        <div><label className="ta-field-label">Customer</label><select className="ta-input" value={assignCardForm.data.customer_id} onChange={(e) => assignCardForm.setData('customer_id', e.target.value)} required><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} ({customer.points} pts)</option>)}</select>{fieldError(assignCardForm, 'customer_id')}</div>
+                        <div><label className="ta-field-label">Card Type</label><select className="ta-input" value={assignCardForm.data.membership_card_type_id} onChange={(e) => assignCardForm.setData('membership_card_type_id', e.target.value)} required><option value="">Select card type</option>{cardTypes.filter((type) => type.is_active).map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}</select>{fieldError(assignCardForm, 'membership_card_type_id')}</div>
+                        <div><label className="ta-field-label">Card Number</label><input className="ta-input" value={assignCardForm.data.card_number} onChange={(e) => assignCardForm.setData('card_number', e.target.value)} placeholder="Auto if blank" />{fieldError(assignCardForm, 'card_number')}</div>
+                        <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={assignCardForm.data.nfc_uid} onChange={(e) => assignCardForm.setData('nfc_uid', e.target.value)} />{fieldError(assignCardForm, 'nfc_uid')}</div>
+                        <div><label className="ta-field-label">Status</label><select className="ta-input" value={assignCardForm.data.status} onChange={(e) => assignCardForm.setData('status', e.target.value)}><option value="active">active</option><option value="pending">pending</option><option value="inactive">inactive</option><option value="expired">expired</option></select>{fieldError(assignCardForm, 'status')}</div>
+                        <button className="ta-btn-primary" disabled={assignCardForm.processing || !canManage}>Assign Card</button>
+                        <div className="md:col-span-6"><label className="ta-field-label">Notes</label><input className="ta-input" value={assignCardForm.data.notes} onChange={(e) => assignCardForm.setData('notes', e.target.value)} placeholder="Optional assignment notes" />{fieldError(assignCardForm, 'notes')}</div>
+                    </form>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Customer Membership Snapshot</h3></div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Points</th><th className="px-5 py-3">Tier</th><th className="px-5 py-3">Current Card</th><th className="px-5 py-3">Eligible Card</th><th className="px-5 py-3">Expiry</th></tr></thead>
+                            <tbody>{customers.map((customer) => <tr key={customer.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{customer.name}<div className="text-xs text-slate-500">{customer.phone}</div></td><td className="px-5 py-3 text-slate-600">{customer.points}</td><td className="px-5 py-3 text-slate-600">{customer.tier || 'None'}</td><td className="px-5 py-3 text-slate-600">{customer.current_card ? `${customer.current_card} (${customer.current_card_status || 'n/a'})` : 'None'}</td><td className="px-5 py-3 text-slate-600">{customer.eligible_card || 'None'}</td><td className="px-5 py-3 text-slate-600">{customer.card_expires_at ? new Date(customer.card_expires_at).toLocaleDateString() : 'No expiry'}</td></tr>)}</tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Service Package</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); packageForm.post(route('loyalty.packages.store'), { onSuccess: () => packageForm.reset('name', 'description', 'usage_limit', 'initial_value', 'validity_days') }); }} className="grid gap-3 md:grid-cols-6">
+                        <div><label className="ta-field-label">Name</label><input className="ta-input" value={packageForm.data.name} onChange={(e) => packageForm.setData('name', e.target.value)} required />{fieldError(packageForm, 'name')}</div>
+                        <div><label className="ta-field-label">Description</label><input className="ta-input" value={packageForm.data.description} onChange={(e) => packageForm.setData('description', e.target.value)} />{fieldError(packageForm, 'description')}</div>
+                        <div><label className="ta-field-label">Usage Limit</label><input className="ta-input" type="number" min="1" value={packageForm.data.usage_limit} onChange={(e) => packageForm.setData('usage_limit', e.target.value)} />{fieldError(packageForm, 'usage_limit')}</div>
+                        <div><label className="ta-field-label">Initial Value</label><input className="ta-input" type="number" min="0" step="0.01" value={packageForm.data.initial_value} onChange={(e) => packageForm.setData('initial_value', e.target.value)} />{fieldError(packageForm, 'initial_value')}</div>
+                        <div><label className="ta-field-label">Validity Days</label><input className="ta-input" type="number" min="1" value={packageForm.data.validity_days} onChange={(e) => packageForm.setData('validity_days', e.target.value)} />{fieldError(packageForm, 'validity_days')}</div>
+                        <button className="ta-btn-primary" disabled={packageForm.processing || !canManage}>Create Package</button>
+                    </form>
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Assign Package</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); assignPackageForm.post(route('loyalty.packages.assign'), { onSuccess: () => assignPackageForm.reset('notes') }); }} className="grid gap-3 md:grid-cols-4">
+                        <div><label className="ta-field-label">Customer</label><select className="ta-input" value={assignPackageForm.data.customer_id} onChange={(e) => assignPackageForm.setData('customer_id', e.target.value)} required><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select>{fieldError(assignPackageForm, 'customer_id')}</div>
+                        <div><label className="ta-field-label">Package</label><select className="ta-input" value={assignPackageForm.data.service_package_id} onChange={(e) => assignPackageForm.setData('service_package_id', e.target.value)} required><option value="">Select package</option>{packages.filter((pkg) => pkg.is_active).map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name}</option>)}</select>{fieldError(assignPackageForm, 'service_package_id')}</div>
+                        <div><label className="ta-field-label">Notes</label><input className="ta-input" value={assignPackageForm.data.notes} onChange={(e) => assignPackageForm.setData('notes', e.target.value)} />{fieldError(assignPackageForm, 'notes')}</div>
+                        <button className="ta-btn-primary" disabled={assignPackageForm.processing || !canManage}>Assign Package</button>
+                    </form>
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Consume Package Balance</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); consumePackageForm.post(route('loyalty.packages.consume', consumePackageForm.data.customer_package_id), { onSuccess: () => consumePackageForm.reset('sessions_used', 'value_used', 'notes') }); }} className="grid gap-3 md:grid-cols-5">
+                        <div><label className="ta-field-label">Customer Package</label><select className="ta-input" value={consumePackageForm.data.customer_package_id} onChange={(e) => consumePackageForm.setData('customer_package_id', e.target.value)} required><option value="">Select active package</option>{customerPackages.filter((pkg) => pkg.status === 'active').map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.customer_name} - {pkg.package_name}</option>)}</select>{fieldError(consumePackageForm, 'customer_package_id')}</div>
+                        <div><label className="ta-field-label">Sessions Used</label><input className="ta-input" type="number" min="0" value={consumePackageForm.data.sessions_used} onChange={(e) => consumePackageForm.setData('sessions_used', e.target.value)} />{fieldError(consumePackageForm, 'sessions_used')}</div>
+                        <div><label className="ta-field-label">Value Used</label><input className="ta-input" type="number" min="0" step="0.01" value={consumePackageForm.data.value_used} onChange={(e) => consumePackageForm.setData('value_used', e.target.value)} />{fieldError(consumePackageForm, 'value_used')}</div>
+                        <div><label className="ta-field-label">Notes</label><input className="ta-input" value={consumePackageForm.data.notes} onChange={(e) => consumePackageForm.setData('notes', e.target.value)} />{fieldError(consumePackageForm, 'notes')}</div>
+                        <button className="ta-btn-primary" disabled={consumePackageForm.processing || !canManage || !consumePackageForm.data.customer_package_id}>Consume Package</button>
+                    </form>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Customer Packages</h3></div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Package</th><th className="px-5 py-3">Sessions</th><th className="px-5 py-3">Value</th><th className="px-5 py-3">Status</th></tr></thead>
+                            <tbody>{customerPackages.map((pkg) => <tr key={pkg.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{pkg.customer_name}</td><td className="px-5 py-3 text-slate-600">{pkg.package_name}</td><td className="px-5 py-3 text-slate-600">{pkg.remaining_sessions ?? 'n/a'}</td><td className="px-5 py-3 text-slate-600">{pkg.remaining_value ?? 'n/a'}</td><td className="px-5 py-3 text-slate-600">{pkg.status}</td></tr>)}</tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Issue Gift Card</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); giftCardForm.post(route('loyalty.gift-cards.store'), { onSuccess: () => giftCardForm.reset('assigned_customer_id', 'initial_value', 'notes') }); }} className="grid gap-3 md:grid-cols-4">
+                        <div><label className="ta-field-label">Customer</label><select className="ta-input" value={giftCardForm.data.assigned_customer_id} onChange={(e) => giftCardForm.setData('assigned_customer_id', e.target.value)}><option value="">Unassigned</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select>{fieldError(giftCardForm, 'assigned_customer_id')}</div>
+                        <div><label className="ta-field-label">Initial Value</label><input className="ta-input" type="number" min="0.01" step="0.01" value={giftCardForm.data.initial_value} onChange={(e) => giftCardForm.setData('initial_value', e.target.value)} required />{fieldError(giftCardForm, 'initial_value')}</div>
+                        <div><label className="ta-field-label">Notes</label><input className="ta-input" value={giftCardForm.data.notes} onChange={(e) => giftCardForm.setData('notes', e.target.value)} />{fieldError(giftCardForm, 'notes')}</div>
+                        <button className="ta-btn-primary" disabled={giftCardForm.processing || !canManage}>Issue Gift Card</button>
+                    </form>
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Consume Gift Card</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); consumeGiftCardForm.post(route('loyalty.gift-cards.consume', consumeGiftCardForm.data.gift_card_id), { onSuccess: () => consumeGiftCardForm.reset('amount', 'reason', 'notes') }); }} className="grid gap-3 md:grid-cols-5">
+                        <div><label className="ta-field-label">Gift Card</label><select className="ta-input" value={consumeGiftCardForm.data.gift_card_id} onChange={(e) => consumeGiftCardForm.setData('gift_card_id', e.target.value)} required><option value="">Select gift card</option>{giftCards.filter((card) => card.status === 'active').map((card) => <option key={card.id} value={card.id}>{card.code} ({card.remaining_value})</option>)}</select>{fieldError(consumeGiftCardForm, 'gift_card_id')}</div>
+                        <div><label className="ta-field-label">Amount</label><input className="ta-input" type="number" min="0.01" step="0.01" value={consumeGiftCardForm.data.amount} onChange={(e) => consumeGiftCardForm.setData('amount', e.target.value)} required />{fieldError(consumeGiftCardForm, 'amount')}</div>
+                        <div><label className="ta-field-label">Reason</label><input className="ta-input" value={consumeGiftCardForm.data.reason} onChange={(e) => consumeGiftCardForm.setData('reason', e.target.value)} required />{fieldError(consumeGiftCardForm, 'reason')}</div>
+                        <div><label className="ta-field-label">Notes</label><input className="ta-input" value={consumeGiftCardForm.data.notes} onChange={(e) => consumeGiftCardForm.setData('notes', e.target.value)} />{fieldError(consumeGiftCardForm, 'notes')}</div>
+                        <button className="ta-btn-primary" disabled={consumeGiftCardForm.processing || !canManage || !consumeGiftCardForm.data.gift_card_id}>Consume Gift Card</button>
+                    </form>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Gift Cards</h3></div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Code</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Initial</th><th className="px-5 py-3">Remaining</th><th className="px-5 py-3">Status</th></tr></thead>
+                            <tbody>{giftCards.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.code}</td><td className="px-5 py-3 text-slate-600">{card.customer_name || 'Unassigned'}</td><td className="px-5 py-3 text-slate-600">{card.initial_value}</td><td className="px-5 py-3 text-slate-600">{card.remaining_value}</td><td className="px-5 py-3 text-slate-600">{card.status}</td></tr>)}</tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Gift Card Transactions</h3></div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Gift Card</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Balance</th><th className="px-5 py-3">Reason</th></tr></thead>
+                            <tbody>{recentGiftTransactions.map((row) => <tr key={row.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{new Date(row.created_at).toLocaleString()}</td><td className="px-5 py-3 text-slate-700">{row.gift_code}</td><td className="px-5 py-3 text-red-600">{row.amount_change}</td><td className="px-5 py-3 text-slate-700">{row.balance_after}</td><td className="px-5 py-3 text-slate-600">{row.reason}</td></tr>)}</tbody>
+                        </table>
+                    </div>
+                </section>
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Reward Catalog</h3>

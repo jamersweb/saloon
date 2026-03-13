@@ -47,6 +47,11 @@ class Customer extends Model
         return $this->hasMany(CustomerLoyaltyLedger::class);
     }
 
+    public function membershipCards(): HasMany
+    {
+        return $this->hasMany(CustomerMembershipCard::class)->latest();
+    }
+
     public function tags(): BelongsToMany
     {
         return $this->belongsToMany(CustomerTag::class, 'customer_tag_assignments')
@@ -61,5 +66,20 @@ class Customer extends Model
     public function communicationLogs(): HasMany
     {
         return $this->hasMany(CommunicationLog::class);
+    }
+
+    public function packages(): HasMany
+    {
+        return $this->hasMany(CustomerPackage::class);
+    }
+
+    public function giftCards(): HasMany
+    {
+        return $this->hasMany(GiftCard::class, 'assigned_customer_id');
+    }
+
+    public function portalTokens(): HasMany
+    {
+        return $this->hasMany(CustomerPortalToken::class);
     }
 }

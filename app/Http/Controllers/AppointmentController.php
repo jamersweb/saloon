@@ -3,16 +3,23 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
+use App\Models\AppointmentPhoto;
+use App\Models\AppointmentProductUsage;
+use App\Models\AppointmentServiceLog;
 use App\Models\BookingRule;
 use App\Models\Customer;
+use App\Models\InventoryItem;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
 use App\Services\BookingAvailabilityService;
+use App\Services\DueServiceManager;
 use App\Services\LoyaltyService;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -24,26 +31,18 @@ class AppointmentController extends Controller
         $status = $request->string('status')->toString();
 
         $appointments = Appointment::query()
-            ->with(['service', 'staffProfile.user'])
+            ->with([
+                'service',
+                'staffProfile.user',
+                'serviceExecution.staffProfile.user',
+                'photos',
+                'productUsages.item',
+            ])
             ->when($status, fn ($query) => $query->where('status', $status))
             ->orderBy('scheduled_start')
             ->limit(200)
             ->get()
-            ->map(fn (Appointment $appointment) => [
-                'id' => $appointment->id,
-                'service_id' => $appointment->service_id,
-                'staff_profile_id' => $appointment->staff_profile_id,
-                'scheduled_start' => $appointment->scheduled_start,
-                'scheduled_end' => $appointment->scheduled_end,
-                'customer_name' => $appointment->customer_name,
-                'customer_phone' => $appointment->customer_phone,
-                'customer_email' => $appointment->customer_email,
-                'notes' => $appointment->notes,
-                'service_name' => $appointment->service?->name,
-                'staff_name' => $appointment->staffProfile?->user?->name,
-                'status' => $appointment->status,
-                'next_statuses' => $appointment->nextStatuses(),
-            ]);
+            ->map(fn (Appointment $appointment) => $this->serializeAppointment($appointment));
 
         return Inertia::render('Appointments/Index', [
             'appointments' => $appointments,
@@ -52,6 +51,10 @@ class AppointmentController extends Controller
                 'id' => $staff->id,
                 'name' => $staff->user?->name,
             ]),
+            'inventoryItems' => InventoryItem::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'sku', 'unit']),
             'statusFilter' => $status,
             'bookingRules' => BookingRule::current(),
         ]);
@@ -67,8 +70,8 @@ class AppointmentController extends Controller
         $start = Carbon::parse($data['scheduled_start']);
         $end = Carbon::parse($data['scheduled_end'] ?? $start->copy()->addMinutes($service->duration_minutes + $service->buffer_minutes));
 
-        if ($end->lessThanOrEqualTo($start)) {
-            return back()->withErrors(['scheduled_end' => 'End time must be after start time.'])->withInput();
+        if ($timeRangeError = $this->validateTimeRange($start, $end)) {
+            return back()->withErrors(['scheduled_end' => $timeRangeError])->withInput();
         }
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start)) {
@@ -82,13 +85,10 @@ class AppointmentController extends Controller
             }
         }
 
-        $customer = Customer::firstOrCreate(
-            ['phone' => $data['customer_phone']],
-            [
-                'name' => $data['customer_name'],
-                'email' => $data['customer_email'] ?? null,
-                'customer_code' => 'CUST-' . now()->format('Ymd') . '-' . random_int(1000, 9999),
-            ],
+        $customer = $this->resolveCustomer(
+            $data['customer_name'],
+            $data['customer_phone'],
+            $data['customer_email'] ?? null,
         );
 
         $appointment = Appointment::create([
@@ -119,6 +119,10 @@ class AppointmentController extends Controller
         $start = Carbon::parse($data['scheduled_start']);
         $end = Carbon::parse($data['scheduled_end'] ?? $start->copy()->addMinutes($service->duration_minutes + $service->buffer_minutes));
 
+        if ($timeRangeError = $this->validateTimeRange($start, $end)) {
+            return back()->withErrors(['scheduled_end' => $timeRangeError])->withInput();
+        }
+
         if (! empty($data['staff_profile_id'])) {
             $staffAvailabilityError = $availabilityService->validateStaffAvailability((int) $data['staff_profile_id'], $start, $end, $appointment->id);
             if ($staffAvailabilityError) {
@@ -126,13 +130,10 @@ class AppointmentController extends Controller
             }
         }
 
-        $customer = Customer::firstOrCreate(
-            ['phone' => $data['customer_phone']],
-            [
-                'name' => $data['customer_name'],
-                'email' => $data['customer_email'] ?? null,
-                'customer_code' => 'CUST-' . now()->format('Ymd') . '-' . random_int(1000, 9999),
-            ],
+        $customer = $this->resolveCustomer(
+            $data['customer_name'],
+            $data['customer_phone'],
+            $data['customer_email'] ?? null,
         );
 
         $appointment->update([
@@ -147,7 +148,147 @@ class AppointmentController extends Controller
         return back()->with('status', 'Appointment updated.');
     }
 
-    public function transition(Request $request, Appointment $appointment, LoyaltyService $loyaltyService): RedirectResponse
+    public function startService(Request $request, Appointment $appointment): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        if (! $appointment->canTransitionTo(Appointment::STATUS_IN_PROGRESS)) {
+            return back()->withErrors(['service' => 'Only confirmed appointments can be started.']);
+        }
+
+        $data = $request->validate([
+            'intake_notes' => ['nullable', 'string'],
+            'service_notes' => ['nullable', 'string'],
+            'before_photo' => ['nullable', 'image', 'max:5120'],
+        ]);
+
+        DB::transaction(function () use ($request, $appointment, $data): void {
+            $appointment->update([
+                'status' => Appointment::STATUS_IN_PROGRESS,
+                'arrival_time' => $appointment->arrival_time ?? now(),
+                'service_start_time' => now(),
+                'notes' => $data['service_notes'] ?? $appointment->notes,
+            ]);
+
+            $log = AppointmentServiceLog::query()->firstOrNew([
+                'appointment_id' => $appointment->id,
+            ]);
+
+            $log->fill([
+                'staff_profile_id' => $appointment->staff_profile_id,
+                'started_by' => $request->user()?->id,
+                'started_at' => $log->started_at ?? now(),
+                'intake_notes' => $data['intake_notes'] ?? $log->intake_notes,
+                'service_notes' => $data['service_notes'] ?? $log->service_notes,
+            ]);
+            $log->save();
+
+            if ($request->hasFile('before_photo')) {
+                $path = $request->file('before_photo')->store('appointment-photos', 'public');
+
+                AppointmentPhoto::create([
+                    'appointment_id' => $appointment->id,
+                    'type' => 'before',
+                    'path' => $path,
+                    'uploaded_by' => $request->user()?->id,
+                ]);
+            }
+        });
+
+        Audit::log($request->user()?->id, 'appointment.service_started', 'Appointment', $appointment->id);
+
+        return back()->with('status', 'Service started.');
+    }
+
+    public function completeService(Request $request, Appointment $appointment, LoyaltyService $loyaltyService, DueServiceManager $dueServiceManager): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        if ($appointment->status !== Appointment::STATUS_IN_PROGRESS || ! $appointment->canTransitionTo(Appointment::STATUS_COMPLETED)) {
+            return back()->withErrors(['service' => 'Only in-progress appointments can be completed.']);
+        }
+
+        $request->merge([
+            'products' => collect($request->input('products', []))
+                ->filter(fn ($product) => filled($product['inventory_item_id'] ?? null) || filled($product['quantity'] ?? null) || filled($product['notes'] ?? null))
+                ->values()
+                ->all(),
+        ]);
+
+        $data = $request->validate([
+            'service_report' => ['required', 'string'],
+            'completion_notes' => ['nullable', 'string'],
+            'materials_used' => ['nullable', 'string'],
+            'after_photo' => ['nullable', 'image', 'max:5120'],
+            'products' => ['nullable', 'array'],
+            'products.*.inventory_item_id' => ['required_with:products', 'exists:inventory_items,id'],
+            'products.*.quantity' => ['required_with:products', 'integer', 'min:1'],
+            'products.*.notes' => ['nullable', 'string'],
+        ]);
+
+        DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager): void {
+            $appointment->update([
+                'status' => Appointment::STATUS_COMPLETED,
+            ]);
+
+            $log = AppointmentServiceLog::query()->firstOrNew([
+                'appointment_id' => $appointment->id,
+            ]);
+
+            $log->fill([
+                'staff_profile_id' => $appointment->staff_profile_id,
+                'started_by' => $log->started_by ?? $request->user()?->id,
+                'started_at' => $log->started_at ?? $appointment->service_start_time ?? now(),
+                'completed_by' => $request->user()?->id,
+                'completed_at' => now(),
+                'service_notes' => $appointment->notes,
+                'completion_notes' => $data['completion_notes'] ?? null,
+                'materials_used' => $data['materials_used'] ?? null,
+                'intake_notes' => $log->intake_notes,
+            ]);
+            $log->save();
+
+            if ($request->hasFile('after_photo')) {
+                $path = $request->file('after_photo')->store('appointment-photos', 'public');
+
+                AppointmentPhoto::create([
+                    'appointment_id' => $appointment->id,
+                    'type' => 'after',
+                    'path' => $path,
+                    'uploaded_by' => $request->user()?->id,
+                ]);
+            }
+
+            AppointmentProductUsage::query()
+                ->where('appointment_id', $appointment->id)
+                ->delete();
+
+            foreach ($data['products'] ?? [] as $product) {
+                AppointmentProductUsage::create([
+                    'appointment_id' => $appointment->id,
+                    'inventory_item_id' => (int) $product['inventory_item_id'],
+                    'quantity' => (int) $product['quantity'],
+                    'notes' => $product['notes'] ?? null,
+                ]);
+            }
+
+            $appointment->update([
+                'notes' => $data['service_report'],
+            ]);
+
+            $appointment->refresh();
+            $loyaltyService->earnFromCompletedAppointment($appointment, $request->user()?->id);
+            $dueServiceManager->syncForAppointment($appointment);
+        });
+
+        Audit::log($request->user()?->id, 'appointment.service_completed', 'Appointment', $appointment->id, [
+            'product_count' => count($data['products'] ?? []),
+        ]);
+
+        return back()->with('status', 'Service completed.');
+    }
+
+    public function transition(Request $request, Appointment $appointment, LoyaltyService $loyaltyService, DueServiceManager $dueServiceManager): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -188,6 +329,8 @@ class AppointmentController extends Controller
 
         if ($nextStatus === Appointment::STATUS_COMPLETED) {
             $loyaltyService->earnFromCompletedAppointment($appointment, $request->user()?->id);
+            $appointment->refresh();
+            $dueServiceManager->syncForAppointment($appointment);
         }
 
         Audit::log($request->user()?->id, 'appointment.status_changed', 'Appointment', $appointment->id, [
@@ -237,6 +380,78 @@ class AppointmentController extends Controller
             'notes' => ['nullable', 'string'],
             'cancellation_reason' => ['nullable', 'string'],
         ]);
+    }
+
+    private function validateTimeRange(Carbon $start, Carbon $end): ?string
+    {
+        if ($end->lessThanOrEqualTo($start)) {
+            return 'End time must be after start time.';
+        }
+
+        return null;
+    }
+
+    private function resolveCustomer(string $name, string $phone, ?string $email): Customer
+    {
+        $customer = Customer::firstOrCreate(
+            ['phone' => $phone],
+            [
+                'name' => $name,
+                'email' => $email,
+                'customer_code' => 'CUST-' . now()->format('Ymd') . '-' . random_int(1000, 9999),
+            ],
+        );
+
+        $updates = array_filter([
+            'name' => $name !== $customer->name ? $name : null,
+            'email' => $email && $email !== $customer->email ? $email : null,
+        ], fn ($value) => $value !== null);
+
+        if ($updates !== []) {
+            $customer->update($updates);
+        }
+
+        return $customer;
+    }
+
+    private function serializeAppointment(Appointment $appointment): array
+    {
+        return [
+            'id' => $appointment->id,
+            'service_id' => $appointment->service_id,
+            'staff_profile_id' => $appointment->staff_profile_id,
+            'scheduled_start' => $appointment->scheduled_start,
+            'scheduled_end' => $appointment->scheduled_end,
+            'customer_name' => $appointment->customer_name,
+            'customer_phone' => $appointment->customer_phone,
+            'customer_email' => $appointment->customer_email,
+            'notes' => $appointment->notes,
+            'service_name' => $appointment->service?->name,
+            'staff_name' => $appointment->staffProfile?->user?->name,
+            'status' => $appointment->status,
+            'next_statuses' => $appointment->nextStatuses(),
+            'service_execution' => [
+                'started_at' => $appointment->serviceExecution?->started_at,
+                'completed_at' => $appointment->serviceExecution?->completed_at,
+                'intake_notes' => $appointment->serviceExecution?->intake_notes,
+                'service_notes' => $appointment->serviceExecution?->service_notes,
+                'completion_notes' => $appointment->serviceExecution?->completion_notes,
+                'materials_used' => $appointment->serviceExecution?->materials_used,
+            ],
+            'photos' => $appointment->photos->map(fn (AppointmentPhoto $photo) => [
+                'id' => $photo->id,
+                'type' => $photo->type,
+                'url' => Storage::disk('public')->url($photo->path),
+                'uploaded_at' => $photo->created_at,
+            ])->values()->all(),
+            'product_usages' => $appointment->productUsages->map(fn (AppointmentProductUsage $usage) => [
+                'id' => $usage->id,
+                'item_name' => $usage->item?->name,
+                'item_sku' => $usage->item?->sku,
+                'quantity' => $usage->quantity,
+                'notes' => $usage->notes,
+            ])->values()->all(),
+        ];
     }
 
 }

@@ -48,6 +48,7 @@ class Permissions
                 'can_review_leave_requests',
             ],
             'staff' => [
+                'can_operate_frontdesk',
                 'can_manage_attendance',
                 'can_manage_leave_requests',
             ],

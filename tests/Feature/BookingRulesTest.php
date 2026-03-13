@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Appointment;
+use App\Models\Customer;
 use App\Models\LeaveRequest;
 use App\Models\Role;
 use App\Models\SalonService;
@@ -131,5 +132,113 @@ class BookingRulesTest extends TestCase
         $this->assertNotNull($appointment);
         $this->assertSame($staffTwo->id, $appointment->staff_profile_id);
     }
-}
 
+    public function test_appointment_update_rejects_end_time_before_start_time(): void
+    {
+        $ownerRole = Role::create(['name' => 'owner', 'label' => 'Owner']);
+        $user = User::factory()->create(['role_id' => $ownerRole->id]);
+
+        $staffUser = User::factory()->create();
+        $staffProfile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'STF-301',
+            'is_active' => true,
+        ]);
+
+        $start = now()->addDays(2)->setTime(10, 0);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staffProfile->id,
+            'schedule_date' => $start->toDateString(),
+            'start_time' => '09:00:00',
+            'end_time' => '17:00:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Blow Dry',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 80,
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::create([
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => $start->copy(),
+            'scheduled_end' => $start->copy()->addHour(),
+            'customer_name' => 'Existing Customer',
+            'customer_phone' => '5557771111',
+        ]);
+
+        $response = $this->actingAs($user)->put(route('appointments.update', $appointment), [
+            'customer_name' => 'Existing Customer',
+            'customer_phone' => '5557771111',
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'scheduled_start' => $start->toDateTimeString(),
+            'scheduled_end' => $start->copy()->subMinutes(15)->toDateTimeString(),
+            'status' => Appointment::STATUS_CONFIRMED,
+        ]);
+
+        $response->assertSessionHasErrors(['scheduled_end']);
+
+        $appointment->refresh();
+        $this->assertTrue($appointment->scheduled_end->equalTo($start->copy()->addHour()));
+    }
+
+    public function test_public_booking_updates_existing_customer_contact_details(): void
+    {
+        Role::create(['name' => 'staff', 'label' => 'Staff']);
+
+        $staffUser = User::factory()->create();
+        $staffProfile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'STF-401',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-OLD-1001',
+            'name' => 'Old Name',
+            'phone' => '5559998888',
+            'email' => null,
+            'is_active' => true,
+        ]);
+
+        $start = now()->addDays(4)->setTime(12, 0);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staffProfile->id,
+            'schedule_date' => $start->toDateString(),
+            'start_time' => '09:00:00',
+            'end_time' => '17:00:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Facial',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 15,
+            'price' => 120,
+            'is_active' => true,
+        ]);
+
+        $this->post(route('public.booking.store'), [
+            'customer_name' => 'Updated Name',
+            'customer_phone' => $customer->phone,
+            'customer_email' => 'updated@example.com',
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'scheduled_start' => $start->toDateTimeString(),
+        ])->assertSessionHasNoErrors();
+
+        $customer->refresh();
+
+        $this->assertSame('Updated Name', $customer->name);
+        $this->assertSame('updated@example.com', $customer->email);
+    }
+}

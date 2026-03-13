@@ -73,6 +73,15 @@ class PublicBookingController extends Controller
             ],
         );
 
+        $updates = array_filter([
+            'name' => $data['customer_name'] !== $customer->name ? $data['customer_name'] : null,
+            'email' => ! empty($data['customer_email']) && $data['customer_email'] !== $customer->email ? $data['customer_email'] : null,
+        ], fn ($value) => $value !== null);
+
+        if ($updates !== []) {
+            $customer->update($updates);
+        }
+
         $appointment = Appointment::create([
             'customer_id' => $customer->id,
             'service_id' => $service->id,

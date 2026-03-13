@@ -5,11 +5,19 @@ namespace App\Http\Controllers;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
+use App\Models\CustomerPackage;
+use App\Models\GiftCard;
+use App\Models\GiftCardTransaction;
 use App\Models\LoyaltyProgramSetting;
 use App\Models\LoyaltyRedemption;
 use App\Models\LoyaltyReward;
 use App\Models\LoyaltyTier;
+use App\Models\MembershipCardType;
+use App\Models\ServicePackage;
+use App\Services\GiftCardService;
 use App\Services\LoyaltyService;
+use App\Services\MembershipCardService;
+use App\Services\PackageBalanceService;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,21 +31,52 @@ class LoyaltyController extends Controller
 {
     public function index(): Response
     {
+        $cardTypes = MembershipCardType::query()
+            ->orderBy('min_points')
+            ->orderBy('name')
+            ->get();
+
         return Inertia::render('Loyalty/Index', [
             'tiers' => LoyaltyTier::query()->orderBy('min_points')->get(),
+            'cardTypes' => $cardTypes,
+            'packages' => ServicePackage::query()->orderBy('name')->get(),
             'customers' => Customer::query()
-                ->with(['loyaltyAccount.tier'])
+                ->with(['loyaltyAccount.tier', 'membershipCards.type', 'packages.package', 'giftCards'])
                 ->orderBy('name')
                 ->limit(300)
                 ->get()
-                ->map(fn (Customer $customer) => [
-                    'id' => $customer->id,
-                    'name' => $customer->name,
-                    'phone' => $customer->phone,
-                    'email' => $customer->email,
-                    'points' => $customer->loyaltyAccount?->current_points ?? 0,
-                    'tier' => $customer->loyaltyAccount?->tier?->name,
-                ]),
+                ->map(function (Customer $customer) use ($cardTypes) {
+                    $points = (int) ($customer->loyaltyAccount?->current_points ?? 0);
+                    $currentCard = $customer->membershipCards->firstWhere('status', 'active') ?? $customer->membershipCards->first();
+                    $eligibleCard = $cardTypes
+                        ->where('is_active', true)
+                        ->where('kind', '!=', 'gift')
+                        ->where('min_points', '<=', $points)
+                        ->sortByDesc('min_points')
+                        ->first();
+
+                    return [
+                        'id' => $customer->id,
+                        'name' => $customer->name,
+                        'phone' => $customer->phone,
+                        'email' => $customer->email,
+                        'points' => $points,
+                        'tier' => $customer->loyaltyAccount?->tier?->name,
+                        'current_card' => $currentCard?->type?->name,
+                        'current_card_kind' => $currentCard?->type?->kind,
+                        'current_card_status' => $currentCard?->status,
+                        'eligible_card' => $eligibleCard?->name,
+                        'eligible_card_id' => $eligibleCard?->id,
+                        'card_expires_at' => $currentCard?->expires_at,
+                        'active_packages' => $customer->packages->where('status', 'active')->map(fn ($package) => [
+                            'id' => $package->id,
+                            'name' => $package->package?->name,
+                            'remaining_sessions' => $package->remaining_sessions,
+                            'remaining_value' => $package->remaining_value,
+                        ])->values(),
+                        'gift_balance' => $customer->giftCards->where('status', 'active')->sum('remaining_value'),
+                    ];
+                }),
             'recentLedgers' => CustomerLoyaltyLedger::query()
                 ->with(['customer:id,name', 'createdBy:id,name'])
                 ->latest()
@@ -70,7 +109,246 @@ class LoyaltyController extends Controller
                     'redeemed_by' => $redemption->redeemedBy?->name,
                     'created_at' => $redemption->created_at,
                 ]),
+            'customerPackages' => CustomerPackage::query()
+                ->with(['customer:id,name', 'package:id,name'])
+                ->latest()
+                ->limit(80)
+                ->get()
+                ->map(fn (CustomerPackage $package) => [
+                    'id' => $package->id,
+                    'customer_name' => $package->customer?->name,
+                    'package_name' => $package->package?->name,
+                    'remaining_sessions' => $package->remaining_sessions,
+                    'remaining_value' => $package->remaining_value,
+                    'status' => $package->status,
+                    'expires_at' => $package->expires_at,
+                ]),
+            'giftCards' => GiftCard::query()
+                ->with('customer:id,name')
+                ->latest()
+                ->limit(80)
+                ->get()
+                ->map(fn (GiftCard $giftCard) => [
+                    'id' => $giftCard->id,
+                    'code' => $giftCard->code,
+                    'customer_name' => $giftCard->customer?->name,
+                    'initial_value' => $giftCard->initial_value,
+                    'remaining_value' => $giftCard->remaining_value,
+                    'status' => $giftCard->status,
+                    'expires_at' => $giftCard->expires_at,
+                ]),
+            'recentGiftTransactions' => GiftCardTransaction::query()
+                ->with('giftCard:id,code')
+                ->latest()
+                ->limit(80)
+                ->get()
+                ->map(fn (GiftCardTransaction $transaction) => [
+                    'id' => $transaction->id,
+                    'gift_code' => $transaction->giftCard?->code,
+                    'amount_change' => $transaction->amount_change,
+                    'balance_after' => $transaction->balance_after,
+                    'reason' => $transaction->reason,
+                    'created_at' => $transaction->created_at,
+                ]),
         ]);
+    }
+
+    public function storePackage(Request $request): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'usage_limit' => ['nullable', 'integer', 'min:1'],
+            'initial_value' => ['nullable', 'numeric', 'min:0'],
+            'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $package = ServicePackage::create([
+            ...$data,
+            'is_active' => (bool) ($data['is_active'] ?? true),
+        ]);
+
+        Audit::log($request->user()?->id, 'package.created', 'ServicePackage', $package->id);
+
+        return back()->with('status', 'Service package created.');
+    }
+
+    public function assignPackage(Request $request, PackageBalanceService $packageBalanceService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'customer_id' => ['required', 'exists:customers,id'],
+            'service_package_id' => ['required', 'exists:service_packages,id'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $customer = Customer::findOrFail((int) $data['customer_id']);
+        $package = ServicePackage::findOrFail((int) $data['service_package_id']);
+
+        $customerPackage = $packageBalanceService->assignPackage($customer, $package, $request->user()?->id, $data['notes'] ?? null);
+
+        Audit::log($request->user()?->id, 'package.assigned', 'CustomerPackage', $customerPackage->id);
+
+        return back()->with('status', 'Package assigned.');
+    }
+
+    public function consumePackage(Request $request, CustomerPackage $customerPackage, PackageBalanceService $packageBalanceService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'sessions_used' => ['nullable', 'integer', 'min:0'],
+            'value_used' => ['nullable', 'numeric', 'min:0'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $usage = $packageBalanceService->consume(
+            $customerPackage,
+            (int) ($data['sessions_used'] ?? 0),
+            (float) ($data['value_used'] ?? 0),
+            $request->user()?->id,
+            $data['notes'] ?? null,
+        );
+
+        Audit::log($request->user()?->id, 'package.consumed', 'CustomerPackageUsage', $usage->id);
+
+        return back()->with('status', 'Package usage recorded.');
+    }
+
+    public function issueGiftCard(Request $request, GiftCardService $giftCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'assigned_customer_id' => ['nullable', 'exists:customers,id'],
+            'initial_value' => ['required', 'numeric', 'min:0.01'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $customer = ! empty($data['assigned_customer_id']) ? Customer::find((int) $data['assigned_customer_id']) : null;
+
+        $giftCard = $giftCardService->issue($customer, (float) $data['initial_value'], $request->user()?->id, $data['notes'] ?? null);
+
+        Audit::log($request->user()?->id, 'gift_card.issued', 'GiftCard', $giftCard->id);
+
+        return back()->with('status', 'Gift card issued.');
+    }
+
+    public function consumeGiftCard(Request $request, GiftCard $giftCard, GiftCardService $giftCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'reason' => ['required', 'string', 'max:255'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $transaction = $giftCardService->consume(
+            $giftCard,
+            (float) $data['amount'],
+            $data['reason'],
+            $request->user()?->id,
+            $data['notes'] ?? null,
+        );
+
+        Audit::log($request->user()?->id, 'gift_card.consumed', 'GiftCardTransaction', $transaction->id);
+
+        return back()->with('status', 'Gift card usage recorded.');
+    }
+
+    public function storeCardType(Request $request): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255', Rule::unique('membership_card_types', 'name')],
+            'slug' => ['required', 'string', 'max:100', Rule::unique('membership_card_types', 'slug')],
+            'kind' => ['required', Rule::in(['physical', 'virtual', 'gift'])],
+            'min_points' => ['required', 'integer', 'min:0'],
+            'direct_purchase_price' => ['nullable', 'numeric', 'min:0'],
+            'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'is_active' => ['nullable', 'boolean'],
+            'is_transferable' => ['nullable', 'boolean'],
+        ]);
+
+        $cardType = MembershipCardType::create([
+            ...$data,
+            'slug' => strtolower($data['slug']),
+            'is_active' => (bool) ($data['is_active'] ?? true),
+            'is_transferable' => (bool) ($data['is_transferable'] ?? false),
+        ]);
+
+        Audit::log($request->user()?->id, 'loyalty.card_type_created', 'MembershipCardType', $cardType->id);
+
+        return back()->with('status', 'Membership card type created.');
+    }
+
+    public function updateCardType(Request $request, MembershipCardType $cardType): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255', Rule::unique('membership_card_types', 'name')->ignore($cardType->id)],
+            'slug' => ['required', 'string', 'max:100', Rule::unique('membership_card_types', 'slug')->ignore($cardType->id)],
+            'kind' => ['required', Rule::in(['physical', 'virtual', 'gift'])],
+            'min_points' => ['required', 'integer', 'min:0'],
+            'direct_purchase_price' => ['nullable', 'numeric', 'min:0'],
+            'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'is_active' => ['nullable', 'boolean'],
+            'is_transferable' => ['nullable', 'boolean'],
+        ]);
+
+        $cardType->update([
+            ...$data,
+            'slug' => strtolower($data['slug']),
+            'is_active' => (bool) ($data['is_active'] ?? false),
+            'is_transferable' => (bool) ($data['is_transferable'] ?? false),
+        ]);
+
+        Audit::log($request->user()?->id, 'loyalty.card_type_updated', 'MembershipCardType', $cardType->id);
+
+        return back()->with('status', 'Membership card type updated.');
+    }
+
+    public function assignCard(Request $request, MembershipCardService $membershipCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'customer_id' => ['required', 'exists:customers,id'],
+            'membership_card_type_id' => ['required', 'exists:membership_card_types,id'],
+            'card_number' => ['nullable', 'string', 'max:255'],
+            'nfc_uid' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', Rule::in(['pending', 'active', 'inactive', 'expired'])],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $customer = Customer::findOrFail((int) $data['customer_id']);
+        $cardType = MembershipCardType::findOrFail((int) $data['membership_card_type_id']);
+
+        $card = $membershipCardService->assignCard(
+            customer: $customer,
+            type: $cardType,
+            assignedBy: $request->user()?->id,
+            attributes: [
+                'card_number' => $data['card_number'] ?? null,
+                'nfc_uid' => $data['nfc_uid'] ?? null,
+                'status' => $data['status'] ?? 'active',
+                'notes' => $data['notes'] ?? null,
+            ],
+        );
+
+        Audit::log($request->user()?->id, 'loyalty.card_assigned', 'CustomerMembershipCard', $card->id, [
+            'customer_id' => $customer->id,
+            'card_type_id' => $cardType->id,
+        ]);
+
+        return back()->with('status', 'Membership card assigned.');
     }
 
     public function storeTier(Request $request): RedirectResponse
