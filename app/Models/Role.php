@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Permissions;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -30,6 +31,11 @@ class Role extends Model
 
     public function hasPermission(string $permission): bool
     {
-        return in_array($permission, $this->permissions ?? [], true);
+        $permissions = array_values(array_unique([
+            ...Permissions::defaultsForRole($this->name ?? ''),
+            ...($this->permissions ?? []),
+        ]));
+
+        return in_array($permission, $permissions, true);
     }
 }

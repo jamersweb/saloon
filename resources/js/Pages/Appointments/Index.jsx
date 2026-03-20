@@ -1,4 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import Modal from '@/Components/Modal';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -183,140 +184,143 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
                     </div>
                 </section>
 
-                {startServiceId && (
-                    <section className="ta-card p-5">
-                        <h3 className="mb-4 text-sm font-semibold text-slate-700">Start Service for Appointment #{startServiceId}</h3>
-                        <form
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                startForm.post(route('appointments.service-start', startServiceId), {
-                                    forceFormData: true,
-                                    onSuccess: () => {
-                                        setStartServiceId(null);
-                                        startForm.reset();
-                                    },
-                                });
-                            }}
-                            className="grid gap-3 md:grid-cols-2"
-                        >
-                            <div className="md:col-span-2">
-                                <label className="ta-field-label">Client Intake Notes</label>
-                                <textarea className="ta-input min-h-[110px]" value={startForm.data.intake_notes} onChange={(e) => startForm.setData('intake_notes', e.target.value)} />
-                                {fieldError(startForm, 'intake_notes')}
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="ta-field-label">Staff Service Notes</label>
-                                <textarea className="ta-input min-h-[110px]" value={startForm.data.service_notes} onChange={(e) => startForm.setData('service_notes', e.target.value)} />
-                                {fieldError(startForm, 'service_notes')}
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="ta-field-label">Before Photo</label>
-                                <input className="ta-input" type="file" accept="image/*" onChange={(e) => startForm.setData('before_photo', e.target.files?.[0] || null)} />
-                                {fieldError(startForm, 'before_photo')}
-                            </div>
-                            <div className="md:col-span-2 flex gap-2">
-                                <button className="ta-btn-primary" disabled={startForm.processing}>Start Service</button>
-                                <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setStartServiceId(null)}>Cancel</button>
-                            </div>
-                        </form>
-                    </section>
-                )}
-
-                {completeServiceId && (
-                    <section className="ta-card p-5">
-                        <h3 className="mb-4 text-sm font-semibold text-slate-700">Complete Service for Appointment #{completeServiceId}</h3>
-                        <form
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                completeForm.post(route('appointments.service-complete', completeServiceId), {
-                                    forceFormData: true,
-                                    onSuccess: () => {
-                                        setCompleteServiceId(null);
-                                        completeForm.reset();
-                                    },
-                                });
-                            }}
-                            className="grid gap-3 md:grid-cols-2"
-                        >
-                            <div className="md:col-span-2">
-                                <label className="ta-field-label">Service Report</label>
-                                <textarea className="ta-input min-h-[120px]" value={completeForm.data.service_report} onChange={(e) => completeForm.setData('service_report', e.target.value)} required />
-                                {fieldError(completeForm, 'service_report')}
-                            </div>
-                            <div>
-                                <label className="ta-field-label">Completion Notes</label>
-                                <textarea className="ta-input min-h-[110px]" value={completeForm.data.completion_notes} onChange={(e) => completeForm.setData('completion_notes', e.target.value)} />
-                                {fieldError(completeForm, 'completion_notes')}
-                            </div>
-                            <div>
-                                <label className="ta-field-label">Materials Used</label>
-                                <textarea className="ta-input min-h-[110px]" value={completeForm.data.materials_used} onChange={(e) => completeForm.setData('materials_used', e.target.value)} placeholder="Hair color, polish, extensions, treatment kits..." />
-                                {fieldError(completeForm, 'materials_used')}
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="ta-field-label">After Photo</label>
-                                <input className="ta-input" type="file" accept="image/*" onChange={(e) => completeForm.setData('after_photo', e.target.files?.[0] || null)} />
-                                {fieldError(completeForm, 'after_photo')}
-                            </div>
-                            <div className="md:col-span-2 space-y-3 rounded-xl border border-slate-200 p-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-semibold text-slate-700">Products Used</h4>
-                                    <button type="button" className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700" onClick={addProductRow}>Add Product</button>
-                                </div>
-                                {completeForm.data.products.map((product, index) => (
-                                    <div key={index} className="grid gap-3 md:grid-cols-4">
-                                        <div>
-                                            <label className="ta-field-label">Inventory Item</label>
-                                            <select className="ta-input" value={product.inventory_item_id} onChange={(e) => updateProductRow(index, 'inventory_item_id', e.target.value)}>
-                                                <option value="">Select product</option>
-                                                {inventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.sku})</option>)}
-                                            </select>
-                                            {fieldError(completeForm, `products.${index}.inventory_item_id`)}
-                                        </div>
-                                        <div>
-                                            <label className="ta-field-label">Quantity</label>
-                                            <input className="ta-input" type="number" min="1" value={product.quantity} onChange={(e) => updateProductRow(index, 'quantity', e.target.value)} />
-                                            {fieldError(completeForm, `products.${index}.quantity`)}
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="ta-field-label">Usage Notes</label>
-                                            <div className="flex gap-2">
-                                                <input className="ta-input" value={product.notes} onChange={(e) => updateProductRow(index, 'notes', e.target.value)} placeholder="Optional notes" />
-                                                {completeForm.data.products.length > 1 && (
-                                                    <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" onClick={() => removeProductRow(index)}>Remove</button>
-                                                )}
-                                            </div>
-                                            {fieldError(completeForm, `products.${index}.notes`)}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="md:col-span-2 flex gap-2">
-                                <button className="ta-btn-primary" disabled={completeForm.processing}>Finish Service</button>
-                                <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setCompleteServiceId(null)}>Cancel</button>
-                            </div>
-                        </form>
-                    </section>
-                )}
-
-                {editingId && (
-                    <section className="ta-card p-5">
-                        <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Appointment #{editingId}</h3>
-                        <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('appointments.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-4">
-                            <div><label className="ta-field-label">Customer Name</label><input className="ta-input" value={editForm.data.customer_name} onChange={(e) => editForm.setData('customer_name', e.target.value)} required />{fieldError(editForm, 'customer_name')}</div>
-                            <div><label className="ta-field-label">Customer Phone</label><input className="ta-input" value={editForm.data.customer_phone} onChange={(e) => editForm.setData('customer_phone', e.target.value)} required />{fieldError(editForm, 'customer_phone')}</div>
-                            <div><label className="ta-field-label">Customer Email</label><input className="ta-input" value={editForm.data.customer_email} onChange={(e) => editForm.setData('customer_email', e.target.value)} />{fieldError(editForm, 'customer_email')}</div>
-                            <div><label className="ta-field-label">Service</label><select className="ta-input" value={editForm.data.service_id} onChange={(e) => editForm.setData('service_id', e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'service_id')}</div>
-                            <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'staff_profile_id')}</div>
-                            <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_start} onChange={(e) => editForm.setData('scheduled_start', e.target.value)} required />{fieldError(editForm, 'scheduled_start')}</div>
-                            <div><label className="ta-field-label">Scheduled End</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onChange={(e) => editForm.setData('scheduled_end', e.target.value)} />{fieldError(editForm, 'scheduled_end')}</div>
-                            <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
-                            <div className="md:col-span-4"><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
-                            <div className="md:col-span-4 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button></div>
-                        </form>
-                    </section>
-                )}
             </div>
+            <Modal show={Boolean(startServiceId)} maxWidth="2xl" onClose={() => setStartServiceId(null)}>
+                <div className="p-6">
+                    <h3 className="mb-4 text-base font-semibold text-slate-800">Start Service for Appointment #{startServiceId}</h3>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            startForm.post(route('appointments.service-start', startServiceId), {
+                                forceFormData: true,
+                                onSuccess: () => {
+                                    setStartServiceId(null);
+                                    startForm.reset();
+                                },
+                            });
+                        }}
+                        className="grid gap-3"
+                    >
+                        <div>
+                            <label className="ta-field-label">Client Intake Notes</label>
+                            <textarea className="ta-input min-h-[110px]" value={startForm.data.intake_notes} onChange={(e) => startForm.setData('intake_notes', e.target.value)} />
+                            {fieldError(startForm, 'intake_notes')}
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Staff Service Notes</label>
+                            <textarea className="ta-input min-h-[110px]" value={startForm.data.service_notes} onChange={(e) => startForm.setData('service_notes', e.target.value)} />
+                            {fieldError(startForm, 'service_notes')}
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Before Photo</label>
+                            <input className="ta-input" type="file" accept="image/*" onChange={(e) => startForm.setData('before_photo', e.target.files?.[0] || null)} />
+                            {fieldError(startForm, 'before_photo')}
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setStartServiceId(null)}>Cancel</button>
+                            <button className="ta-btn-primary" disabled={startForm.processing}>Start Service</button>
+                        </div>
+                    </form>
+                </div>
+            </Modal>
+
+            <Modal show={Boolean(completeServiceId)} maxWidth="2xl" onClose={() => setCompleteServiceId(null)}>
+                <div className="p-6">
+                    <h3 className="mb-4 text-base font-semibold text-slate-800">Complete Service for Appointment #{completeServiceId}</h3>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            completeForm.post(route('appointments.service-complete', completeServiceId), {
+                                forceFormData: true,
+                                onSuccess: () => {
+                                    setCompleteServiceId(null);
+                                    completeForm.reset();
+                                },
+                            });
+                        }}
+                        className="grid gap-3 md:grid-cols-2"
+                    >
+                        <div className="md:col-span-2">
+                            <label className="ta-field-label">Service Report</label>
+                            <textarea className="ta-input min-h-[120px]" value={completeForm.data.service_report} onChange={(e) => completeForm.setData('service_report', e.target.value)} required />
+                            {fieldError(completeForm, 'service_report')}
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Completion Notes</label>
+                            <textarea className="ta-input min-h-[110px]" value={completeForm.data.completion_notes} onChange={(e) => completeForm.setData('completion_notes', e.target.value)} />
+                            {fieldError(completeForm, 'completion_notes')}
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Materials Used</label>
+                            <textarea className="ta-input min-h-[110px]" value={completeForm.data.materials_used} onChange={(e) => completeForm.setData('materials_used', e.target.value)} placeholder="Hair color, polish, extensions, treatment kits..." />
+                            {fieldError(completeForm, 'materials_used')}
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="ta-field-label">After Photo</label>
+                            <input className="ta-input" type="file" accept="image/*" onChange={(e) => completeForm.setData('after_photo', e.target.files?.[0] || null)} />
+                            {fieldError(completeForm, 'after_photo')}
+                        </div>
+                        <div className="md:col-span-2 space-y-3 rounded-xl border border-slate-200 p-4">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-slate-700">Products Used</h4>
+                                <button type="button" className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700" onClick={addProductRow}>Add Product</button>
+                            </div>
+                            {completeForm.data.products.map((product, index) => (
+                                <div key={index} className="grid gap-3 md:grid-cols-4">
+                                    <div>
+                                        <label className="ta-field-label">Inventory Item</label>
+                                        <select className="ta-input" value={product.inventory_item_id} onChange={(e) => updateProductRow(index, 'inventory_item_id', e.target.value)}>
+                                            <option value="">Select product</option>
+                                            {inventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.sku})</option>)}
+                                        </select>
+                                        {fieldError(completeForm, `products.${index}.inventory_item_id`)}
+                                    </div>
+                                    <div>
+                                        <label className="ta-field-label">Quantity</label>
+                                        <input className="ta-input" type="number" min="1" value={product.quantity} onChange={(e) => updateProductRow(index, 'quantity', e.target.value)} />
+                                        {fieldError(completeForm, `products.${index}.quantity`)}
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="ta-field-label">Usage Notes</label>
+                                        <div className="flex gap-2">
+                                            <input className="ta-input" value={product.notes} onChange={(e) => updateProductRow(index, 'notes', e.target.value)} placeholder="Optional notes" />
+                                            {completeForm.data.products.length > 1 && (
+                                                <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" onClick={() => removeProductRow(index)}>Remove</button>
+                                            )}
+                                        </div>
+                                        {fieldError(completeForm, `products.${index}.notes`)}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setCompleteServiceId(null)}>Cancel</button>
+                            <button className="ta-btn-primary" disabled={completeForm.processing}>Finish Service</button>
+                        </div>
+                    </form>
+                </div>
+            </Modal>
+
+            <Modal show={Boolean(editingId)} maxWidth="2xl" onClose={() => setEditingId(null)}>
+                <div className="p-6">
+                    <h3 className="mb-4 text-base font-semibold text-slate-800">Edit Appointment #{editingId}</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('appointments.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-2">
+                        <div><label className="ta-field-label">Customer Name</label><input className="ta-input" value={editForm.data.customer_name} onChange={(e) => editForm.setData('customer_name', e.target.value)} required />{fieldError(editForm, 'customer_name')}</div>
+                        <div><label className="ta-field-label">Customer Phone</label><input className="ta-input" value={editForm.data.customer_phone} onChange={(e) => editForm.setData('customer_phone', e.target.value)} required />{fieldError(editForm, 'customer_phone')}</div>
+                        <div><label className="ta-field-label">Customer Email</label><input className="ta-input" value={editForm.data.customer_email} onChange={(e) => editForm.setData('customer_email', e.target.value)} />{fieldError(editForm, 'customer_email')}</div>
+                        <div><label className="ta-field-label">Service</label><select className="ta-input" value={editForm.data.service_id} onChange={(e) => editForm.setData('service_id', e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'service_id')}</div>
+                        <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'staff_profile_id')}</div>
+                        <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
+                        <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_start} onChange={(e) => editForm.setData('scheduled_start', e.target.value)} required />{fieldError(editForm, 'scheduled_start')}</div>
+                        <div><label className="ta-field-label">Scheduled End</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onChange={(e) => editForm.setData('scheduled_end', e.target.value)} />{fieldError(editForm, 'scheduled_end')}</div>
+                        <div className="md:col-span-2"><label className="ta-field-label">Notes</label><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
+                        <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button>
+                            <button className="ta-btn-primary" disabled={editForm.processing}>Save</button>
+                        </div>
+                    </form>
+                </div>
+            </Modal>
         </AuthenticatedLayout>
     );
 }
