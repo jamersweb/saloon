@@ -241,4 +241,43 @@ class BookingRulesTest extends TestCase
         $this->assertSame('Updated Name', $customer->name);
         $this->assertSame('updated@example.com', $customer->email);
     }
+
+    public function test_booking_allows_times_within_overnight_shift(): void
+    {
+        Role::create(['name' => 'staff', 'label' => 'Staff']);
+
+        $staffUser = User::factory()->create();
+        $staffProfile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'STF-OVER-01',
+            'is_active' => true,
+        ]);
+
+        $shiftDate = now()->addDays(2)->startOfDay();
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staffProfile->id,
+            'schedule_date' => $shiftDate->toDateString(),
+            'start_time' => '13:00:00',
+            'end_time' => '01:00:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Night Service',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 10,
+            'price' => 100,
+            'is_active' => true,
+        ]);
+
+        $this->post(route('public.booking.store'), [
+            'customer_name' => 'Overnight Customer',
+            'customer_phone' => '5551122334',
+            'customer_email' => 'overnight@example.com',
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'scheduled_start' => $shiftDate->copy()->setTime(15, 15)->toDateTimeString(),
+        ])->assertSessionHasNoErrors();
+    }
 }

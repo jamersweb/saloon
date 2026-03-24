@@ -46,16 +46,35 @@ class BookingAvailabilityService
             return 'Selected staff is not scheduled for that time.';
         }
 
-        $shiftStart = Carbon::parse($start->toDateString() . ' ' . $schedule->start_time);
-        $shiftEnd = Carbon::parse($start->toDateString() . ' ' . $schedule->end_time);
-        if ($start->lt($shiftStart) || $end->gt($shiftEnd)) {
+        $shiftStart = Carbon::parse($schedule->schedule_date->toDateString() . ' ' . $schedule->start_time);
+        $shiftEnd = Carbon::parse($schedule->schedule_date->toDateString() . ' ' . $schedule->end_time);
+
+        if ($shiftEnd->lessThanOrEqualTo($shiftStart)) {
+            $shiftEnd->addDay();
+        }
+
+        $normalizedStart = $start->copy();
+        $normalizedEnd = $end->copy();
+
+        // For overnight shifts, times after midnight belong to the shift that started the previous day.
+        if ($normalizedStart->lessThan($shiftStart) && $normalizedStart->toDateString() !== $shiftStart->toDateString()) {
+            $normalizedStart->addDay();
+            $normalizedEnd->addDay();
+        }
+
+        if ($normalizedStart->lt($shiftStart) || $normalizedEnd->gt($shiftEnd)) {
             return 'Selected time is outside staff shift.';
         }
 
         if ($schedule->break_start && $schedule->break_end) {
-            $breakStart = Carbon::parse($start->toDateString() . ' ' . $schedule->break_start);
-            $breakEnd = Carbon::parse($start->toDateString() . ' ' . $schedule->break_end);
-            if ($start->lt($breakEnd) && $end->gt($breakStart)) {
+            $breakStart = Carbon::parse($schedule->schedule_date->toDateString() . ' ' . $schedule->break_start);
+            $breakEnd = Carbon::parse($schedule->schedule_date->toDateString() . ' ' . $schedule->break_end);
+
+            if ($breakEnd->lessThanOrEqualTo($breakStart)) {
+                $breakEnd->addDay();
+            }
+
+            if ($normalizedStart->lt($breakEnd) && $normalizedEnd->gt($breakStart)) {
                 return 'Selected time overlaps staff break.';
             }
         }
@@ -103,4 +122,3 @@ class BookingAvailabilityService
         return null;
     }
 }
-
