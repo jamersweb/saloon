@@ -14,6 +14,19 @@ const toDateTimeLocal = (value) => {
     return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 };
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : 'N/A';
+const normalizeToInterval = (value, intervalMinutes) => {
+    if (!value) return '';
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+
+    const safeInterval = Math.max(1, Number(intervalMinutes || 1));
+    const currentMinutes = date.getMinutes();
+    const snappedMinutes = Math.round(currentMinutes / safeInterval) * safeInterval;
+    date.setMinutes(snappedMinutes, 0, 0);
+
+    return toDateTimeLocal(date);
+};
 
 export default function AppointmentsIndex({ appointments, services, staffProfiles, inventoryItems, statusFilter, bookingRules }) {
     const { flash, auth } = usePage().props;
@@ -23,6 +36,7 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
     const [completeServiceId, setCompleteServiceId] = useState(null);
     const [createEndManuallySet, setCreateEndManuallySet] = useState(false);
     const [editEndManuallySet, setEditEndManuallySet] = useState(true);
+    const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 15));
 
     const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
     const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
@@ -56,10 +70,11 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
     };
 
     const handleCreateStartChange = (value) => {
-        createForm.setData('scheduled_start', value);
+        const normalizedValue = normalizeToInterval(value, slotIntervalMinutes);
+        createForm.setData('scheduled_start', normalizedValue);
 
         if (!createEndManuallySet || !createForm.data.scheduled_end) {
-            createForm.setData('scheduled_end', calculateSuggestedEnd(value, createForm.data.service_id));
+            createForm.setData('scheduled_end', calculateSuggestedEnd(normalizedValue, createForm.data.service_id));
         }
     };
 
@@ -72,10 +87,11 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
     };
 
     const handleEditStartChange = (value) => {
-        editForm.setData('scheduled_start', value);
+        const normalizedValue = normalizeToInterval(value, slotIntervalMinutes);
+        editForm.setData('scheduled_start', normalizedValue);
 
         if (!editEndManuallySet || !editForm.data.scheduled_end) {
-            editForm.setData('scheduled_end', calculateSuggestedEnd(value, editForm.data.service_id));
+            editForm.setData('scheduled_end', calculateSuggestedEnd(normalizedValue, editForm.data.service_id));
         }
     };
 
@@ -171,7 +187,7 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
                         <div><label className="ta-field-label">Email</label><input className="ta-input" value={createForm.data.customer_email} onChange={(e) => createForm.setData('customer_email', e.target.value)} />{fieldError(createForm, 'customer_email')}</div>
                         <div><label className="ta-field-label">Service</label><select className="ta-input" value={createForm.data.service_id} onChange={(e) => handleCreateServiceChange(e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.duration_minutes}m)</option>)}</select>{fieldError(createForm, 'service_id')}</div>
                         <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(createForm, 'staff_profile_id')}</div>
-                        <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={createForm.data.scheduled_start} onChange={(e) => handleCreateStartChange(e.target.value)} required />{fieldError(createForm, 'scheduled_start')}</div>
+                        <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={createForm.data.scheduled_start} onChange={(e) => handleCreateStartChange(e.target.value)} step={slotIntervalMinutes * 60} required />{fieldError(createForm, 'scheduled_start')}</div>
                         <div><label className="ta-field-label">Scheduled End</label><input className="ta-input" type="datetime-local" value={createForm.data.scheduled_end} onChange={(e) => { const value = e.target.value; setCreateEndManuallySet(Boolean(value)); createForm.setData('scheduled_end', value); }} />{fieldError(createForm, 'scheduled_end')}</div>
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={createForm.data.status} onChange={(e) => createForm.setData('status', e.target.value)}><option value="confirmed">confirmed</option><option value="pending">pending</option></select>{fieldError(createForm, 'status')}</div>
                         <div className="md:col-span-4"><input className="ta-input" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(createForm, 'notes')}</div>
@@ -371,7 +387,7 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
                         <div><label className="ta-field-label">Service</label><select className="ta-input" value={editForm.data.service_id} onChange={(e) => handleEditServiceChange(e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'service_id')}</div>
                         <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'staff_profile_id')}</div>
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
-                        <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_start} onChange={(e) => handleEditStartChange(e.target.value)} required />{fieldError(editForm, 'scheduled_start')}</div>
+                        <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_start} onChange={(e) => handleEditStartChange(e.target.value)} step={slotIntervalMinutes * 60} required />{fieldError(editForm, 'scheduled_start')}</div>
                         <div><label className="ta-field-label">Scheduled End</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onChange={(e) => { const value = e.target.value; setEditEndManuallySet(Boolean(value)); editForm.setData('scheduled_end', value); }} />{fieldError(editForm, 'scheduled_end')}</div>
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
                         <div className="md:col-span-2 flex justify-end gap-2 pt-2">
