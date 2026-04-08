@@ -45,6 +45,7 @@ class Appointment extends Model
         'customer_email',
         'cancellation_reason',
         'notes',
+        'exclude_loyalty_earn',
     ];
 
     protected function casts(): array
@@ -54,6 +55,7 @@ class Appointment extends Model
             'scheduled_end' => 'datetime',
             'arrival_time' => 'datetime',
             'service_start_time' => 'datetime',
+            'exclude_loyalty_earn' => 'boolean',
         ];
     }
 
@@ -90,6 +92,16 @@ class Appointment extends Model
     public function productUsages(): HasMany
     {
         return $this->hasMany(AppointmentProductUsage::class);
+    }
+
+    public function giftCardTransactions(): HasMany
+    {
+        return $this->hasMany(GiftCardTransaction::class);
+    }
+
+    public function taxInvoices(): HasMany
+    {
+        return $this->hasMany(TaxInvoice::class);
     }
 
     /** @return list<string> */

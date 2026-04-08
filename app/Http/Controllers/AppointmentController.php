@@ -14,6 +14,7 @@ use App\Models\StaffProfile;
 use App\Services\BookingAvailabilityService;
 use App\Services\DueServiceManager;
 use App\Services\LoyaltyService;
+use App\Services\TaxInvoiceDraftFromAppointmentService;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -29,6 +30,7 @@ class AppointmentController extends Controller
     public function index(Request $request): Response
     {
         $status = $request->string('status')->toString();
+        $rules = BookingRule::current();
 
         $appointments = Appointment::query()
             ->with([
@@ -38,8 +40,12 @@ class AppointmentController extends Controller
                 'photos',
                 'productUsages.item',
             ])
-            ->when($status, fn ($query) => $query->where('status', $status))
-            ->orderBy('scheduled_start')
+            ->when($status === 'upcoming', function ($query): void {
+                $query->where('scheduled_start', '>=', now())
+                    ->whereIn('status', [Appointment::STATUS_PENDING, Appointment::STATUS_CONFIRMED, Appointment::STATUS_IN_PROGRESS]);
+            })
+            ->when($status && $status !== 'upcoming', fn ($query) => $query->where('status', $status))
+            ->orderByDesc('scheduled_start')
             ->limit(200)
             ->get()
             ->map(fn (Appointment $appointment) => $this->serializeAppointment($appointment));
@@ -56,7 +62,8 @@ class AppointmentController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'sku', 'unit']),
             'statusFilter' => $status,
-            'bookingRules' => BookingRule::current(),
+            'bookingRules' => $rules,
+            'defaultStart' => $this->defaultStartAtInterval((int) $rules->slot_interval_minutes, (int) $rules->min_advance_minutes),
         ]);
     }
 
@@ -224,11 +231,16 @@ class AppointmentController extends Controller
             'products.*.inventory_item_id' => ['required_with:products', 'exists:inventory_items,id'],
             'products.*.quantity' => ['required_with:products', 'integer', 'min:1'],
             'products.*.notes' => ['nullable', 'string'],
+            'exclude_loyalty_earn' => ['nullable', 'boolean'],
+            'create_tax_invoice_draft' => ['nullable', 'boolean'],
         ]);
 
-        DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager): void {
+        $createdTaxInvoiceId = null;
+
+        DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager, &$createdTaxInvoiceId): void {
             $appointment->update([
                 'status' => Appointment::STATUS_COMPLETED,
+                'exclude_loyalty_earn' => (bool) ($data['exclude_loyalty_earn'] ?? false),
             ]);
 
             $log = AppointmentServiceLog::query()->firstOrNew([
@@ -279,13 +291,34 @@ class AppointmentController extends Controller
             $appointment->refresh();
             $loyaltyService->earnFromCompletedAppointment($appointment, $request->user()?->id);
             $dueServiceManager->syncForAppointment($appointment);
+
+            if ($request->boolean('create_tax_invoice_draft') && $request->user()?->hasPermission('can_manage_finance')) {
+                try {
+                    $draft = app(TaxInvoiceDraftFromAppointmentService::class)->create(
+                        $appointment->fresh(['service', 'customer']),
+                        $request->user()->id,
+                        $request->user()->name
+                    );
+                    $createdTaxInvoiceId = $draft->id;
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
         });
 
         Audit::log($request->user()?->id, 'appointment.service_completed', 'Appointment', $appointment->id, [
             'product_count' => count($data['products'] ?? []),
+            'tax_invoice_draft_id' => $createdTaxInvoiceId,
         ]);
 
-        return back()->with('status', 'Service completed.');
+        $status = 'Service completed.';
+        if ($createdTaxInvoiceId) {
+            $status .= ' Tax invoice draft created.';
+        }
+
+        return back()
+            ->with('status', $status)
+            ->with('created_tax_invoice_id', $createdTaxInvoiceId);
     }
 
     public function transition(Request $request, Appointment $appointment, LoyaltyService $loyaltyService, DueServiceManager $dueServiceManager): RedirectResponse
@@ -398,7 +431,7 @@ class AppointmentController extends Controller
             [
                 'name' => $name,
                 'email' => $email,
-                'customer_code' => 'CUST-' . now()->format('Ymd') . '-' . random_int(1000, 9999),
+                'customer_code' => 'CUST-'.now()->format('Ymd').'-'.random_int(1000, 9999),
             ],
         );
 
@@ -412,6 +445,20 @@ class AppointmentController extends Controller
         }
 
         return $customer;
+    }
+
+    private function defaultStartAtInterval(int $intervalMinutes, int $minAdvanceMinutes): string
+    {
+        $safeInterval = max(1, $intervalMinutes > 0 ? $intervalMinutes : 30);
+        $base = now()->copy()->addMinutes(max(0, $minAdvanceMinutes));
+        $minutes = (int) $base->format('i');
+        $remainder = $minutes % $safeInterval;
+
+        if ($remainder !== 0) {
+            $base->addMinutes($safeInterval - $remainder);
+        }
+
+        return $base->setSecond(0)->format('Y-m-d\TH:i');
     }
 
     private function serializeAppointment(Appointment $appointment): array
@@ -453,5 +500,4 @@ class AppointmentController extends Controller
             ])->values()->all(),
         ];
     }
-
 }

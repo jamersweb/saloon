@@ -1,187 +1,161 @@
-# Vina Management System - User Guide (Operations)
+﻿# Vina Management System
+## Client Admin Guide
 
-## 1. Login
-1. Open the app URL.
-2. Click `Staff Login` (top-right on public page).
-3. Enter email and password.
-4. You will see menu items based on your role.
+Version: March 2026
 
-## 2. Role Access
-- `Owner`: full access to all modules.
-- `Manager`: operations + management modules + reporting.
-- `Staff`: own workspace only (`Dashboard`, `Attendance`, `Leave Requests`, `Profile`).
-- `Customer`: public booking side only.
+## 1. Access and Login
+1. Open the application URL.
+2. Click `Staff Login` (top-right on home page).
+3. Sign in with your account.
+4. The menu and dashboard depend on your role.
 
-## 3. Dashboard (Daily Check)
-1. Open `Dashboard` after login.
-2. Use period filter (`Today`, `This Week`, `This Month`).
-3. Review KPI cards.
-4. Check upcoming appointment list.
+## 2. Roles and What They Can Do
+- `Owner`: full control of all modules.
+- `Manager`: full operational control (appointments, team, services, inventory, reports, automation).
+- `Staff`: personal workspace only (attendance, leave requests, own dashboard data).
+- `Customer`: booking and staff review submission.
 
-## 4. How to Add a Customer
+## 3. Dashboard Overview
+1. Open `Dashboard`.
+2. Use period filters: `Today`, `This Week`, `This Month`.
+3. Review KPI cards and appointment list.
+4. Review feedback/review panels:
+   - Customer reviews about staff.
+   - Staff feedback to customers.
+
+## 4. Customer Management
+### Add customer
 1. Open `Customers`.
-2. Click add/new customer form.
-3. Fill required fields:
-   - Name
+2. Fill required fields:
+   - Customer Name
    - Phone
-   - Email (optional but recommended)
-4. Save.
-5. Confirm customer appears in customer list/search.
-
-## 5. How to Create an Appointment
-1. Open `Appointments`.
-2. In `Create Appointment` section, fill:
-   - Customer name/phone/email
-   - Service
-   - Staff (optional)
-   - Start date/time
-   - End date/time (optional)
-   - Status (`pending` or `confirmed`)
+   - Email (recommended)
 3. Click `Create`.
-4. Verify it appears in `Appointment Queue`.
 
-## 6. How to Check and Update Appointments
+### Update customer profile
+1. Select a customer from list.
+2. Update profile details (birthday, source, allergies, notes).
+3. Click `Save Profile`.
+
+## 5. Appointment Management
+### Create appointment
 1. Open `Appointments`.
-2. Use `Filter status` to narrow results.
-3. In queue, review:
-   - Time
+2. Fill:
    - Customer
    - Service
-   - Staff
+   - Staff (optional)
+   - Scheduled start/end
    - Status
-4. Use action buttons:
-   - `Edit` to update details
-   - `Confirm/Start/Complete` for status transition
-   - `Cancel` to cancel appointment
+3. Click `Create`.
 
-## 7. Booking Rules (Manager/Owner)
-1. Open `Appointments` page.
-2. In `Booking Rules` section update:
-   - Slot interval
-   - Min advance time
-   - Max advance days
-   - Cancellation cutoff
-3. Enable/disable:
-   - Public booking approval
-   - Customer cancellation
-4. Click `Save Booking Rules`.
+### Manage appointment queue
+1. Use `Filter Status`.
+2. Use actions:
+   - `Edit`
+   - `Confirm / Start / Complete`
+   - `Cancel`
 
-### Booking Rules Details
-- `Slot interval (minutes)`:
-  - Controls available start-time spacing in booking.
-  - Example: `15` means slots like 10:00, 10:15, 10:30.
-- `Min advance (minutes)`:
-  - Minimum time required before appointment start.
-  - Example: `30` blocks booking at 10:50 for an 11:00 slot.
-- `Max advance (days)`:
-  - Furthest future date allowed for booking.
-  - Example: `60` means customer can only book within next 60 days.
-- `Cancellation cutoff (hours)`:
-  - Latest allowed cancellation before appointment start.
-  - Example: `12` means customer cannot cancel if less than 12 hours remain.
-- `Public booking requires approval`:
-  - If enabled, public bookings are created pending approval workflow.
-  - If disabled, valid public bookings can be auto-confirmed based on logic.
-- `Allow customer cancellation`:
-  - If enabled, customer cancellation is allowed (subject to cutoff).
-  - If disabled, only staff/admin can cancel from system side.
+## 6. Booking Rules
+1. Open `Appointments` -> `Booking Rules`.
+2. Configure:
+   - Slot Interval (minutes)
+   - Min Advance (minutes)
+   - Max Advance (days)
+   - Cancellation Cutoff (hours)
+3. Set toggles:
+   - Public booking requires approval
+   - Allow customer cancellation
+4. Save rules.
 
-### Recommended Default Values
+Recommended defaults:
 - Slot interval: `15`
 - Min advance: `30`
 - Max advance: `60`
 - Cancellation cutoff: `12`
 
-## 8. Attendance
-### For staff
-1. Open `Attendance`.
-2. Click `Clock In` at shift start.
-3. Click `Clock Out` at shift end.
-4. Check `Attendance Log` for your records.
-
-### For manager/owner
-1. Open `Attendance`.
-2. Select a staff profile if needed.
-3. Use clock in/out actions.
-4. Review late minutes and daily logs.
-
-## 9. Leave Requests
-### Submit leave
-1. Open `Leave Requests`.
-2. Fill start date, end date, and reason.
-3. Click `Submit`.
-
-### Review leave (manager/owner)
-1. Open `Leave Requests`.
-2. In request queue, check pending rows.
-3. Click `Approve`, `Reject`, or `Cancel`.
-
-## 10. Services Management
-1. Open `Services`.
-2. Add or edit service details:
-   - Name
-   - Duration
-   - Price
-3. Save changes.
-4. Confirm service appears in appointment service dropdown.
-
-## 11. Staff and Schedules
+## 7. Staff and Schedule Management
 ### Staff profiles
 1. Open `Staff`.
-2. Add/edit staff profile.
-3. Assign role where required.
+2. Create or edit staff member.
+3. Assign role.
 
 ### Work schedules
 1. Open `Schedules`.
-2. Define shift days/times and breaks.
-3. Save schedule.
-4. Verify bookings respect shift constraints.
+2. Define shift times and break windows.
+3. Save and verify booking availability.
 
-## 12. Inventory, Suppliers, Purchase Orders
+## 8. Attendance and Leave
+### Attendance
+1. Staff uses `Clock In` and `Clock Out`.
+2. Manager/owner can review logs and late minutes.
+
+### Leave requests
+1. Staff submits request with date range and reason.
+2. Manager/owner approves or rejects.
+
+## 9. Inventory and Procurement
 ### Inventory
-1. Open `Inventory`.
-2. Add products and update stock.
-3. Use stock adjustment action when needed.
-4. Scan and resolve low-stock alerts.
+1. Add items and maintain stock.
+2. Use stock adjustment when required.
+3. Scan and resolve low-stock alerts.
 
-### Suppliers
-1. Open `Suppliers`.
-2. Add or edit supplier records.
+### Suppliers and purchase orders
+1. Maintain supplier records.
+2. Create purchase orders.
+3. Move PO status through draft, approved, received, or cancelled.
 
-### Purchase Orders
-1. Open `Purchase Orders`.
-2. Create draft PO.
-3. Move lifecycle as needed: approve -> receive -> close/cancel.
+## 10. Loyalty
+1. Configure loyalty tiers and rewards.
+2. Manage ledger entries and redemption.
+3. Verify points updates after completed appointments.
+4. For NFC reader usage, follow `docs/nfc-reader-setup.md`.
 
-## 13. Loyalty
-1. Open `Loyalty`.
-2. Manage tiers and multipliers.
-3. Add rewards and redemption rules.
-4. Use ledger/manual entries when needed.
-5. Confirm points update after appointment completion.
+## 11. CRM Automation
+1. Create tags and assign customers.
+2. Build segment rules and run previews.
+3. Manage due-service reminders.
+4. Create campaign templates and campaigns.
+5. Dispatch manually or run scheduled dispatch.
 
-## 14. CRM Automation
-1. Open `CRM Automation`.
-2. Manage tags (create/assign/remove).
-3. Create segment rules and preview result count.
-4. Run segment assignment.
-5. Create campaign templates and campaigns.
-6. Dispatch campaigns manually or scheduled.
-
-## 15. Reports
+## 12. Reports
 1. Open `Reports`.
-2. Select date range.
-3. Review KPI cards/charts.
-4. Export data:
-   - CSV
-   - PDF summary
+2. Choose date range.
+3. Review KPIs and charts.
+4. Export CSV or PDF summary.
 
-## 16. Roles and Permissions
+## 13. Roles and Permissions
 1. Open `Roles & Permissions`.
-2. Create or edit role.
-3. Enable required permissions.
-4. Save and test with a user assigned to that role.
+2. Create role or edit existing one.
+3. Assign required permissions.
+4. Save and verify with a test user.
 
-## 17. Staff Data Restriction Note
-- Staff users are permission-locked from frontdesk modules (`Customers`, `Appointments`).
-- Staff can only access own workspace pages and own data scope for attendance/leave.
+## 14. Feedback and Review Workflow (New)
+### A. Staff -> Customer Feedback
+1. Staff opens `Dashboard`.
+2. In `Staff Feedback to Customer`:
+   - Select customer
+   - Write feedback comment
+3. Submit.
+4. Feedback appears in dashboard list for staff, manager, and owner.
+
+### B. Customer -> Staff Review
+1. Customer logs in.
+2. In `Review Staff`:
+   - Select staff member
+   - Give rating (1-5)
+   - Add review comment
+3. Submit.
+4. Review appears in dashboard list for staff, manager, and owner.
+
+## 15. Data Visibility Rules
+- Staff sees only own operational data and own feedback context.
+- Manager and owner see business-wide feedback and review summaries.
+- Customer sees own review form and own submitted review context.
+
+## 16. Daily Recommended Admin Routine
+1. Check dashboard KPIs and pending items.
+2. Review appointment queue and status transitions.
+3. Review leave requests and attendance anomalies.
+4. Check feedback/reviews for service quality issues.
+5. Resolve inventory alerts.
+6. Export daily/weekly reports.

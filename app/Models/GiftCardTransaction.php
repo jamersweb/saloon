@@ -32,4 +32,9 @@ class GiftCardTransaction extends Model
     {
         return $this->belongsTo(GiftCard::class);
     }
+
+    public function appointment(): BelongsTo
+    {
+        return $this->belongsTo(Appointment::class);
+    }
 }

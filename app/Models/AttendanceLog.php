@@ -15,6 +15,8 @@ class AttendanceLog extends Model
         'attendance_date',
         'scheduled_start',
         'clock_in',
+        'clock_in_latitude',
+        'clock_in_longitude',
         'clock_out',
         'late_minutes',
         'notes',
@@ -26,6 +28,8 @@ class AttendanceLog extends Model
     {
         return [
             'attendance_date' => 'date',
+            'clock_in_latitude' => 'float',
+            'clock_in_longitude' => 'float',
             'approved_at' => 'datetime',
         ];
     }

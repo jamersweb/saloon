@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\Appointment;
 use App\Models\Customer;
+use App\Models\CustomerMembershipCard;
 use App\Models\GiftCard;
 use App\Models\GiftCardTransaction;
 use Illuminate\Support\Facades\DB;
@@ -11,10 +13,16 @@ use Illuminate\Validation\ValidationException;
 
 class GiftCardService
 {
-    public function issue(?Customer $customer, float $value, ?int $issuedBy = null, ?string $notes = null): GiftCard
+    public function issue(?Customer $customer, float $value, ?int $issuedBy = null, ?string $notes = null, ?string $nfcUid = null): GiftCard
     {
+        $normalizedNfc = $this->normalizeNfcUid($nfcUid);
+        if ($normalizedNfc !== null) {
+            $this->assertNfcUidAvailableForGiftCard($normalizedNfc);
+        }
+
         return GiftCard::create([
-            'code' => 'GIFT-' . Str::upper(Str::random(10)),
+            'code' => 'GIFT-'.Str::upper(Str::random(10)),
+            'nfc_uid' => $normalizedNfc,
             'assigned_customer_id' => $customer?->id,
             'initial_value' => $value,
             'remaining_value' => $value,
@@ -24,17 +32,109 @@ class GiftCardService
         ]);
     }
 
-    public function consume(GiftCard $giftCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null): GiftCardTransaction
+    public function findByNfcUid(string $nfcUid): ?GiftCard
+    {
+        return GiftCard::query()
+            ->with(['customer:id,name,phone,email'])
+            ->where('nfc_uid', $this->normalizeNfcUid($nfcUid))
+            ->first();
+    }
+
+    public function bindNfcUid(GiftCard $giftCard, string $nfcUid, ?int $issuedBy = null, bool $replaceExisting = false): GiftCard
+    {
+        $normalizedUid = $this->normalizeNfcUid($nfcUid);
+        if ($normalizedUid === null) {
+            throw ValidationException::withMessages([
+                'nfc_uid' => 'NFC UID cannot be empty.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($giftCard, $normalizedUid, $issuedBy, $replaceExisting) {
+            $existingGift = GiftCard::query()
+                ->where('nfc_uid', $normalizedUid)
+                ->whereKeyNot($giftCard->id)
+                ->first();
+
+            if ($existingGift && ! $replaceExisting) {
+                throw ValidationException::withMessages([
+                    'nfc_uid' => 'This NFC UID is already linked to another gift card.',
+                ]);
+            }
+
+            if ($existingGift && $replaceExisting) {
+                $existingGift->update([
+                    'nfc_uid' => null,
+                    'notes' => trim(($existingGift->notes ? $existingGift->notes.PHP_EOL : '').'NFC UID reassigned on '.now()->toDateTimeString()),
+                ]);
+            }
+
+            if (CustomerMembershipCard::query()->where('nfc_uid', $normalizedUid)->exists()) {
+                throw ValidationException::withMessages([
+                    'nfc_uid' => 'This NFC UID is already linked to a membership card.',
+                ]);
+            }
+
+            $giftCard->update([
+                'nfc_uid' => $normalizedUid,
+                'issued_by' => $issuedBy ?? $giftCard->issued_by,
+            ]);
+
+            return $giftCard->fresh(['customer']);
+        });
+    }
+
+    public function assertNfcUidAvailableForGiftCard(string $normalizedUid): void
+    {
+        if (GiftCard::query()->where('nfc_uid', $normalizedUid)->exists()) {
+            throw ValidationException::withMessages([
+                'nfc_uid' => 'This NFC UID is already linked to a gift card.',
+            ]);
+        }
+
+        if (CustomerMembershipCard::query()->where('nfc_uid', $normalizedUid)->exists()) {
+            throw ValidationException::withMessages([
+                'nfc_uid' => 'This NFC UID is already linked to a membership card.',
+            ]);
+        }
+    }
+
+    private function normalizeNfcUid(?string $nfcUid): ?string
+    {
+        if ($nfcUid === null) {
+            return null;
+        }
+
+        $normalized = strtoupper(trim($nfcUid));
+
+        return $normalized === '' ? null : $normalized;
+    }
+
+    public function consume(GiftCard $giftCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null, ?int $appointmentId = null): GiftCardTransaction
     {
         if ($amount <= 0) {
             throw ValidationException::withMessages(['amount' => 'Amount must be greater than zero.']);
         }
 
-        return DB::transaction(function () use ($giftCard, $amount, $reason, $createdBy, $notes) {
+        return DB::transaction(function () use ($giftCard, $amount, $reason, $createdBy, $notes, $appointmentId) {
             $giftCard->refresh();
 
             if ((float) $giftCard->remaining_value < $amount) {
                 throw ValidationException::withMessages(['amount' => 'Gift card balance is insufficient.']);
+            }
+
+            if ($appointmentId !== null) {
+                $appointment = Appointment::query()->find($appointmentId);
+                if ($appointment === null || $appointment->customer_id === null) {
+                    throw ValidationException::withMessages([
+                        'appointment_id' => 'Select a valid appointment with a customer.',
+                    ]);
+                }
+                if ($giftCard->assigned_customer_id !== null
+                    && (int) $giftCard->assigned_customer_id !== (int) $appointment->customer_id) {
+                    throw ValidationException::withMessages([
+                        'appointment_id' => 'The gift card is assigned to a different customer than this visit.',
+                    ]);
+                }
             }
 
             $nextBalance = round((float) $giftCard->remaining_value - $amount, 2);
@@ -45,6 +145,7 @@ class GiftCardService
 
             return GiftCardTransaction::create([
                 'gift_card_id' => $giftCard->id,
+                'appointment_id' => $appointmentId,
                 'amount_change' => -$amount,
                 'balance_after' => $nextBalance,
                 'reason' => $reason,

@@ -40,6 +40,11 @@ class AttendanceLogController extends Controller
                 'id' => $log->id,
                 'attendance_date' => $log->attendance_date,
                 'clock_in' => $log->clock_in,
+                'clock_in_latitude' => $log->clock_in_latitude,
+                'clock_in_longitude' => $log->clock_in_longitude,
+                'clock_in_location_url' => $log->clock_in_latitude !== null && $log->clock_in_longitude !== null
+                    ? sprintf('https://www.google.com/maps?q=%s,%s', $log->clock_in_latitude, $log->clock_in_longitude)
+                    : null,
                 'clock_out' => $log->clock_out,
                 'late_minutes' => $log->late_minutes,
                 'staff_name' => $log->staffProfile?->user?->name,
@@ -54,6 +59,12 @@ class AttendanceLogController extends Controller
     public function clockIn(Request $request): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'clock_in_latitude' => ['required', 'numeric', 'between:-90,90'],
+            'clock_in_longitude' => ['required', 'numeric', 'between:-180,180'],
+            'notes' => ['nullable', 'string'],
+        ]);
 
         $staffProfile = $this->resolveStaffProfile($request);
 
@@ -71,8 +82,8 @@ class AttendanceLogController extends Controller
         $lateMinutes = 0;
 
         if ($schedule && $schedule->start_time) {
-            $scheduled = Carbon::parse($today . ' ' . $schedule->start_time);
-            $actual = Carbon::parse($today . ' ' . $clockInTime);
+            $scheduled = Carbon::parse($today.' '.$schedule->start_time);
+            $actual = Carbon::parse($today.' '.$clockInTime);
             $lateMinutes = max(0, $actual->diffInMinutes($scheduled, false));
         }
 
@@ -84,8 +95,10 @@ class AttendanceLogController extends Controller
             [
                 'scheduled_start' => $schedule?->start_time,
                 'clock_in' => $clockInTime,
+                'clock_in_latitude' => (float) $data['clock_in_latitude'],
+                'clock_in_longitude' => (float) $data['clock_in_longitude'],
                 'late_minutes' => $lateMinutes,
-                'notes' => $request->input('notes'),
+                'notes' => $data['notes'] ?? null,
             ],
         );
 

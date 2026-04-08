@@ -1,10 +1,11 @@
 import ApplicationLogo from '@/Components/ApplicationLogo';
+import AppFlashPopup from '@/Components/AppFlashPopup';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 
-export default function Booking({ services, staffProfiles, bookingRules }) {
-    const { flash, errors } = usePage().props;
+export default function Booking({ services, staffProfiles, bookingRules, defaultStart }) {
+    const { errors } = usePage().props;
     const { data, setData, post, processing } = useForm({
-        customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: '', notes: '',
+        customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: defaultStart || '', notes: '',
     });
 
     const submit = (e) => {
@@ -16,17 +17,17 @@ export default function Booking({ services, staffProfiles, bookingRules }) {
         <>
             <Head title="Book Appointment | Vina Management System" />
             <div className="min-h-screen bg-slate-100 p-6">
+                <AppFlashPopup />
                 <div className="ta-card mx-auto max-w-3xl space-y-4 p-6">
                     <div>
                         <ApplicationLogo className="h-auto w-72" />
                     </div>
                     <h1 className="text-2xl font-semibold text-slate-800">Book Your Appointment</h1>
                     <p className="text-sm text-slate-500">
-                        Slot interval: every {bookingRules?.slot_interval_minutes ?? 15} minutes.
+                        Slot interval: every {bookingRules?.slot_interval_minutes ?? 30} minutes.
                         Minimum advance: {bookingRules?.min_advance_minutes ?? 30} minutes.
                         Maximum advance: {bookingRules?.max_advance_days ?? 60} days.
                     </p>
-                    {flash?.status && <div className="rounded bg-green-100 p-3 text-green-700">{flash.status}</div>}
                     {Object.keys(errors).length > 0 && <div className="rounded bg-red-100 p-3 text-red-700">{Object.values(errors)[0]}</div>}
                     <form onSubmit={submit} className="grid gap-3 md:grid-cols-2">
                         <div>

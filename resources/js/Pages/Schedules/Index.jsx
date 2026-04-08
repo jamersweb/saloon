@@ -7,8 +7,9 @@ const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 te
 export default function SchedulesIndex({ staffProfiles, schedules }) {
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
+    const today = new Date().toISOString().slice(0, 10);
 
-    const createForm = useForm({ staff_profile_id: '', schedule_date: '', start_time: '', end_time: '', break_start: '', break_end: '', is_day_off: false, notes: '' });
+    const createForm = useForm({ staff_profile_id: '', schedule_date: today, start_time: '10:00', end_time: '20:00', break_start: '', break_end: '', is_day_off: false, notes: '' });
     const editForm = useForm({ start_time: '', end_time: '', break_start: '', break_end: '', is_day_off: false, notes: '' });
 
     const startEdit = (schedule) => {

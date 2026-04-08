@@ -16,6 +16,7 @@ class StaffProfile extends Model
         'employee_code',
         'phone',
         'skills',
+        'hourly_rate',
         'is_active',
     ];
 
@@ -23,6 +24,7 @@ class StaffProfile extends Model
     {
         return [
             'skills' => 'array',
+            'hourly_rate' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }

@@ -21,6 +21,7 @@ class Permissions
             'can_manage_loyalty' => 'Manage loyalty program',
             'can_manage_crm_automation' => 'Manage CRM automation and campaigns',
             'can_export_reports' => 'Access and export reports',
+            'can_manage_finance' => 'Tax invoices, payments, expenses, payroll, and finance reports',
             'can_review_leave_requests' => 'Approve or reject leave requests',
             'can_manage_roles' => 'Create roles and assign permissions',
         ];
@@ -45,6 +46,7 @@ class Permissions
                 'can_manage_loyalty',
                 'can_manage_crm_automation',
                 'can_export_reports',
+                'can_manage_finance',
                 'can_review_leave_requests',
             ],
             'staff' => [
@@ -91,6 +93,7 @@ class Permissions
             str_starts_with($routeName, 'loyalty.') => 'can_manage_loyalty',
             str_starts_with($routeName, 'customers.automation.') => 'can_manage_crm_automation',
             str_starts_with($routeName, 'reports.') => 'can_export_reports',
+            str_starts_with($routeName, 'finance.') => 'can_manage_finance',
             str_starts_with($routeName, 'roles.') => 'can_manage_roles',
             default => null,
         };

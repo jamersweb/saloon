@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
 use App\Services\BookingAvailabilityService;
+use App\Services\PublicBookingNotificationService;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -19,17 +20,20 @@ class PublicBookingController extends Controller
 {
     public function create(): Response
     {
+        $rules = BookingRule::current();
+
         return Inertia::render('Public/Booking', [
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes']),
             'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'name' => $staff->user?->name,
             ]),
-            'bookingRules' => BookingRule::current(),
+            'bookingRules' => $rules,
+            'defaultStart' => $this->defaultStartAtInterval((int) $rules->slot_interval_minutes, (int) $rules->min_advance_minutes),
         ]);
     }
 
-    public function store(Request $request, BookingAvailabilityService $availabilityService): RedirectResponse
+    public function store(Request $request, BookingAvailabilityService $availabilityService, PublicBookingNotificationService $notificationService): RedirectResponse
     {
         $data = $request->validate([
             'service_id' => ['required', 'exists:salon_services,id'],
@@ -69,7 +73,7 @@ class PublicBookingController extends Controller
             [
                 'name' => $data['customer_name'],
                 'email' => $data['customer_email'] ?? null,
-                'customer_code' => 'CUST-' . now()->format('Ymd') . '-' . random_int(1000, 9999),
+                'customer_code' => 'CUST-'.now()->format('Ymd').'-'.random_int(1000, 9999),
             ],
         );
 
@@ -96,8 +100,24 @@ class PublicBookingController extends Controller
             'notes' => $data['notes'] ?? null,
         ]);
 
+        $notificationService->notifyTeam($customer, $appointment);
+
         Audit::log(null, 'appointment.public_created', 'Appointment', $appointment->id);
 
         return back()->with('status', 'Booking submitted successfully. We will confirm shortly.');
+    }
+
+    private function defaultStartAtInterval(int $intervalMinutes, int $minAdvanceMinutes): string
+    {
+        $safeInterval = max(1, $intervalMinutes > 0 ? $intervalMinutes : 30);
+        $base = now()->copy()->addMinutes(max(0, $minAdvanceMinutes));
+        $minutes = (int) $base->format('i');
+        $remainder = $minutes % $safeInterval;
+
+        if ($remainder !== 0) {
+            $base->addMinutes($safeInterval - $remainder);
+        }
+
+        return $base->setSecond(0)->format('Y-m-d\TH:i');
     }
 }

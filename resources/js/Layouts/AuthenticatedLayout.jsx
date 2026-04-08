@@ -1,4 +1,5 @@
 import ApplicationLogo from '@/Components/ApplicationLogo';
+import AppFlashPopup from '@/Components/AppFlashPopup';
 import Dropdown from '@/Components/Dropdown';
 import { Link, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -113,6 +114,17 @@ export default function AuthenticatedLayout({ header, children }) {
                 ],
             },
             {
+                key: 'finance',
+                title: 'Finance',
+                items: [
+                    { label: 'Finance overview', href: route('finance.index'), active: route().current('finance.index'), visible: permissions.can_manage_finance },
+                    { label: 'Tax invoices', href: route('finance.invoices.index'), active: route().current('finance.invoices.*'), visible: permissions.can_manage_finance },
+                    { label: 'Expenses', href: route('finance.expenses.index'), active: route().current('finance.expenses.*'), visible: permissions.can_manage_finance },
+                    { label: 'Payroll', href: route('finance.payroll.index'), active: route().current('finance.payroll.*'), visible: permissions.can_manage_finance },
+                    { label: 'Finance settings', href: route('finance.settings.edit'), active: route().current('finance.settings.*'), visible: permissions.can_manage_finance },
+                ],
+            },
+            {
                 key: 'access',
                 title: 'Access',
                 items: [
@@ -146,6 +158,7 @@ export default function AuthenticatedLayout({ header, children }) {
 
     return (
         <div className="min-h-screen bg-slate-50 lg:flex">
+            <AppFlashPopup />
             <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-[280px] lg:flex-col lg:border-r lg:border-slate-200 lg:bg-slate-50">
                 <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-6">
                     <ApplicationLogo className="h-auto w-52" />

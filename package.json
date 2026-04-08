@@ -4,7 +4,9 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "nfc:bridge:install": "npm --prefix tools/nfc-bridge install",
+        "nfc:bridge": "npm --prefix tools/nfc-bridge start"
     },
     "devDependencies": {
         "@headlessui/react": "^2.0.0",

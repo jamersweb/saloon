@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\CustomerMembershipCard;
+use App\Models\GiftCard;
 use App\Models\MembershipCardType;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -34,11 +35,18 @@ class MembershipCardService
             $issuedAt = now();
             $expiresAt = $type->validity_days ? $issuedAt->copy()->addDays((int) $type->validity_days) : null;
 
+            $nfc = isset($attributes['nfc_uid']) ? $this->normalizeNfcUid($attributes['nfc_uid']) : null;
+            if ($nfc !== null && GiftCard::query()->where('nfc_uid', $nfc)->exists()) {
+                throw ValidationException::withMessages([
+                    'nfc_uid' => 'This NFC UID is already linked to a gift card.',
+                ]);
+            }
+
             return CustomerMembershipCard::create([
                 'customer_id' => $customer->id,
                 'membership_card_type_id' => $type->id,
-                'card_number' => $attributes['card_number'] ?? strtoupper($type->slug) . '-' . Str::upper(Str::random(8)),
-                'nfc_uid' => isset($attributes['nfc_uid']) ? $this->normalizeNfcUid($attributes['nfc_uid']) : null,
+                'card_number' => $attributes['card_number'] ?? strtoupper($type->slug).'-'.Str::upper(Str::random(8)),
+                'nfc_uid' => $nfc,
                 'status' => $attributes['status'] ?? 'active',
                 'issued_at' => $attributes['issued_at'] ?? $issuedAt,
                 'activated_at' => $attributes['activated_at'] ?? $issuedAt,
@@ -76,7 +84,13 @@ class MembershipCardService
             if ($existingCard && $replaceExisting) {
                 $existingCard->update([
                     'nfc_uid' => null,
-                    'notes' => trim(($existingCard->notes ? $existingCard->notes . PHP_EOL : '') . 'NFC UID reassigned on ' . now()->toDateTimeString()),
+                    'notes' => trim(($existingCard->notes ? $existingCard->notes.PHP_EOL : '').'NFC UID reassigned on '.now()->toDateTimeString()),
+                ]);
+            }
+
+            if (GiftCard::query()->where('nfc_uid', $normalizedUid)->exists()) {
+                throw ValidationException::withMessages([
+                    'nfc_uid' => 'This NFC UID is already linked to a gift card.',
                 ]);
             }
 

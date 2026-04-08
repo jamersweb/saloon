@@ -2,19 +2,56 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, usePage } from '@inertiajs/react';
 
 export default function AttendanceIndex({ logs, staffProfiles }) {
-    const { flash, errors, auth } = usePage().props;
+    const { errors, auth } = usePage().props;
     const isStaff = auth?.user?.role?.name === 'staff';
     const myProfileName = staffProfiles?.[0]?.name || 'My profile';
-    const clockInForm = useForm({ staff_profile_id: '' });
+    const clockInForm = useForm({ staff_profile_id: '', clock_in_latitude: '', clock_in_longitude: '' });
     const clockOutForm = useForm({ staff_profile_id: '' });
 
     const todayLog = logs?.[0];
+
+    const requestLocation = () => new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('GPS is not supported in this browser.'));
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => resolve(position),
+            () => reject(new Error('Location permission denied or unavailable.')),
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0,
+            },
+        );
+    });
+
+    const submitClockIn = async (e) => {
+        e.preventDefault();
+
+        try {
+            const position = await requestLocation();
+            const latitude = String(position.coords.latitude);
+            const longitude = String(position.coords.longitude);
+            clockInForm.setData('clock_in_latitude', latitude);
+            clockInForm.setData('clock_in_longitude', longitude);
+            clockInForm.post(route('attendance.clock-in'), {
+                data: {
+                    ...clockInForm.data,
+                    clock_in_latitude: latitude,
+                    clock_in_longitude: longitude,
+                },
+            });
+        } catch (error) {
+            clockInForm.setError('clock_in_latitude', error.message || 'Unable to capture location.');
+        }
+    };
 
     return (
         <AuthenticatedLayout header="Attendance">
             <Head title="Attendance" />
             <div className="space-y-6">
-                {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
                 {Object.keys(errors).length > 0 && <div className="ta-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{Object.values(errors)[0]}</div>}
 
                 <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -33,7 +70,7 @@ export default function AttendanceIndex({ logs, staffProfiles }) {
                 </section>
 
                 <section className="grid gap-4 md:grid-cols-2">
-                    <form onSubmit={(e) => { e.preventDefault(); clockInForm.post(route('attendance.clock-in')); }} className="ta-card space-y-3 p-5">
+                    <form onSubmit={submitClockIn} className="ta-card space-y-3 p-5">
                         <h3 className="text-sm font-semibold text-slate-700">Clock In</h3>
                         <label className="ta-field-label">Staff Profile</label>
                         {isStaff ? (
@@ -44,6 +81,7 @@ export default function AttendanceIndex({ logs, staffProfiles }) {
                                 {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         )}
+                        {clockInForm.errors.clock_in_latitude && <p className="text-xs text-red-600">{clockInForm.errors.clock_in_latitude}</p>}
                         <button className="ta-btn-primary w-full" disabled={clockInForm.processing}>Clock In</button>
                     </form>
 
@@ -73,6 +111,7 @@ export default function AttendanceIndex({ logs, staffProfiles }) {
                                     <th className="px-5 py-3">Date</th>
                                     <th className="px-5 py-3">Staff</th>
                                     <th className="px-5 py-3">In</th>
+                                    <th className="px-5 py-3">Location</th>
                                     <th className="px-5 py-3">Out</th>
                                     <th className="px-5 py-3">Late</th>
                                 </tr>
@@ -80,7 +119,7 @@ export default function AttendanceIndex({ logs, staffProfiles }) {
                             <tbody>
                                 {logs.length === 0 && (
                                     <tr>
-                                        <td className="px-5 py-4 text-slate-500" colSpan="5">No attendance records available.</td>
+                                        <td className="px-5 py-4 text-slate-500" colSpan="6">No attendance records available.</td>
                                     </tr>
                                 )}
                                 {logs.map((l) => (
@@ -88,6 +127,13 @@ export default function AttendanceIndex({ logs, staffProfiles }) {
                                         <td className="px-5 py-3 text-slate-600">{l.attendance_date?.slice(0, 10)}</td>
                                         <td className="px-5 py-3 font-medium text-slate-700">{l.staff_name}</td>
                                         <td className="px-5 py-3 text-slate-600">{l.clock_in || '--:--'}</td>
+                                        <td className="px-5 py-3 text-slate-600">
+                                            {l.clock_in_location_url ? (
+                                                <a className="text-indigo-600 underline" href={l.clock_in_location_url} target="_blank" rel="noreferrer">View map</a>
+                                            ) : (
+                                                '--'
+                                            )}
+                                        </td>
                                         <td className="px-5 py-3 text-slate-600">{l.clock_out || '--:--'}</td>
                                         <td className="px-5 py-3 text-slate-600">{l.late_minutes || 0} min</td>
                                     </tr>

@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Role;
 use App\Models\StaffProfile;
+use App\Models\StaffSchedule;
 use App\Models\User;
 use App\Support\Audit;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -27,6 +29,7 @@ class StaffProfileController extends Controller
                     'employee_code' => $staff->employee_code,
                     'phone' => $staff->phone,
                     'skills' => $staff->skills ?? [],
+                    'hourly_rate' => $staff->hourly_rate !== null ? (float) $staff->hourly_rate : null,
                     'is_active' => $staff->is_active,
                     'user' => [
                         'id' => $staff->user?->id,
@@ -51,6 +54,7 @@ class StaffProfileController extends Controller
             'employee_code' => ['required', 'string', 'max:50', 'unique:staff_profiles,employee_code'],
             'phone' => ['nullable', 'string', 'max:30'],
             'skills' => ['nullable', 'string'],
+            'hourly_rate' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'is_active' => ['nullable', 'boolean'],
             'role_id' => ['required', 'exists:roles,id'],
         ]);
@@ -67,8 +71,31 @@ class StaffProfileController extends Controller
             'employee_code' => $data['employee_code'],
             'phone' => $data['phone'] ?? null,
             'skills' => $this->parseSkills($data['skills'] ?? ''),
+            'hourly_rate' => isset($data['hourly_rate']) && $data['hourly_rate'] !== '' && $data['hourly_rate'] !== null
+                ? $data['hourly_rate']
+                : null,
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
+
+        $monthStart = CarbonImmutable::now()->startOfMonth();
+        $monthEnd = CarbonImmutable::now()->endOfMonth();
+
+        for ($date = $monthStart; $date->lessThanOrEqualTo($monthEnd); $date = $date->addDay()) {
+            StaffSchedule::updateOrCreate(
+                [
+                    'staff_profile_id' => $profile->id,
+                    'schedule_date' => $date->toDateString(),
+                ],
+                [
+                    'start_time' => '10:00',
+                    'end_time' => '20:00',
+                    'break_start' => null,
+                    'break_end' => null,
+                    'is_day_off' => false,
+                    'notes' => 'Auto-assigned monthly default shift',
+                ],
+            );
+        }
 
         Audit::log($request->user()->id, 'staff.created', 'StaffProfile', $profile->id, [
             'user_id' => $user->id,
@@ -84,9 +111,10 @@ class StaffProfileController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email,' . $staff->user_id],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$staff->user_id],
             'phone' => ['nullable', 'string', 'max:30'],
             'skills' => ['nullable', 'string'],
+            'hourly_rate' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'is_active' => ['nullable', 'boolean'],
             'role_id' => ['required', 'exists:roles,id'],
         ]);
@@ -100,6 +128,9 @@ class StaffProfileController extends Controller
         $staff->update([
             'phone' => $data['phone'] ?? null,
             'skills' => $this->parseSkills($data['skills'] ?? ''),
+            'hourly_rate' => array_key_exists('hourly_rate', $data)
+                ? ($data['hourly_rate'] === '' || $data['hourly_rate'] === null ? null : $data['hourly_rate'])
+                : $staff->hourly_rate,
             'is_active' => (bool) ($data['is_active'] ?? false),
         ]);
 

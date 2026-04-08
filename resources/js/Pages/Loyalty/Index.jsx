@@ -4,12 +4,14 @@ import { useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, membershipCards, nfcLookupResult, customerPackages, giftCards, recentGiftTransactions, recentLedgers, rewards, recentRedemptions, settings }) {
+export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, membershipCards, nfcLookupResult, giftNfcLookupResult, customerPackages, giftCards, recentGiftTransactions, recentLedgers, rewards, recentRedemptions, appointmentsForRedeem, salonServices, settings }) {
     const { flash, auth } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_loyalty);
     const [editingTierId, setEditingTierId] = useState(null);
     const [editingCardTypeId, setEditingCardTypeId] = useState(null);
     const [editingRewardId, setEditingRewardId] = useState(null);
+    const [nfcBridgeStatus, setNfcBridgeStatus] = useState('');
+    const [nfcBridgeLoadingTarget, setNfcBridgeLoadingTarget] = useState(null);
 
     const createTierForm = useForm({ name: '', min_points: 0, discount_percent: 0, earn_multiplier: 1, is_active: true });
     const editTierForm = useForm({ name: '', min_points: 0, discount_percent: 0, earn_multiplier: 1, is_active: true });
@@ -21,12 +23,36 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
     const packageForm = useForm({ name: '', description: '', usage_limit: '', initial_value: '', validity_days: '', is_active: true });
     const assignPackageForm = useForm({ customer_id: '', service_package_id: '', notes: '' });
     const consumePackageForm = useForm({ customer_package_id: '', sessions_used: 0, value_used: 0, notes: '' });
-    const giftCardForm = useForm({ assigned_customer_id: '', initial_value: '', notes: '' });
-    const consumeGiftCardForm = useForm({ gift_card_id: '', amount: '', reason: '', notes: '' });
+    const giftCardForm = useForm({ assigned_customer_id: '', initial_value: '', nfc_uid: '', notes: '' });
+    const giftNfcLookupForm = useForm({ gift_nfc_uid: '' });
+    const giftNfcBindForm = useForm({ gift_card_id: '', nfc_uid: '', replace_existing: false });
+    const consumeGiftCardForm = useForm({ gift_card_id: '', appointment_id: '', amount: '', reason: '', notes: '' });
     const pointsForm = useForm({ customer_id: '', points_change: '', reason: '', reference: '', notes: '' });
-    const rewardForm = useForm({ name: '', description: '', points_cost: 50, stock_quantity: '', is_active: true });
-    const editRewardForm = useForm({ name: '', description: '', points_cost: 50, stock_quantity: '', is_active: true });
-    const redeemForm = useForm({ customer_id: '', loyalty_reward_id: '', quantity: 1 });
+    const rewardForm = useForm({
+        name: '',
+        description: '',
+        points_cost: 50,
+        stock_quantity: '',
+        max_units_per_redemption: '',
+        max_redemptions_per_calendar_month: '',
+        min_days_between_redemptions: '',
+        requires_appointment_id: false,
+        salon_service_ids: [],
+        is_active: true,
+    });
+    const editRewardForm = useForm({
+        name: '',
+        description: '',
+        points_cost: 50,
+        stock_quantity: '',
+        max_units_per_redemption: '',
+        max_redemptions_per_calendar_month: '',
+        min_days_between_redemptions: '',
+        requires_appointment_id: false,
+        salon_service_ids: [],
+        is_active: true,
+    });
+    const redeemForm = useForm({ customer_id: '', loyalty_reward_id: '', appointment_id: '', quantity: 1 });
     const bonusForm = useForm({ customer_id: '', bonus_type: 'referral' });
     const settingsForm = useForm({
         auto_earn_enabled: Boolean(settings?.auto_earn_enabled),
@@ -58,10 +84,33 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
             description: reward.description || '',
             points_cost: reward.points_cost,
             stock_quantity: reward.stock_quantity ?? '',
+            max_units_per_redemption: reward.max_units_per_redemption ?? '',
+            max_redemptions_per_calendar_month: reward.max_redemptions_per_calendar_month ?? '',
+            min_days_between_redemptions: reward.min_days_between_redemptions ?? '',
+            requires_appointment_id: Boolean(reward.requires_appointment_id),
+            salon_service_ids: (reward.allowed_salon_services || []).map((s) => s.id),
             is_active: Boolean(reward.is_active),
         });
         editRewardForm.clearErrors();
     };
+
+    const selectedRedeemReward = rewards.find((r) => String(r.id) === String(redeemForm.data.loyalty_reward_id));
+    const redeemQuantityMax = Math.min(20, selectedRedeemReward?.max_units_per_redemption ?? 20);
+    const redeemAppointments = (appointmentsForRedeem || []).filter((a) => String(a.customer_id) === String(redeemForm.data.customer_id));
+    const allowedServiceIdsForRedeem = (selectedRedeemReward?.allowed_salon_services || []).map((s) => s.id);
+    const filteredRedeemAppointments =
+        allowedServiceIdsForRedeem.length > 0
+            ? redeemAppointments.filter((a) => allowedServiceIdsForRedeem.includes(a.service_id))
+            : redeemAppointments;
+
+    const selectedConsumeGiftCard = giftCards.find((c) => String(c.id) === String(consumeGiftCardForm.data.gift_card_id));
+    const giftConsumeAppointments = (appointmentsForRedeem || []).filter((a) => {
+        if (!selectedConsumeGiftCard?.assigned_customer_id) {
+            return true;
+        }
+
+        return String(a.customer_id) === String(selectedConsumeGiftCard.assigned_customer_id);
+    });
 
     const startEditCardType = (cardType) => {
         setEditingCardTypeId(cardType.id);
@@ -78,12 +127,70 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
         editCardTypeForm.clearErrors();
     };
 
+    const setNfcUidForTarget = (target, uid) => {
+        if (target === 'assign') {
+            assignCardForm.setData('nfc_uid', uid);
+            return;
+        }
+
+        if (target === 'lookup') {
+            nfcLookupForm.setData('nfc_uid', uid);
+            return;
+        }
+
+        if (target === 'bind') {
+            nfcBindForm.setData('nfc_uid', uid);
+            return;
+        }
+
+        if (target === 'gift_issue') {
+            giftCardForm.setData('nfc_uid', uid);
+            return;
+        }
+
+        if (target === 'gift_lookup') {
+            giftNfcLookupForm.setData('gift_nfc_uid', uid);
+            return;
+        }
+
+        if (target === 'gift_bind') {
+            giftNfcBindForm.setData('nfc_uid', uid);
+        }
+    };
+
+    const readUidFromBridge = async (target) => {
+        setNfcBridgeLoadingTarget(target);
+        setNfcBridgeStatus('Reading NFC UID from local bridge...');
+
+        try {
+            const response = await fetch('http://127.0.0.1:35791/uid?consume=1');
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload?.uid) {
+                throw new Error(payload?.error || 'No UID available. Tap the card and try again.');
+            }
+
+            const uid = String(payload.uid).trim().toUpperCase();
+            setNfcUidForTarget(target, uid);
+            setNfcBridgeStatus(`Captured UID ${uid}${payload?.reader ? ` (${payload.reader})` : ''}.`);
+        } catch (error) {
+            const message = String(error?.message || '');
+            if (message.toLowerCase().includes('failed to fetch')) {
+                setNfcBridgeStatus('NFC bridge is not reachable. Start local bridge on http://127.0.0.1:35791.');
+            } else {
+                setNfcBridgeStatus(message || 'Unable to read UID from NFC bridge.');
+            }
+        } finally {
+            setNfcBridgeLoadingTarget(null);
+        }
+    };
+
     return (
         <AuthenticatedLayout header="Loyalty Program">
             <Head title="Loyalty" />
 
             <div className="space-y-6">
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
+                {nfcBridgeStatus && <div className="ta-card border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">{nfcBridgeStatus}</div>}
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Auto Earn Rules</h3>
@@ -189,6 +296,7 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
                         <div><label className="ta-field-label">Card Type</label><select className="ta-input" value={assignCardForm.data.membership_card_type_id} onChange={(e) => assignCardForm.setData('membership_card_type_id', e.target.value)} required><option value="">Select card type</option>{cardTypes.filter((type) => type.is_active).map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}</select>{fieldError(assignCardForm, 'membership_card_type_id')}</div>
                         <div><label className="ta-field-label">Card Number</label><input className="ta-input" value={assignCardForm.data.card_number} onChange={(e) => assignCardForm.setData('card_number', e.target.value)} placeholder="Auto if blank" />{fieldError(assignCardForm, 'card_number')}</div>
                         <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={assignCardForm.data.nfc_uid} onChange={(e) => assignCardForm.setData('nfc_uid', e.target.value)} />{fieldError(assignCardForm, 'nfc_uid')}</div>
+                        <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('assign')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'assign' ? 'Reading...' : 'Read UID'}</button>
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={assignCardForm.data.status} onChange={(e) => assignCardForm.setData('status', e.target.value)}><option value="active">active</option><option value="pending">pending</option><option value="inactive">inactive</option><option value="expired">expired</option></select>{fieldError(assignCardForm, 'status')}</div>
                         <button className="ta-btn-primary" disabled={assignCardForm.processing || !canManage}>Assign Card</button>
                         <div className="md:col-span-6"><label className="ta-field-label">Notes</label><input className="ta-input" value={assignCardForm.data.notes} onChange={(e) => assignCardForm.setData('notes', e.target.value)} placeholder="Optional assignment notes" />{fieldError(assignCardForm, 'notes')}</div>
@@ -198,7 +306,8 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">NFC Scan Lookup</h3>
                     <form onSubmit={(e) => { e.preventDefault(); nfcLookupForm.post(route('loyalty.cards.nfc-lookup')); }} className="grid gap-3 md:grid-cols-4">
-                        <div className="md:col-span-3"><label className="ta-field-label">NFC UID</label><input className="ta-input" value={nfcLookupForm.data.nfc_uid} onChange={(e) => nfcLookupForm.setData('nfc_uid', e.target.value)} placeholder="Paste or scan NFC UID" required />{fieldError(nfcLookupForm, 'nfc_uid')}</div>
+                        <div className="md:col-span-2"><label className="ta-field-label">NFC UID</label><input className="ta-input" value={nfcLookupForm.data.nfc_uid} onChange={(e) => nfcLookupForm.setData('nfc_uid', e.target.value)} placeholder="Paste or scan NFC UID" required />{fieldError(nfcLookupForm, 'nfc_uid')}</div>
+                        <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('lookup')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'lookup' ? 'Reading...' : 'Read UID'}</button>
                         <button className="ta-btn-primary" disabled={nfcLookupForm.processing || !canManage}>Lookup Card</button>
                     </form>
                     {nfcLookupResult && (
@@ -217,6 +326,7 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
                     <form onSubmit={(e) => { e.preventDefault(); nfcBindForm.post(route('loyalty.cards.nfc-bind'), { onSuccess: () => nfcBindForm.reset('nfc_uid', 'replace_existing') }); }} className="grid gap-3 md:grid-cols-4">
                         <div><label className="ta-field-label">Membership Card</label><select className="ta-input" value={nfcBindForm.data.customer_membership_card_id} onChange={(e) => nfcBindForm.setData('customer_membership_card_id', e.target.value)} required><option value="">Select card</option>{membershipCards.map((card) => <option key={card.id} value={card.id}>{card.customer_name} - {card.card_number || 'No number'} ({card.card_type_name})</option>)}</select>{fieldError(nfcBindForm, 'customer_membership_card_id')}</div>
                         <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={nfcBindForm.data.nfc_uid} onChange={(e) => nfcBindForm.setData('nfc_uid', e.target.value)} placeholder="Scan new UID" required />{fieldError(nfcBindForm, 'nfc_uid')}</div>
+                        <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('bind')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'bind' ? 'Reading...' : 'Read UID'}</button>
                         <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={nfcBindForm.data.replace_existing} onChange={(e) => nfcBindForm.setData('replace_existing', e.target.checked)} />Replace existing binding if UID is already linked</label>
                         <button className="ta-btn-primary" disabled={nfcBindForm.processing || !canManage}>Bind NFC UID</button>
                     </form>
@@ -287,9 +397,11 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Issue Gift Card</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); giftCardForm.post(route('loyalty.gift-cards.store'), { onSuccess: () => giftCardForm.reset('assigned_customer_id', 'initial_value', 'notes') }); }} className="grid gap-3 md:grid-cols-4">
+                    <form onSubmit={(e) => { e.preventDefault(); giftCardForm.post(route('loyalty.gift-cards.store'), { onSuccess: () => giftCardForm.reset('assigned_customer_id', 'initial_value', 'nfc_uid', 'notes') }); }} className="grid gap-3 md:grid-cols-6">
                         <div><label className="ta-field-label">Customer</label><select className="ta-input" value={giftCardForm.data.assigned_customer_id} onChange={(e) => giftCardForm.setData('assigned_customer_id', e.target.value)}><option value="">Unassigned</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select>{fieldError(giftCardForm, 'assigned_customer_id')}</div>
                         <div><label className="ta-field-label">Initial Value</label><input className="ta-input" type="number" min="0.01" step="0.01" value={giftCardForm.data.initial_value} onChange={(e) => giftCardForm.setData('initial_value', e.target.value)} required />{fieldError(giftCardForm, 'initial_value')}</div>
+                        <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={giftCardForm.data.nfc_uid} onChange={(e) => giftCardForm.setData('nfc_uid', e.target.value)} placeholder="Optional — physical NFC gift card" />{fieldError(giftCardForm, 'nfc_uid')}</div>
+                        <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('gift_issue')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'gift_issue' ? 'Reading...' : 'Read UID'}</button>
                         <div><label className="ta-field-label">Notes</label><input className="ta-input" value={giftCardForm.data.notes} onChange={(e) => giftCardForm.setData('notes', e.target.value)} />{fieldError(giftCardForm, 'notes')}</div>
                         <button className="ta-btn-primary" disabled={giftCardForm.processing || !canManage}>Issue Gift Card</button>
                     </form>
@@ -297,12 +409,50 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Consume Gift Card</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); consumeGiftCardForm.post(route('loyalty.gift-cards.consume', consumeGiftCardForm.data.gift_card_id), { onSuccess: () => consumeGiftCardForm.reset('amount', 'reason', 'notes') }); }} className="grid gap-3 md:grid-cols-5">
-                        <div><label className="ta-field-label">Gift Card</label><select className="ta-input" value={consumeGiftCardForm.data.gift_card_id} onChange={(e) => consumeGiftCardForm.setData('gift_card_id', e.target.value)} required><option value="">Select gift card</option>{giftCards.filter((card) => card.status === 'active').map((card) => <option key={card.id} value={card.id}>{card.code} ({card.remaining_value})</option>)}</select>{fieldError(consumeGiftCardForm, 'gift_card_id')}</div>
+                    <form onSubmit={(e) => { e.preventDefault(); consumeGiftCardForm.post(route('loyalty.gift-cards.consume', consumeGiftCardForm.data.gift_card_id), { onSuccess: () => consumeGiftCardForm.reset('amount', 'reason', 'notes', 'appointment_id') }); }} className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
+                        <div><label className="ta-field-label">Gift Card</label><select className="ta-input" value={consumeGiftCardForm.data.gift_card_id} onChange={(e) => { consumeGiftCardForm.setData('gift_card_id', e.target.value); consumeGiftCardForm.setData('appointment_id', ''); }} required><option value="">Select gift card</option>{giftCards.filter((card) => card.status === 'active').map((card) => <option key={card.id} value={card.id}>{card.code} ({card.remaining_value}){card.assigned_customer_id ? '' : ' — unassigned'}</option>)}</select>{fieldError(consumeGiftCardForm, 'gift_card_id')}</div>
+                        <div className="lg:col-span-2">
+                            <label className="ta-field-label">Link to visit (optional)</label>
+                            <select className="ta-input" value={consumeGiftCardForm.data.appointment_id} onChange={(e) => consumeGiftCardForm.setData('appointment_id', e.target.value)} disabled={!consumeGiftCardForm.data.gift_card_id}>
+                                <option value="">No visit link</option>
+                                {giftConsumeAppointments.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+                            </select>
+                            <p className="mt-1 text-xs text-slate-500">If set, completing that visit will not auto-earn loyalty points (gift card payment).</p>
+                            {fieldError(consumeGiftCardForm, 'appointment_id')}
+                        </div>
                         <div><label className="ta-field-label">Amount</label><input className="ta-input" type="number" min="0.01" step="0.01" value={consumeGiftCardForm.data.amount} onChange={(e) => consumeGiftCardForm.setData('amount', e.target.value)} required />{fieldError(consumeGiftCardForm, 'amount')}</div>
                         <div><label className="ta-field-label">Reason</label><input className="ta-input" value={consumeGiftCardForm.data.reason} onChange={(e) => consumeGiftCardForm.setData('reason', e.target.value)} required />{fieldError(consumeGiftCardForm, 'reason')}</div>
                         <div><label className="ta-field-label">Notes</label><input className="ta-input" value={consumeGiftCardForm.data.notes} onChange={(e) => consumeGiftCardForm.setData('notes', e.target.value)} />{fieldError(consumeGiftCardForm, 'notes')}</div>
-                        <button className="ta-btn-primary" disabled={consumeGiftCardForm.processing || !canManage || !consumeGiftCardForm.data.gift_card_id}>Consume Gift Card</button>
+                        <button className="ta-btn-primary lg:col-span-6" disabled={consumeGiftCardForm.processing || !canManage || !consumeGiftCardForm.data.gift_card_id}>Consume Gift Card</button>
+                    </form>
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Gift Card NFC Scan Lookup</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); giftNfcLookupForm.post(route('loyalty.gift-cards.nfc-lookup')); }} className="grid gap-3 md:grid-cols-4">
+                        <div className="md:col-span-2"><label className="ta-field-label">NFC UID</label><input className="ta-input" value={giftNfcLookupForm.data.gift_nfc_uid} onChange={(e) => giftNfcLookupForm.setData('gift_nfc_uid', e.target.value)} placeholder="Paste or scan NFC UID" required />{fieldError(giftNfcLookupForm, 'gift_nfc_uid')}</div>
+                        <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('gift_lookup')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'gift_lookup' ? 'Reading...' : 'Read UID'}</button>
+                        <button className="ta-btn-primary" disabled={giftNfcLookupForm.processing || !canManage}>Lookup Gift Card</button>
+                    </form>
+                    {giftNfcLookupResult && (
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                            <div className="font-semibold text-slate-700">{giftNfcLookupResult.code}</div>
+                            <div className="mt-1 text-slate-600">Remaining: {giftNfcLookupResult.remaining_value} ({giftNfcLookupResult.status})</div>
+                            <div className="mt-1 text-slate-600">Customer: {giftNfcLookupResult.customer_name || 'Unassigned'}</div>
+                            <div className="mt-1 text-slate-600">Phone: {giftNfcLookupResult.customer_phone || 'N/A'}</div>
+                            <div className="mt-1 text-slate-600">NFC UID: {giftNfcLookupResult.nfc_uid}</div>
+                        </div>
+                    )}
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Bind / Replace Gift Card NFC UID</h3>
+                    <form onSubmit={(e) => { e.preventDefault(); giftNfcBindForm.post(route('loyalty.gift-cards.nfc-bind'), { onSuccess: () => giftNfcBindForm.reset('nfc_uid', 'replace_existing') }); }} className="grid gap-3 md:grid-cols-4">
+                        <div><label className="ta-field-label">Gift Card</label><select className="ta-input" value={giftNfcBindForm.data.gift_card_id} onChange={(e) => giftNfcBindForm.setData('gift_card_id', e.target.value)} required><option value="">Select gift card</option>{giftCards.map((card) => <option key={card.id} value={card.id}>{card.code} ({card.remaining_value})</option>)}</select>{fieldError(giftNfcBindForm, 'gift_card_id')}</div>
+                        <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={giftNfcBindForm.data.nfc_uid} onChange={(e) => giftNfcBindForm.setData('nfc_uid', e.target.value)} placeholder="Scan new UID" required />{fieldError(giftNfcBindForm, 'nfc_uid')}</div>
+                        <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('gift_bind')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'gift_bind' ? 'Reading...' : 'Read UID'}</button>
+                        <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={giftNfcBindForm.data.replace_existing} onChange={(e) => giftNfcBindForm.setData('replace_existing', e.target.checked)} />Replace existing binding if UID is already linked to another gift card</label>
+                        <button className="ta-btn-primary" disabled={giftNfcBindForm.processing || !canManage}>Bind NFC UID</button>
                     </form>
                 </section>
 
@@ -310,8 +460,8 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
                     <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Gift Cards</h3></div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Code</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Initial</th><th className="px-5 py-3">Remaining</th><th className="px-5 py-3">Status</th></tr></thead>
-                            <tbody>{giftCards.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.code}</td><td className="px-5 py-3 text-slate-600">{card.customer_name || 'Unassigned'}</td><td className="px-5 py-3 text-slate-600">{card.initial_value}</td><td className="px-5 py-3 text-slate-600">{card.remaining_value}</td><td className="px-5 py-3 text-slate-600">{card.status}</td></tr>)}</tbody>
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Code</th><th className="px-5 py-3">NFC UID</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Initial</th><th className="px-5 py-3">Remaining</th><th className="px-5 py-3">Status</th></tr></thead>
+                            <tbody>{giftCards.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.code}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.customer_name || 'Unassigned'}</td><td className="px-5 py-3 text-slate-600">{card.initial_value}</td><td className="px-5 py-3 text-slate-600">{card.remaining_value}</td><td className="px-5 py-3 text-slate-600">{card.status}</td></tr>)}</tbody>
                         </table>
                     </div>
                 </section>
@@ -328,18 +478,44 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Reward Catalog</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); rewardForm.post(route('loyalty.rewards.store'), { onSuccess: () => rewardForm.reset('name', 'description') }); }} className="grid gap-3 md:grid-cols-5">
+                    <form onSubmit={(e) => { e.preventDefault(); rewardForm.post(route('loyalty.rewards.store'), { onSuccess: () => rewardForm.reset('name', 'description', 'max_units_per_redemption', 'max_redemptions_per_calendar_month', 'min_days_between_redemptions', 'salon_service_ids') }); }} className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
                         <div><label className="ta-field-label">Reward Name</label><input className="ta-input" placeholder="Reward name" value={rewardForm.data.name} onChange={(e) => rewardForm.setData('name', e.target.value)} required />{fieldError(rewardForm, 'name')}</div>
                         <div><label className="ta-field-label">Description</label><input className="ta-input" placeholder="Description" value={rewardForm.data.description} onChange={(e) => rewardForm.setData('description', e.target.value)} />{fieldError(rewardForm, 'description')}</div>
                         <div><label className="ta-field-label">Points Cost</label><input className="ta-input" type="number" min="1" placeholder="Points cost" value={rewardForm.data.points_cost} onChange={(e) => rewardForm.setData('points_cost', e.target.value)} required />{fieldError(rewardForm, 'points_cost')}</div>
                         <div><label className="ta-field-label">Stock</label><input className="ta-input" type="number" min="0" placeholder="Stock (optional)" value={rewardForm.data.stock_quantity ?? ''} onChange={(e) => rewardForm.setData('stock_quantity', e.target.value === '' ? null : e.target.value)} />{fieldError(rewardForm, 'stock_quantity')}</div>
-                        <button className="ta-btn-primary" disabled={rewardForm.processing || !canManage}>Add Reward</button>
+                        <div><label className="ta-field-label">Max units / redemption</label><input className="ta-input" type="number" min="1" max="20" placeholder="Default 20" value={rewardForm.data.max_units_per_redemption ?? ''} onChange={(e) => rewardForm.setData('max_units_per_redemption', e.target.value)} />{fieldError(rewardForm, 'max_units_per_redemption')}</div>
+                        <div><label className="ta-field-label">Max qty / calendar month</label><input className="ta-input" type="number" min="1" placeholder="Unlimited if empty" value={rewardForm.data.max_redemptions_per_calendar_month ?? ''} onChange={(e) => rewardForm.setData('max_redemptions_per_calendar_month', e.target.value)} />{fieldError(rewardForm, 'max_redemptions_per_calendar_month')}</div>
+                        <div><label className="ta-field-label">Min days between</label><input className="ta-input" type="number" min="1" placeholder="No cooldown if empty" value={rewardForm.data.min_days_between_redemptions ?? ''} onChange={(e) => rewardForm.setData('min_days_between_redemptions', e.target.value)} />{fieldError(rewardForm, 'min_days_between_redemptions')}</div>
+                        <label className="flex items-center text-sm text-slate-600 lg:col-span-2"><input type="checkbox" className="mr-2" checked={rewardForm.data.requires_appointment_id} onChange={(e) => rewardForm.setData('requires_appointment_id', e.target.checked)} />Require visit (appointment) to redeem — one redemption per appointment</label>
+                        <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={rewardForm.data.is_active} onChange={(e) => rewardForm.setData('is_active', e.target.checked)} />Active</label>
+                        <div className="md:col-span-3 lg:col-span-6">
+                            <label className="ta-field-label">Eligible services (optional)</label>
+                            <p className="mb-1 text-xs text-slate-500">If you pick any, staff must link redemption to a visit using one of these services (one redemption per visit).</p>
+                            <select
+                                multiple
+                                className="ta-input min-h-[120px] py-2"
+                                value={rewardForm.data.salon_service_ids.map(String)}
+                                onChange={(e) => {
+                                    const ids = Array.from(e.target.selectedOptions).map((o) => parseInt(o.value, 10));
+                                    rewardForm.setData('salon_service_ids', ids);
+                                }}
+                            >
+                                {(salonServices || []).map((svc) => (
+                                    <option key={svc.id} value={svc.id}>
+                                        {svc.name}
+                                        {svc.category ? ` (${svc.category})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            {fieldError(rewardForm, 'salon_service_ids')}
+                        </div>
+                        <button className="ta-btn-primary md:col-span-2 lg:col-span-6" disabled={rewardForm.processing || !canManage}>Add Reward</button>
                     </form>
 
                     <div className="mt-4 overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Reward</th><th className="px-4 py-2">Points</th><th className="px-4 py-2">Stock</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Actions</th></tr></thead>
-                            <tbody>{rewards.map((reward) => <tr key={reward.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{reward.name}</td><td className="px-4 py-2 text-slate-600">{reward.points_cost}</td><td className="px-4 py-2 text-slate-600">{reward.stock_quantity ?? 'Unlimited'}</td><td className="px-4 py-2"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${reward.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{reward.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-4 py-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700" onClick={() => startEditReward(reward)}>Edit</button></td></tr>)}</tbody>
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Reward</th><th className="px-4 py-2">Points</th><th className="px-4 py-2">Rules</th><th className="px-4 py-2">Stock</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Actions</th></tr></thead>
+                            <tbody>{rewards.map((reward) => <tr key={reward.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{reward.name}</td><td className="px-4 py-2 text-slate-600">{reward.points_cost}</td><td className="px-4 py-2 text-xs text-slate-600"><div>Max/redeem: {reward.max_units_per_redemption ?? '20'}</div><div>Max/mo: {reward.max_redemptions_per_calendar_month ?? '—'}</div><div>Gap: {reward.min_days_between_redemptions != null ? `${reward.min_days_between_redemptions}d` : '—'}</div>{reward.requires_appointment_id ? <div className="mt-0.5 font-medium text-amber-700">Per visit</div> : null}{(reward.allowed_salon_services || []).length ? <div className="mt-0.5 text-sky-800">Services: {(reward.allowed_salon_services || []).map((s) => s.name).join(', ')}</div> : null}</td><td className="px-4 py-2 text-slate-600">{reward.stock_quantity ?? 'Unlimited'}</td><td className="px-4 py-2"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${reward.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{reward.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-4 py-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700" onClick={() => startEditReward(reward)}>Edit</button></td></tr>)}</tbody>
                         </table>
                     </div>
                 </section>
@@ -347,24 +523,49 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
                 {editingRewardId && (
                     <section className="ta-card p-5">
                         <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Reward #{editingRewardId}</h3>
-                        <form onSubmit={(e) => { e.preventDefault(); editRewardForm.put(route('loyalty.rewards.update', editingRewardId), { onSuccess: () => setEditingRewardId(null) }); }} className="grid gap-3 md:grid-cols-5">
+                        <form onSubmit={(e) => { e.preventDefault(); editRewardForm.put(route('loyalty.rewards.update', editingRewardId), { onSuccess: () => setEditingRewardId(null) }); }} className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
                             <div><label className="ta-field-label">Name</label><input className="ta-input" value={editRewardForm.data.name} onChange={(e) => editRewardForm.setData('name', e.target.value)} required />{fieldError(editRewardForm, 'name')}</div>
                             <div><label className="ta-field-label">Description</label><input className="ta-input" value={editRewardForm.data.description} onChange={(e) => editRewardForm.setData('description', e.target.value)} />{fieldError(editRewardForm, 'description')}</div>
                             <div><label className="ta-field-label">Points Cost</label><input className="ta-input" type="number" min="1" value={editRewardForm.data.points_cost} onChange={(e) => editRewardForm.setData('points_cost', e.target.value)} required />{fieldError(editRewardForm, 'points_cost')}</div>
                             <div><label className="ta-field-label">Stock Quantity</label><input className="ta-input" type="number" min="0" value={editRewardForm.data.stock_quantity ?? ''} onChange={(e) => editRewardForm.setData('stock_quantity', e.target.value === '' ? null : e.target.value)} />{fieldError(editRewardForm, 'stock_quantity')}</div>
+                            <div><label className="ta-field-label">Max units / redemption</label><input className="ta-input" type="number" min="1" max="20" value={editRewardForm.data.max_units_per_redemption ?? ''} onChange={(e) => editRewardForm.setData('max_units_per_redemption', e.target.value)} />{fieldError(editRewardForm, 'max_units_per_redemption')}</div>
+                            <div><label className="ta-field-label">Max qty / calendar month</label><input className="ta-input" type="number" min="1" value={editRewardForm.data.max_redemptions_per_calendar_month ?? ''} onChange={(e) => editRewardForm.setData('max_redemptions_per_calendar_month', e.target.value)} />{fieldError(editRewardForm, 'max_redemptions_per_calendar_month')}</div>
+                            <div><label className="ta-field-label">Min days between</label><input className="ta-input" type="number" min="1" value={editRewardForm.data.min_days_between_redemptions ?? ''} onChange={(e) => editRewardForm.setData('min_days_between_redemptions', e.target.value)} />{fieldError(editRewardForm, 'min_days_between_redemptions')}</div>
+                            <label className="flex items-center text-sm text-slate-600 lg:col-span-2"><input type="checkbox" checked={editRewardForm.data.requires_appointment_id} onChange={(e) => editRewardForm.setData('requires_appointment_id', e.target.checked)} className="mr-2" />Require visit (appointment)</label>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editRewardForm.data.is_active} onChange={(e) => editRewardForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label></div>
-                            <div className="md:col-span-5 flex gap-2"><button className="ta-btn-primary" disabled={editRewardForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingRewardId(null)}>Cancel</button></div>
+                            <div className="md:col-span-6">
+                                <label className="ta-field-label">Eligible services (optional)</label>
+                                <select
+                                    multiple
+                                    className="ta-input min-h-[120px] py-2"
+                                    value={editRewardForm.data.salon_service_ids.map(String)}
+                                    onChange={(e) => {
+                                        const ids = Array.from(e.target.selectedOptions).map((o) => parseInt(o.value, 10));
+                                        editRewardForm.setData('salon_service_ids', ids);
+                                    }}
+                                >
+                                    {(salonServices || []).map((svc) => (
+                                        <option key={svc.id} value={svc.id}>
+                                            {svc.name}
+                                            {svc.category ? ` (${svc.category})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {fieldError(editRewardForm, 'salon_service_ids')}
+                            </div>
+                            <div className="md:col-span-6 flex gap-2"><button className="ta-btn-primary" disabled={editRewardForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingRewardId(null)}>Cancel</button></div>
                         </form>
                     </section>
                 )}
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Redeem Reward</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); redeemForm.post(route('loyalty.redeem'), { onSuccess: () => redeemForm.reset('quantity') }); }} className="grid gap-3 md:grid-cols-4">
-                        <div><label className="ta-field-label">Customer</label><select className="ta-input" value={redeemForm.data.customer_id} onChange={(e) => redeemForm.setData('customer_id', e.target.value)} required><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} ({customer.points} pts)</option>)}</select>{fieldError(redeemForm, 'customer_id')}</div>
-                        <div><label className="ta-field-label">Loyalty Reward</label><select className="ta-input" value={redeemForm.data.loyalty_reward_id} onChange={(e) => redeemForm.setData('loyalty_reward_id', e.target.value)} required><option value="">Select reward</option>{rewards.filter((r) => r.is_active).map((reward) => <option key={reward.id} value={reward.id}>{reward.name} ({reward.points_cost} pts)</option>)}</select>{fieldError(redeemForm, 'loyalty_reward_id')}</div>
-                        <div><label className="ta-field-label">Quantity</label><input className="ta-input" type="number" min="1" value={redeemForm.data.quantity} onChange={(e) => redeemForm.setData('quantity', e.target.value)} required />{fieldError(redeemForm, 'quantity')}</div>
-                        <button className="ta-btn-primary" disabled={redeemForm.processing || !canManage}>Redeem</button>
+                    <form onSubmit={(e) => { e.preventDefault(); redeemForm.post(route('loyalty.redeem'), { onSuccess: () => redeemForm.reset('quantity', 'appointment_id') }); }} className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+                        <div><label className="ta-field-label">Customer</label><select className="ta-input" value={redeemForm.data.customer_id} onChange={(e) => { redeemForm.setData('customer_id', e.target.value); redeemForm.setData('appointment_id', ''); }} required><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} ({customer.points} pts)</option>)}</select>{fieldError(redeemForm, 'customer_id')}</div>
+                        <div><label className="ta-field-label">Loyalty Reward</label><select className="ta-input" value={redeemForm.data.loyalty_reward_id} onChange={(e) => { redeemForm.setData('loyalty_reward_id', e.target.value); redeemForm.setData('appointment_id', ''); }} required><option value="">Select reward</option>{rewards.filter((r) => r.is_active).map((reward) => <option key={reward.id} value={reward.id}>{reward.name} ({reward.points_cost} pts)</option>)}</select>{fieldError(redeemForm, 'loyalty_reward_id')}</div>
+                        <div><label className="ta-field-label">Visit {(selectedRedeemReward?.requires_appointment_id || allowedServiceIdsForRedeem.length > 0) ? <span className="text-red-600">*</span> : <span className="text-slate-400">(optional)</span>}</label><select className="ta-input" value={redeemForm.data.appointment_id} onChange={(e) => redeemForm.setData('appointment_id', e.target.value)} disabled={!redeemForm.data.customer_id}><option value="">{redeemForm.data.customer_id ? 'Select appointment (last 120 days)' : 'Select customer first'}</option>{filteredRedeemAppointments.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</select>{fieldError(redeemForm, 'appointment_id')}</div>
+                        <div><label className="ta-field-label">Quantity</label><input className="ta-input" type="number" min="1" max={redeemQuantityMax} value={redeemForm.data.quantity} onChange={(e) => redeemForm.setData('quantity', e.target.value)} required />{fieldError(redeemForm, 'quantity')}</div>
+                        <button className="ta-btn-primary self-end" disabled={redeemForm.processing || !canManage}>Redeem</button>
                     </form>
                 </section>
 
@@ -392,8 +593,8 @@ export default function LoyaltyIndex({ tiers, cardTypes, packages, customers, me
                     <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Recent Redemptions</h3></div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Reward</th><th className="px-5 py-3">Points</th><th className="px-5 py-3">By</th></tr></thead>
-                            <tbody>{recentRedemptions.map((row) => <tr key={row.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{new Date(row.created_at).toLocaleString()}</td><td className="px-5 py-3 text-slate-700">{row.customer_name}</td><td className="px-5 py-3 text-slate-600">{row.reward_name}</td><td className="px-5 py-3 font-semibold text-red-600">-{row.points_spent}</td><td className="px-5 py-3 text-slate-600">{row.redeemed_by || '-'}</td></tr>)}</tbody>
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Reward</th><th className="px-5 py-3">Visit</th><th className="px-5 py-3">Points</th><th className="px-5 py-3">By</th></tr></thead>
+                            <tbody>{recentRedemptions.map((row) => <tr key={row.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{new Date(row.created_at).toLocaleString()}</td><td className="px-5 py-3 text-slate-700">{row.customer_name}</td><td className="px-5 py-3 text-slate-600">{row.reward_name}{row.quantity > 1 ? ` ×${row.quantity}` : ''}</td><td className="px-5 py-3 text-slate-600">{row.visit_label || '—'}</td><td className="px-5 py-3 font-semibold text-red-600">-{row.points_spent}</td><td className="px-5 py-3 text-slate-600">{row.redeemed_by || '-'}</td></tr>)}</tbody>
                         </table>
                     </div>
                 </section>

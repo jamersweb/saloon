@@ -13,6 +13,7 @@ class GiftCard extends Model
 
     protected $fillable = [
         'code',
+        'nfc_uid',
         'assigned_customer_id',
         'initial_value',
         'remaining_value',

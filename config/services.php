@@ -41,6 +41,7 @@ return [
         'version' => env('WHATSAPP_API_VERSION', 'v23.0'),
         'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
         'token' => env('WHATSAPP_ACCESS_TOKEN'),
+        'booking_alert_recipients' => array_values(array_filter(array_map('trim', explode(',', (string) env('BOOKING_ALERT_WHATSAPP_RECIPIENTS', ''))))),
     ],
 
 ];

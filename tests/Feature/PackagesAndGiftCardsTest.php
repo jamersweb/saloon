@@ -3,7 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Customer;
-use App\Models\GiftCard;
+use App\Models\CustomerMembershipCard;
+use App\Models\MembershipCardType;
 use App\Models\Role;
 use App\Models\ServicePackage;
 use App\Models\User;
@@ -111,5 +112,78 @@ class PackagesAndGiftCardsTest extends TestCase
             'initial_value' => 150,
             'remaining_value' => 150,
         ]);
+    }
+
+    public function test_gift_card_can_be_issued_with_nfc_uid_and_looked_up(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.gift-cards.store'), [
+                'initial_value' => 300,
+                'nfc_uid' => '  abcd12  ',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('gift_cards', [
+            'nfc_uid' => 'ABCD12',
+            'initial_value' => 300,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.gift-cards.nfc-lookup'), [
+                'gift_nfc_uid' => 'ABCD12',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('gift_nfc_lookup.code');
+    }
+
+    public function test_gift_card_nfc_bind_rejects_uid_linked_to_membership_card(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-GIFT-NFC',
+            'name' => 'Gift NFC Customer',
+            'phone' => '5556060606',
+            'is_active' => true,
+        ]);
+
+        $giftCard = app(GiftCardService::class)->issue(null, 100.00);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Test Card',
+            'slug' => 'test-card',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'is_active' => true,
+        ]);
+
+        CustomerMembershipCard::create([
+            'customer_id' => $customer->id,
+            'membership_card_type_id' => $cardType->id,
+            'card_number' => 'MEM-1',
+            'nfc_uid' => 'SHAREDUID',
+            'status' => 'active',
+            'issued_at' => now(),
+            'activated_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.gift-cards.nfc-bind'), [
+                'gift_card_id' => $giftCard->id,
+                'nfc_uid' => 'SHAREDUID',
+            ])
+            ->assertSessionHasErrors('nfc_uid');
     }
 }

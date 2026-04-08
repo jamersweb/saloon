@@ -82,4 +82,9 @@ class Customer extends Model
     {
         return $this->hasMany(CustomerPortalToken::class);
     }
+
+    public function taxInvoices(): HasMany
+    {
+        return $this->hasMany(TaxInvoice::class);
+    }
 }

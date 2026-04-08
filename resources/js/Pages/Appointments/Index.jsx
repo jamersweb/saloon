@@ -1,10 +1,11 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import Modal from '@/Components/Modal';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
 const statusLabels = { pending: 'Pending', confirmed: 'Confirm', in_progress: 'Start', completed: 'Complete', cancelled: 'Cancel', no_show: 'No-show' };
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
+const isSeedReferenceNote = (value) => /^SEED-APPT-\d{12}-\d+$/i.test(String(value || '').trim());
 const pad2 = (value) => String(value).padStart(2, '0');
 const toDateTimeLocal = (value) => {
     if (!value) return '';
@@ -28,29 +29,28 @@ const normalizeToInterval = (value, intervalMinutes) => {
     return toDateTimeLocal(date);
 };
 
-export default function AppointmentsIndex({ appointments, services, staffProfiles, inventoryItems, statusFilter, bookingRules }) {
+export default function AppointmentsIndex({ appointments, services, staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart }) {
     const { flash, auth } = usePage().props;
-    const canManageRules = Boolean(auth?.permissions?.can_manage_schedules);
+    const canManageFinance = Boolean(auth?.permissions?.can_manage_finance);
     const [editingId, setEditingId] = useState(null);
     const [startServiceId, setStartServiceId] = useState(null);
     const [completeServiceId, setCompleteServiceId] = useState(null);
     const [createEndManuallySet, setCreateEndManuallySet] = useState(false);
     const [editEndManuallySet, setEditEndManuallySet] = useState(true);
-    const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 15));
+    const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
 
-    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
     const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
     const startForm = useForm({ intake_notes: '', service_notes: '', before_photo: null });
-    const completeForm = useForm({ service_report: '', completion_notes: '', materials_used: '', after_photo: null, products: [{ inventory_item_id: '', quantity: 1, notes: '' }] });
-    const rulesForm = useForm({
-        slot_interval_minutes: bookingRules?.slot_interval_minutes ?? 15,
-        min_advance_minutes: bookingRules?.min_advance_minutes ?? 30,
-        max_advance_days: bookingRules?.max_advance_days ?? 60,
-        public_requires_approval: Boolean(bookingRules?.public_requires_approval ?? true),
-        allow_customer_cancellation: Boolean(bookingRules?.allow_customer_cancellation ?? true),
-        cancellation_cutoff_hours: bookingRules?.cancellation_cutoff_hours ?? 12,
+    const completeForm = useForm({
+        service_report: '',
+        completion_notes: '',
+        materials_used: '',
+        exclude_loyalty_earn: false,
+        create_tax_invoice_draft: false,
+        after_photo: null,
+        products: [{ inventory_item_id: '', quantity: 1, notes: '' }],
     });
-
     const calculateSuggestedEnd = (startValue, serviceId) => {
         if (!startValue || !serviceId) return '';
 
@@ -125,7 +125,7 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
         setCompleteServiceId(null);
         startForm.setData({
             intake_notes: appt.service_execution?.intake_notes || '',
-            service_notes: appt.service_execution?.service_notes || appt.notes || '',
+            service_notes: appt.service_execution?.service_notes || (isSeedReferenceNote(appt.notes) ? '' : (appt.notes || '')),
             before_photo: null,
         });
         startForm.clearErrors();
@@ -138,6 +138,8 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
             service_report: appt.notes || '',
             completion_notes: appt.service_execution?.completion_notes || '',
             materials_used: appt.service_execution?.materials_used || '',
+            exclude_loyalty_earn: false,
+            create_tax_invoice_draft: false,
             after_photo: null,
             products: appt.product_usages?.length
                 ? appt.product_usages.map((usage) => ({
@@ -164,24 +166,17 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
         <AuthenticatedLayout header="Appointments">
             <Head title="Appointments" />
             <div className="space-y-6">
-                {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
-
-                <section className="ta-card p-5">
-                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Booking Rules</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); rulesForm.patch(route('booking-rules.update')); }} className="grid gap-3 md:grid-cols-3">
-                        <div><label className="ta-field-label">Slot Interval Minutes</label><input className="ta-input" type="number" min="5" max="120" value={rulesForm.data.slot_interval_minutes} onChange={(e) => rulesForm.setData('slot_interval_minutes', e.target.value)} required />{fieldError(rulesForm, 'slot_interval_minutes')}</div>
-                        <div><label className="ta-field-label">Min Advance Minutes</label><input className="ta-input" type="number" min="0" max="10080" value={rulesForm.data.min_advance_minutes} onChange={(e) => rulesForm.setData('min_advance_minutes', e.target.value)} required />{fieldError(rulesForm, 'min_advance_minutes')}</div>
-                        <div><label className="ta-field-label">Max Advance Days</label><input className="ta-input" type="number" min="1" max="365" value={rulesForm.data.max_advance_days} onChange={(e) => rulesForm.setData('max_advance_days', e.target.value)} required />{fieldError(rulesForm, 'max_advance_days')}</div>
-                        <div><label className="ta-field-label">Cancellation Cutoff Hours</label><input className="ta-input" type="number" min="0" max="168" value={rulesForm.data.cancellation_cutoff_hours} onChange={(e) => rulesForm.setData('cancellation_cutoff_hours', e.target.value)} required />{fieldError(rulesForm, 'cancellation_cutoff_hours')}</div>
-                        <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={rulesForm.data.public_requires_approval} onChange={(e) => rulesForm.setData('public_requires_approval', e.target.checked)} />Public booking requires approval</label>
-                        <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={rulesForm.data.allow_customer_cancellation} onChange={(e) => rulesForm.setData('allow_customer_cancellation', e.target.checked)} />Allow customer cancellation</label>
-                        <button className="ta-btn-primary md:col-span-3" disabled={rulesForm.processing || !canManageRules}>Save Booking Rules</button>
-                    </form>
-                </section>
-
+                {flash?.created_tax_invoice_id ? (
+                    <div className="ta-card flex flex-wrap items-center justify-between gap-3 border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
+                        <span>Tax invoice draft created for this visit.</span>
+                        <Link href={route('finance.invoices.show', flash.created_tax_invoice_id)} className="font-semibold text-indigo-700 underline">
+                            Open draft invoice
+                        </Link>
+                    </div>
+                ) : null}
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Appointment</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('appointments.store'), { onSuccess: () => { createForm.reset(); setCreateEndManuallySet(false); } }); }} className="grid gap-3 md:grid-cols-4">
+                    <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('appointments.store'), { onSuccess: () => { createForm.reset(); createForm.setData('scheduled_start', defaultStart || ''); setCreateEndManuallySet(false); } }); }} className="grid gap-3 md:grid-cols-4">
                         <div><label className="ta-field-label">Customer Name</label><input className="ta-input" value={createForm.data.customer_name} onChange={(e) => createForm.setData('customer_name', e.target.value)} required />{fieldError(createForm, 'customer_name')}</div>
                         <div><label className="ta-field-label">Phone</label><input className="ta-input" value={createForm.data.customer_phone} onChange={(e) => createForm.setData('customer_phone', e.target.value)} required />{fieldError(createForm, 'customer_phone')}</div>
                         <div><label className="ta-field-label">Email</label><input className="ta-input" value={createForm.data.customer_email} onChange={(e) => createForm.setData('customer_email', e.target.value)} />{fieldError(createForm, 'customer_email')}</div>
@@ -196,11 +191,24 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
                 </section>
 
                 <section className="ta-card p-4">
-                    <label className="ta-field-label mr-2">Filter Status</label>
-                    <select className="ta-input inline-block w-auto min-w-[180px]" value={statusFilter || ''} onChange={(e) => changeFilter(e.target.value)}>
-                        <option value="">All</option>
-                        {Object.keys(statusLabels).map((status) => <option key={status} value={status}>{status}</option>)}
-                    </select>
+                    <label className="ta-field-label mb-2 block">Filter Status</label>
+                    <div className="flex flex-wrap gap-2">
+                        {[
+                            { value: '', label: 'All' },
+                            { value: 'pending', label: 'Pending' },
+                            { value: 'confirmed', label: 'Confirmed' },
+                            { value: 'upcoming', label: 'Upcoming' },
+                        ].map((filter) => (
+                            <button
+                                key={filter.value || 'all'}
+                                type="button"
+                                onClick={() => changeFilter(filter.value)}
+                                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${String(statusFilter || '') === String(filter.value) ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                            >
+                                {filter.label}
+                            </button>
+                        ))}
+                    </div>
                 </section>
 
                 <section className="ta-card overflow-hidden">
@@ -336,6 +344,31 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
                             <input className="ta-input" type="file" accept="image/*" onChange={(e) => completeForm.setData('after_photo', e.target.files?.[0] || null)} />
                             {fieldError(completeForm, 'after_photo')}
                         </div>
+                        <div className="md:col-span-2">
+                            <label className="flex items-center text-sm text-slate-700">
+                                <input type="checkbox" className="mr-2 rounded border-slate-300" checked={completeForm.data.exclude_loyalty_earn} onChange={(e) => completeForm.setData('exclude_loyalty_earn', e.target.checked)} />
+                                Paid with gift card / no loyalty points for this visit
+                            </label>
+                            <p className="mt-1 text-xs text-slate-500">Matches policy when the client pays using gift card balance. You can also link gift card usage to this visit from Loyalty → Consume Gift Card.</p>
+                            {fieldError(completeForm, 'exclude_loyalty_earn')}
+                        </div>
+                        {canManageFinance ? (
+                            <div className="md:col-span-2">
+                                <label className="flex items-center text-sm text-slate-700">
+                                    <input
+                                        type="checkbox"
+                                        className="mr-2 rounded border-slate-300"
+                                        checked={completeForm.data.create_tax_invoice_draft}
+                                        onChange={(e) => completeForm.setData('create_tax_invoice_draft', e.target.checked)}
+                                    />
+                                    Create tax invoice draft from this visit
+                                </label>
+                                <p className="mt-1 text-xs text-slate-500">
+                                    Adds one line using the booked service price (plus VAT). Finalize and print or email the receipt under Finance → Tax invoices.
+                                </p>
+                                {fieldError(completeForm, 'create_tax_invoice_draft')}
+                            </div>
+                        ) : null}
                         <div className="md:col-span-2 space-y-3 rounded-xl border border-slate-200 p-4">
                             <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-semibold text-slate-700">Products Used</h4>

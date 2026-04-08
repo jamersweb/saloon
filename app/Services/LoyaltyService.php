@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Appointment;
 use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
+use App\Models\GiftCardTransaction;
 use App\Models\LoyaltyProgramSetting;
 use App\Models\LoyaltyTier;
 use Illuminate\Support\Facades\DB;
@@ -77,6 +78,17 @@ class LoyaltyService
             return false;
         }
 
+        if ($appointment->exclude_loyalty_earn) {
+            return false;
+        }
+
+        if (GiftCardTransaction::query()
+            ->where('appointment_id', $appointment->id)
+            ->where('amount_change', '<', 0)
+            ->exists()) {
+            return false;
+        }
+
         $settings = LoyaltyProgramSetting::current();
         if (! $settings->auto_earn_enabled) {
             return false;
@@ -84,18 +96,23 @@ class LoyaltyService
 
         $appointment->loadMissing(['service:id,name,price', 'customer:id,birthday']);
 
-        $spend = (float) ($appointment->service?->price ?? 0);
-        if ($spend < (float) $settings->minimum_spend) {
-            return false;
-        }
+        $grossSpend = (float) ($appointment->service?->price ?? 0);
 
         $currentAccount = CustomerLoyaltyAccount::query()
             ->where('customer_id', $appointment->customer_id)
-            ->with('tier:id,earn_multiplier')
+            ->with('tier:id,earn_multiplier,discount_percent')
             ->first();
         $multiplier = (float) ($currentAccount?->tier?->earn_multiplier ?? 1);
 
-        $rawPoints = ($spend * (float) $settings->points_per_currency * $multiplier) + (int) $settings->points_per_visit;
+        $netSpend = $this->netSpendAfterTierDiscount(
+            $grossSpend,
+            $currentAccount?->tier !== null ? (float) $currentAccount->tier->discount_percent : null
+        );
+        if ($netSpend < (float) $settings->minimum_spend) {
+            return false;
+        }
+
+        $rawPoints = ($netSpend * (float) $settings->points_per_currency * $multiplier) + (int) $settings->points_per_visit;
         $points = match ($settings->rounding_mode) {
             'ceil' => (int) ceil($rawPoints),
             'round' => (int) round($rawPoints),
@@ -113,7 +130,7 @@ class LoyaltyService
             return false;
         }
 
-        $reference = 'APPOINTMENT-' . $appointment->id;
+        $reference = 'APPOINTMENT-'.$appointment->id;
         $alreadyAwarded = CustomerLoyaltyLedger::query()
             ->where('customer_id', $appointment->customer_id)
             ->where('reason', 'Appointment completed')
@@ -124,16 +141,37 @@ class LoyaltyService
             return false;
         }
 
+        $discountPercent = (float) ($currentAccount?->tier?->discount_percent ?? 0);
+        $discountPercent = max(0, min(100, $discountPercent));
+        $earnNotes = $discountPercent > 0
+            ? sprintf(
+                'Auto-earned from completed appointment (gross %s, tier discount %s%%, net %s)',
+                $grossSpend,
+                $discountPercent,
+                $netSpend
+            )
+            : 'Auto-earned from completed appointment';
+
         $this->applyPoints(
             customerId: (int) $appointment->customer_id,
             pointsChange: $points,
             reason: 'Appointment completed',
             reference: $reference,
             createdBy: $createdBy,
-            notes: 'Auto-earned from completed appointment'
+            notes: $earnNotes
         );
 
         return true;
+    }
+
+    /**
+     * Eligible spend for earning points: list/catalog price minus the customer's current loyalty tier discount.
+     */
+    public function netSpendAfterTierDiscount(float $grossSpend, ?float $tierDiscountPercent = null): float
+    {
+        $pct = max(0, min(100, (float) ($tierDiscountPercent ?? 0)));
+
+        return round($grossSpend * (1 - $pct / 100), 2);
     }
 
     public function awardConfiguredBonus(int $customerId, string $bonusType, ?int $createdBy = null): bool
@@ -154,8 +192,8 @@ class LoyaltyService
         $this->applyPoints(
             customerId: $customerId,
             pointsChange: $points,
-            reason: ucfirst($bonusType) . ' bonus',
-            reference: strtoupper($bonusType) . '-BONUS',
+            reason: ucfirst($bonusType).' bonus',
+            reference: strtoupper($bonusType).'-BONUS',
             createdBy: $createdBy,
             notes: 'Configured bonus payout'
         );

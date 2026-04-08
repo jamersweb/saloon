@@ -31,7 +31,7 @@ class BookingRule extends Model
         return self::query()->firstOrCreate(
             ['id' => 1],
             [
-                'slot_interval_minutes' => 15,
+                'slot_interval_minutes' => 30,
                 'min_advance_minutes' => 30,
                 'max_advance_days' => 60,
                 'public_requires_approval' => true,
@@ -41,4 +41,3 @@ class BookingRule extends Model
         );
     }
 }
-

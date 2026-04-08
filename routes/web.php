@@ -7,6 +7,11 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerPortalController;
 use App\Http\Controllers\CrmAutomationController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExpenseEntryController;
+use App\Http\Controllers\FinanceDashboardController;
+use App\Http\Controllers\FinanceSettingController;
+use App\Http\Controllers\PayrollPeriodController;
+use App\Http\Controllers\TaxInvoiceController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LeaveRequestController;
@@ -110,6 +115,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/loyalty/packages/assign', [LoyaltyController::class, 'assignPackage'])->name('loyalty.packages.assign');
         Route::post('/loyalty/packages/{customerPackage}/consume', [LoyaltyController::class, 'consumePackage'])->name('loyalty.packages.consume');
         Route::post('/loyalty/gift-cards', [LoyaltyController::class, 'issueGiftCard'])->name('loyalty.gift-cards.store');
+        Route::post('/loyalty/gift-cards/nfc-lookup', [LoyaltyController::class, 'lookupGiftCardByNfc'])->name('loyalty.gift-cards.nfc-lookup');
+        Route::post('/loyalty/gift-cards/nfc-bind', [LoyaltyController::class, 'bindGiftCardNfc'])->name('loyalty.gift-cards.nfc-bind');
         Route::post('/loyalty/gift-cards/{giftCard}/consume', [LoyaltyController::class, 'consumeGiftCard'])->name('loyalty.gift-cards.consume');
         Route::post('/loyalty/ledger', [LoyaltyController::class, 'storeLedger'])->name('loyalty.ledger.store');
         Route::post('/loyalty/rewards', [LoyaltyController::class, 'storeReward'])->name('loyalty.rewards.store');
@@ -139,6 +146,39 @@ Route::middleware('auth')->group(function () {
         Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
         Route::get('/reports/export', [ReportController::class, 'export'])->name('reports.export');
         Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf'])->name('reports.export.pdf');
+
+        Route::prefix('finance')->name('finance.')->group(function () {
+            Route::get('/', [FinanceDashboardController::class, 'index'])->name('index');
+            Route::get('/export', [FinanceDashboardController::class, 'export'])->name('export');
+            Route::get('/settings', [FinanceSettingController::class, 'edit'])->name('settings.edit');
+            Route::patch('/settings', [FinanceSettingController::class, 'update'])->name('settings.update');
+
+            Route::get('/invoices', [TaxInvoiceController::class, 'index'])->name('invoices.index');
+            Route::get('/invoices/create', [TaxInvoiceController::class, 'create'])->name('invoices.create');
+            Route::post('/invoices', [TaxInvoiceController::class, 'store'])->name('invoices.store');
+            Route::get('/invoices/{invoice}', [TaxInvoiceController::class, 'show'])->name('invoices.show');
+            Route::put('/invoices/{invoice}', [TaxInvoiceController::class, 'update'])->name('invoices.update');
+            Route::delete('/invoices/{invoice}', [TaxInvoiceController::class, 'destroy'])->name('invoices.destroy');
+            Route::post('/invoices/{invoice}/finalize', [TaxInvoiceController::class, 'finalize'])->name('invoices.finalize');
+            Route::post('/invoices/{invoice}/void', [TaxInvoiceController::class, 'voidInvoice'])->name('invoices.void');
+            Route::post('/invoices/{invoice}/payments', [TaxInvoiceController::class, 'storePayment'])->name('invoices.payments.store');
+            Route::get('/invoices/{invoice}/pdf', [TaxInvoiceController::class, 'pdf'])->name('invoices.pdf');
+            Route::post('/invoices/{invoice}/email-receipt', [TaxInvoiceController::class, 'emailReceipt'])->name('invoices.email-receipt');
+
+            Route::get('/expenses', [ExpenseEntryController::class, 'index'])->name('expenses.index');
+            Route::post('/expenses', [ExpenseEntryController::class, 'store'])->name('expenses.store');
+            Route::put('/expenses/{expense}', [ExpenseEntryController::class, 'update'])->name('expenses.update');
+            Route::delete('/expenses/{expense}', [ExpenseEntryController::class, 'destroy'])->name('expenses.destroy');
+            Route::patch('/expenses/{expense}/mark-paid', [ExpenseEntryController::class, 'markPaid'])->name('expenses.mark-paid');
+
+            Route::get('/payroll', [PayrollPeriodController::class, 'index'])->name('payroll.index');
+            Route::post('/payroll', [PayrollPeriodController::class, 'store'])->name('payroll.store');
+            Route::get('/payroll/{payroll_period}', [PayrollPeriodController::class, 'show'])->name('payroll.show');
+            Route::post('/payroll/{payroll_period}/generate', [PayrollPeriodController::class, 'generate'])->name('payroll.generate');
+            Route::put('/payroll/{payroll_period}/lines/{line}', [PayrollPeriodController::class, 'updateLine'])->name('payroll.lines.update');
+            Route::patch('/payroll/{payroll_period}/lock', [PayrollPeriodController::class, 'lock'])->name('payroll.lock');
+            Route::patch('/payroll/{payroll_period}/mark-paid', [PayrollPeriodController::class, 'markPaid'])->name('payroll.mark-paid');
+        });
 
         Route::get('/roles', [RoleController::class, 'index'])->name('roles.index');
         Route::post('/roles', [RoleController::class, 'store'])->name('roles.store');

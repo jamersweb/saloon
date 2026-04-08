@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Appointment;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
@@ -14,8 +15,10 @@ use App\Models\LoyaltyRedemption;
 use App\Models\LoyaltyReward;
 use App\Models\LoyaltyTier;
 use App\Models\MembershipCardType;
+use App\Models\SalonService;
 use App\Models\ServicePackage;
 use App\Services\GiftCardService;
+use App\Services\LoyaltyRedemptionRulesService;
 use App\Services\LoyaltyService;
 use App\Services\MembershipCardService;
 use App\Services\PackageBalanceService;
@@ -56,6 +59,7 @@ class LoyaltyController extends Controller
                     'status' => $card->status,
                 ]),
             'nfcLookupResult' => $request->session()->get('nfc_lookup'),
+            'giftNfcLookupResult' => $request->session()->get('gift_nfc_lookup'),
             'customers' => Customer::query()
                 ->with(['loyaltyAccount.tier', 'membershipCards.type', 'packages.package', 'giftCards'])
                 ->orderBy('name')
@@ -108,10 +112,18 @@ class LoyaltyController extends Controller
                     'created_by' => $entry->createdBy?->name,
                     'created_at' => $entry->created_at,
                 ]),
-            'rewards' => LoyaltyReward::query()->orderByDesc('is_active')->orderBy('points_cost')->get(),
+            'rewards' => LoyaltyReward::query()
+                ->with('allowedSalonServices:id,name')
+                ->orderByDesc('is_active')
+                ->orderBy('points_cost')
+                ->get(),
+            'salonServices' => SalonService::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'category']),
             'settings' => LoyaltyProgramSetting::current(),
             'recentRedemptions' => LoyaltyRedemption::query()
-                ->with(['customer:id,name', 'reward:id,name', 'redeemedBy:id,name'])
+                ->with(['customer:id,name', 'reward:id,name', 'redeemedBy:id,name', 'appointment.service:id,name'])
                 ->latest()
                 ->limit(80)
                 ->get()
@@ -123,7 +135,32 @@ class LoyaltyController extends Controller
                     'quantity' => $redemption->quantity,
                     'status' => $redemption->status,
                     'redeemed_by' => $redemption->redeemedBy?->name,
+                    'visit_label' => $redemption->appointment
+                        ? $redemption->appointment->scheduled_start?->timezone(config('app.timezone'))->format('M j, Y g:i a')
+                            .($redemption->appointment->service?->name ? ' — '.$redemption->appointment->service->name : '')
+                        : null,
                     'created_at' => $redemption->created_at,
+                ]),
+            'appointmentsForRedeem' => Appointment::query()
+                ->with('service:id,name')
+                ->whereNotNull('customer_id')
+                ->whereIn('status', [
+                    Appointment::STATUS_PENDING,
+                    Appointment::STATUS_CONFIRMED,
+                    Appointment::STATUS_IN_PROGRESS,
+                    Appointment::STATUS_COMPLETED,
+                ])
+                ->where('scheduled_start', '>=', now()->subDays(120))
+                ->orderByDesc('scheduled_start')
+                ->limit(500)
+                ->get()
+                ->map(fn (Appointment $appointment) => [
+                    'id' => $appointment->id,
+                    'customer_id' => $appointment->customer_id,
+                    'service_id' => $appointment->service_id,
+                    'label' => $appointment->scheduled_start->timezone(config('app.timezone'))->format('M j, Y g:i a')
+                        .($appointment->service?->name ? ' — '.$appointment->service->name : '')
+                        .' ('.$appointment->status.')',
                 ]),
             'customerPackages' => CustomerPackage::query()
                 ->with(['customer:id,name', 'package:id,name'])
@@ -142,11 +179,13 @@ class LoyaltyController extends Controller
             'giftCards' => GiftCard::query()
                 ->with('customer:id,name')
                 ->latest()
-                ->limit(80)
+                ->limit(200)
                 ->get()
                 ->map(fn (GiftCard $giftCard) => [
                     'id' => $giftCard->id,
                     'code' => $giftCard->code,
+                    'nfc_uid' => $giftCard->nfc_uid,
+                    'assigned_customer_id' => $giftCard->assigned_customer_id,
                     'customer_name' => $giftCard->customer?->name,
                     'initial_value' => $giftCard->initial_value,
                     'remaining_value' => $giftCard->remaining_value,
@@ -239,15 +278,32 @@ class LoyaltyController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
+        if ($request->has('nfc_uid') && trim((string) $request->input('nfc_uid', '')) === '') {
+            $request->merge(['nfc_uid' => null]);
+        }
+
         $data = $request->validate([
             'assigned_customer_id' => ['nullable', 'exists:customers,id'],
             'initial_value' => ['required', 'numeric', 'min:0.01'],
             'notes' => ['nullable', 'string'],
+            'nfc_uid' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('gift_cards', 'nfc_uid'),
+                Rule::unique('customer_membership_cards', 'nfc_uid'),
+            ],
         ]);
 
         $customer = ! empty($data['assigned_customer_id']) ? Customer::find((int) $data['assigned_customer_id']) : null;
 
-        $giftCard = $giftCardService->issue($customer, (float) $data['initial_value'], $request->user()?->id, $data['notes'] ?? null);
+        $giftCard = $giftCardService->issue(
+            $customer,
+            (float) $data['initial_value'],
+            $request->user()?->id,
+            $data['notes'] ?? null,
+            $data['nfc_uid'] ?? null,
+        );
 
         Audit::log($request->user()?->id, 'gift_card.issued', 'GiftCard', $giftCard->id);
 
@@ -258,11 +314,18 @@ class LoyaltyController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
+        if (! $request->filled('appointment_id')) {
+            $request->merge(['appointment_id' => null]);
+        }
+
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'reason' => ['required', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
+            'appointment_id' => ['nullable', 'integer', 'exists:appointments,id'],
         ]);
+
+        $appointmentId = isset($data['appointment_id']) ? (int) $data['appointment_id'] : null;
 
         $transaction = $giftCardService->consume(
             $giftCard,
@@ -270,6 +333,7 @@ class LoyaltyController extends Controller
             $data['reason'],
             $request->user()?->id,
             $data['notes'] ?? null,
+            $appointmentId,
         );
 
         Audit::log($request->user()?->id, 'gift_card.consumed', 'GiftCardTransaction', $transaction->id);
@@ -339,7 +403,13 @@ class LoyaltyController extends Controller
             'customer_id' => ['required', 'exists:customers,id'],
             'membership_card_type_id' => ['required', 'exists:membership_card_types,id'],
             'card_number' => ['nullable', 'string', 'max:255'],
-            'nfc_uid' => ['nullable', 'string', 'max:255', Rule::unique('customer_membership_cards', 'nfc_uid')],
+            'nfc_uid' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('customer_membership_cards', 'nfc_uid'),
+                Rule::unique('gift_cards', 'nfc_uid'),
+            ],
             'status' => ['nullable', Rule::in(['pending', 'active', 'inactive', 'expired'])],
             'notes' => ['nullable', 'string'],
         ]);
@@ -421,6 +491,66 @@ class LoyaltyController extends Controller
         ]);
 
         return back()->with('status', 'NFC UID linked to membership card.');
+    }
+
+    public function lookupGiftCardByNfc(Request $request, GiftCardService $giftCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'gift_nfc_uid' => ['required', 'string', 'max:255'],
+        ]);
+
+        $giftCard = $giftCardService->findByNfcUid($data['gift_nfc_uid']);
+
+        if (! $giftCard) {
+            return back()
+                ->withErrors(['gift_nfc_uid' => 'No gift card was found for this NFC UID.'])
+                ->with('gift_nfc_lookup', null);
+        }
+
+        return back()
+            ->with('gift_nfc_lookup', [
+                'code' => $giftCard->code,
+                'customer_name' => $giftCard->customer?->name,
+                'customer_phone' => $giftCard->customer?->phone,
+                'customer_email' => $giftCard->customer?->email,
+                'remaining_value' => $giftCard->remaining_value,
+                'status' => $giftCard->status,
+                'nfc_uid' => $giftCard->nfc_uid,
+            ])
+            ->with('status', 'Gift card NFC located.');
+    }
+
+    public function bindGiftCardNfc(Request $request, GiftCardService $giftCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'gift_card_id' => ['required', 'exists:gift_cards,id'],
+            'nfc_uid' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('customer_membership_cards', 'nfc_uid'),
+            ],
+            'replace_existing' => ['nullable', 'boolean'],
+        ]);
+
+        $giftCard = GiftCard::findOrFail((int) $data['gift_card_id']);
+        $giftCard = $giftCardService->bindNfcUid(
+            $giftCard,
+            $data['nfc_uid'],
+            $request->user()?->id,
+            (bool) ($data['replace_existing'] ?? false),
+        );
+
+        Audit::log($request->user()?->id, 'gift_card.nfc_bound', 'GiftCard', $giftCard->id, [
+            'nfc_uid' => $giftCard->nfc_uid,
+            'replace_existing' => (bool) ($data['replace_existing'] ?? false),
+        ]);
+
+        return back()->with('status', 'NFC UID linked to gift card.');
     }
 
     public function storeTier(Request $request): RedirectResponse
@@ -551,18 +681,32 @@ class LoyaltyController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
+        $this->mergeNullableRewardRuleFields($request);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'points_cost' => ['required', 'integer', 'min:1'],
             'stock_quantity' => ['nullable', 'integer', 'min:0'],
+            'max_units_per_redemption' => ['nullable', 'integer', 'min:1', 'max:'.LoyaltyRedemptionRulesService::GLOBAL_MAX_UNITS_PER_REQUEST],
+            'max_redemptions_per_calendar_month' => ['nullable', 'integer', 'min:1', 'max:366'],
+            'min_days_between_redemptions' => ['nullable', 'integer', 'min:1', 'max:366'],
+            'requires_appointment_id' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
+            'salon_service_ids' => ['nullable', 'array'],
+            'salon_service_ids.*' => ['integer', 'exists:salon_services,id'],
         ]);
+
+        $salonIds = array_values(array_unique(array_map('intval', $data['salon_service_ids'] ?? [])));
+        unset($data['salon_service_ids']);
 
         $reward = LoyaltyReward::create([
             ...$data,
             'is_active' => (bool) ($data['is_active'] ?? true),
+            'requires_appointment_id' => (bool) ($data['requires_appointment_id'] ?? false),
         ]);
+
+        $reward->allowedSalonServices()->sync($salonIds);
 
         Audit::log($request->user()?->id, 'loyalty.reward_created', 'LoyaltyReward', $reward->id);
 
@@ -573,40 +717,70 @@ class LoyaltyController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
+        $this->mergeNullableRewardRuleFields($request);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'points_cost' => ['required', 'integer', 'min:1'],
             'stock_quantity' => ['nullable', 'integer', 'min:0'],
+            'max_units_per_redemption' => ['nullable', 'integer', 'min:1', 'max:'.LoyaltyRedemptionRulesService::GLOBAL_MAX_UNITS_PER_REQUEST],
+            'max_redemptions_per_calendar_month' => ['nullable', 'integer', 'min:1', 'max:366'],
+            'min_days_between_redemptions' => ['nullable', 'integer', 'min:1', 'max:366'],
+            'requires_appointment_id' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
+            'salon_service_ids' => ['nullable', 'array'],
+            'salon_service_ids.*' => ['integer', 'exists:salon_services,id'],
         ]);
+
+        $salonIds = array_values(array_unique(array_map('intval', $data['salon_service_ids'] ?? [])));
+        unset($data['salon_service_ids']);
 
         $reward->update([
             ...$data,
             'is_active' => (bool) ($data['is_active'] ?? false),
+            'requires_appointment_id' => (bool) ($data['requires_appointment_id'] ?? false),
         ]);
+
+        $reward->allowedSalonServices()->sync($salonIds);
 
         Audit::log($request->user()?->id, 'loyalty.reward_updated', 'LoyaltyReward', $reward->id);
 
         return back()->with('status', 'Loyalty reward updated.');
     }
 
-    public function redeem(Request $request): RedirectResponse
+    public function redeem(Request $request, LoyaltyRedemptionRulesService $redemptionRules): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        if (! $request->filled('appointment_id')) {
+            $request->merge(['appointment_id' => null]);
+        }
 
         $data = $request->validate([
             'customer_id' => ['required', 'exists:customers,id'],
             'loyalty_reward_id' => ['required', 'exists:loyalty_rewards,id'],
-            'quantity' => ['required', 'integer', 'min:1', 'max:20'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:'.LoyaltyRedemptionRulesService::GLOBAL_MAX_UNITS_PER_REQUEST],
+            'appointment_id' => ['nullable', 'integer', 'exists:appointments,id'],
         ]);
 
-        $reward = LoyaltyReward::findOrFail($data['loyalty_reward_id']);
+        $reward = LoyaltyReward::query()
+            ->with('allowedSalonServices:id,name')
+            ->findOrFail($data['loyalty_reward_id']);
         if (! $reward->is_active) {
             throw ValidationException::withMessages(['loyalty_reward_id' => 'Reward is inactive.']);
         }
 
         $quantity = (int) $data['quantity'];
+        $appointmentId = isset($data['appointment_id']) ? (int) $data['appointment_id'] : null;
+
+        $redemptionRules->assertCanRedeem(
+            (int) $data['customer_id'],
+            $reward,
+            $quantity,
+            $appointmentId,
+        );
+
         $totalCost = $reward->points_cost * $quantity;
 
         $account = CustomerLoyaltyAccount::query()->firstOrCreate(
@@ -622,7 +796,7 @@ class LoyaltyController extends Controller
             throw ValidationException::withMessages(['quantity' => 'Not enough reward stock available.']);
         }
 
-        DB::transaction(function () use ($request, $data, $reward, $quantity, $totalCost, $account): void {
+        DB::transaction(function () use ($request, $data, $reward, $quantity, $totalCost, $account, $appointmentId): void {
             $nextBalance = $account->current_points - $totalCost;
 
             $tier = LoyaltyTier::query()
@@ -640,6 +814,7 @@ class LoyaltyController extends Controller
             LoyaltyRedemption::create([
                 'customer_id' => (int) $data['customer_id'],
                 'loyalty_reward_id' => $reward->id,
+                'appointment_id' => $appointmentId,
                 'points_spent' => $totalCost,
                 'quantity' => $quantity,
                 'status' => 'redeemed',
@@ -651,8 +826,8 @@ class LoyaltyController extends Controller
                 'loyalty_tier_id' => $tier?->id,
                 'points_change' => -$totalCost,
                 'balance_after' => $nextBalance,
-                'reason' => 'Reward redemption: ' . $reward->name,
-                'reference' => 'REWARD-' . $reward->id,
+                'reason' => 'Reward redemption: '.$reward->name,
+                'reference' => 'REWARD-'.$reward->id,
                 'created_by' => $request->user()?->id,
             ]);
 
@@ -667,5 +842,14 @@ class LoyaltyController extends Controller
         });
 
         return back()->with('status', 'Reward redeemed successfully.');
+    }
+
+    private function mergeNullableRewardRuleFields(Request $request): void
+    {
+        foreach (['max_units_per_redemption', 'max_redemptions_per_calendar_month', 'min_days_between_redemptions'] as $field) {
+            if (! $request->filled($field)) {
+                $request->merge([$field => null]);
+            }
+        }
     }
 }

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SalonService extends Model
@@ -36,5 +37,11 @@ class SalonService extends Model
     public function dueServices(): HasMany
     {
         return $this->hasMany(CustomerDueService::class, 'salon_service_id');
+    }
+
+    public function loyaltyRewardsAllowingService(): BelongsToMany
+    {
+        return $this->belongsToMany(LoyaltyReward::class, 'loyalty_reward_salon_service')
+            ->withTimestamps();
     }
 }

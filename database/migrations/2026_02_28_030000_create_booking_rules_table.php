@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('booking_rules', function (Blueprint $table) {
             $table->id();
-            $table->unsignedSmallInteger('slot_interval_minutes')->default(15);
+            $table->unsignedSmallInteger('slot_interval_minutes')->default(30);
             $table->unsignedSmallInteger('min_advance_minutes')->default(30);
             $table->unsignedSmallInteger('max_advance_days')->default(60);
             $table->boolean('public_requires_approval')->default(true);
@@ -31,4 +31,3 @@ return new class extends Migration
         Schema::dropIfExists('booking_rules');
     }
 };
-
