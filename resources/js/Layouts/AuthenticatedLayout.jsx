@@ -118,7 +118,7 @@ export default function AuthenticatedLayout({ header, children }) {
                           title: 'Loyalty',
                           items: LOYALTY_SECTIONS.map(({ id, label }) => ({
                               label,
-                              href: route('loyalty.index', id),
+                              href: `/loyalty/${id}`,
                               active: route().current('loyalty.index') && loyaltyPath === `/loyalty/${id}`,
                               visible: true,
                           })),
