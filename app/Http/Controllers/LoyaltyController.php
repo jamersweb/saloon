@@ -33,14 +33,50 @@ use Inertia\Response;
 
 class LoyaltyController extends Controller
 {
-    public function index(Request $request): Response
+    public function program(Request $request): Response
     {
+        return $this->index($request, 'program');
+    }
+
+    public function membershipCards(Request $request): Response
+    {
+        return $this->index($request, 'membership-cards');
+    }
+
+    public function packages(Request $request): Response
+    {
+        return $this->index($request, 'packages');
+    }
+
+    public function giftCards(Request $request): Response
+    {
+        return $this->index($request, 'gift-cards');
+    }
+
+    public function rewards(Request $request): Response
+    {
+        return $this->index($request, 'rewards');
+    }
+
+    public function points(Request $request): Response
+    {
+        return $this->index($request, 'points');
+    }
+
+    public function index(Request $request, string $section): Response
+    {
+        $allowedSections = ['program', 'membership-cards', 'packages', 'gift-cards', 'rewards', 'points'];
+        if (! in_array($section, $allowedSections, true)) {
+            abort(404);
+        }
+
         $cardTypes = MembershipCardType::query()
             ->orderBy('min_points')
             ->orderBy('name')
             ->get();
 
         return Inertia::render('Loyalty/Index', [
+            'section' => $section,
             'tiers' => LoyaltyTier::query()->orderBy('min_points')->get(),
             'cardTypes' => $cardTypes,
             'packages' => ServicePackage::query()->orderBy('name')->get(),
@@ -51,6 +87,7 @@ class LoyaltyController extends Controller
                 ->get()
                 ->map(fn (CustomerMembershipCard $card) => [
                     'id' => $card->id,
+                    'customer_id' => $card->customer_id,
                     'customer_name' => $card->customer?->name,
                     'customer_phone' => $card->customer?->phone,
                     'card_type_name' => $card->type?->name,
@@ -278,9 +315,7 @@ class LoyaltyController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
-        if ($request->has('nfc_uid') && trim((string) $request->input('nfc_uid', '')) === '') {
-            $request->merge(['nfc_uid' => null]);
-        }
+        $this->prepareNfcUidField($request, 'nfc_uid');
 
         $data = $request->validate([
             'assigned_customer_id' => ['nullable', 'exists:customers,id'],
@@ -399,10 +434,12 @@ class LoyaltyController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
+        $this->prepareNfcUidField($request, 'nfc_uid');
+
         $data = $request->validate([
             'customer_id' => ['required', 'exists:customers,id'],
             'membership_card_type_id' => ['required', 'exists:membership_card_types,id'],
-            'card_number' => ['nullable', 'string', 'max:255'],
+            ...$this->rulesOptionalDigitsCardNumber(),
             'nfc_uid' => [
                 'nullable',
                 'string',
@@ -437,9 +474,87 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card assigned.');
     }
 
+    public function issueInventoryCard(Request $request, MembershipCardService $membershipCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $this->prepareNfcUidField($request, 'nfc_uid');
+
+        $data = $request->validate([
+            'membership_card_type_id' => ['required', 'exists:membership_card_types,id'],
+            ...$this->rulesOptionalDigitsCardNumber(),
+            'nfc_uid' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('customer_membership_cards', 'nfc_uid'),
+                Rule::unique('gift_cards', 'nfc_uid'),
+            ],
+            'status' => ['nullable', Rule::in(['pending', 'active', 'inactive', 'expired'])],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $cardType = MembershipCardType::findOrFail((int) $data['membership_card_type_id']);
+
+        $card = $membershipCardService->issueInventoryCard(
+            type: $cardType,
+            assignedBy: $request->user()?->id,
+            attributes: [
+                'card_number' => $data['card_number'] ?? null,
+                'nfc_uid' => $data['nfc_uid'] ?? null,
+                'status' => $data['status'] ?? 'pending',
+                'notes' => $data['notes'] ?? null,
+            ],
+        );
+
+        Audit::log($request->user()?->id, 'loyalty.card_inventory_issued', 'CustomerMembershipCard', $card->id, [
+            'card_type_id' => $cardType->id,
+            'card_number' => $card->card_number,
+        ]);
+
+        return back()->with('status', 'Membership card pre-issued (not assigned to a customer yet). Card # '.$card->card_number);
+    }
+
+    public function linkInventoryCardToCustomer(Request $request, MembershipCardService $membershipCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'customer_id' => ['required', 'exists:customers,id'],
+            'customer_membership_card_id' => ['required', 'exists:customer_membership_cards,id'],
+            'status' => ['nullable', Rule::in(['pending', 'active', 'inactive', 'expired'])],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $customer = Customer::findOrFail((int) $data['customer_id']);
+        $card = CustomerMembershipCard::query()->findOrFail((int) $data['customer_membership_card_id']);
+
+        $linkAttributes = [
+            'status' => $data['status'] ?? 'active',
+        ];
+        if (($data['notes'] ?? '') !== '') {
+            $linkAttributes['notes'] = $data['notes'];
+        }
+
+        $card = $membershipCardService->assignInventoryToCustomer(
+            customer: $customer,
+            card: $card,
+            assignedBy: $request->user()?->id,
+            attributes: $linkAttributes,
+        );
+
+        Audit::log($request->user()?->id, 'loyalty.card_inventory_linked', 'CustomerMembershipCard', $card->id, [
+            'customer_id' => $customer->id,
+        ]);
+
+        return back()->with('status', 'Pre-issued card linked to customer.');
+    }
+
     public function lookupCardByNfc(Request $request, MembershipCardService $membershipCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $this->prepareNfcUidField($request, 'nfc_uid');
 
         $data = $request->validate([
             'nfc_uid' => ['required', 'string', 'max:255'],
@@ -458,6 +573,7 @@ class LoyaltyController extends Controller
                 'customer_name' => $card->customer?->name,
                 'customer_phone' => $card->customer?->phone,
                 'customer_email' => $card->customer?->email,
+                'is_unassigned' => $card->customer_id === null,
                 'card_number' => $card->card_number,
                 'card_type_name' => $card->type?->name,
                 'card_status' => $card->status,
@@ -469,6 +585,8 @@ class LoyaltyController extends Controller
     public function bindCardNfc(Request $request, MembershipCardService $membershipCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $this->prepareNfcUidField($request, 'nfc_uid');
 
         $data = $request->validate([
             'customer_membership_card_id' => ['required', 'exists:customer_membership_cards,id'],
@@ -496,6 +614,8 @@ class LoyaltyController extends Controller
     public function lookupGiftCardByNfc(Request $request, GiftCardService $giftCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $this->prepareNfcUidField($request, 'gift_nfc_uid');
 
         $data = $request->validate([
             'gift_nfc_uid' => ['required', 'string', 'max:255'],
@@ -526,6 +646,8 @@ class LoyaltyController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
+        $this->prepareNfcUidField($request, 'nfc_uid');
+
         $data = $request->validate([
             'gift_card_id' => ['required', 'exists:gift_cards,id'],
             'nfc_uid' => [
@@ -533,6 +655,7 @@ class LoyaltyController extends Controller
                 'string',
                 'max:255',
                 Rule::unique('customer_membership_cards', 'nfc_uid'),
+                Rule::unique('gift_cards', 'nfc_uid')->ignore((int) $request->input('gift_card_id')),
             ],
             'replace_existing' => ['nullable', 'boolean'],
         ]);
@@ -851,5 +974,47 @@ class LoyaltyController extends Controller
                 $request->merge([$field => null]);
             }
         }
+    }
+
+    /**
+     * NFC UIDs are stored uppercase; normalize before validation so unique rules and SQLite match the DB.
+     */
+    private function prepareNfcUidField(Request $request, string $field = 'nfc_uid'): void
+    {
+        if (! array_key_exists($field, $request->all())) {
+            return;
+        }
+
+        $raw = $request->input($field);
+        if ($raw === null || $raw === '') {
+            $request->merge([$field => null]);
+
+            return;
+        }
+
+        $normalized = strtoupper(trim((string) $raw));
+        $request->merge([$field => $normalized === '' ? null : $normalized]);
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    private function rulesOptionalDigitsCardNumber(): array
+    {
+        return [
+            'card_number' => [
+                'nullable',
+                'string',
+                'max:32',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    if (! preg_match('/^[0-9]+$/', (string) $value)) {
+                        $fail('The card number must contain digits only.');
+                    }
+                },
+            ],
+        ];
     }
 }

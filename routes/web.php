@@ -110,19 +110,13 @@ Route::middleware('auth')->group(function () {
         Route::patch('/purchase-orders/{purchaseOrder}/transition', [PurchaseOrderController::class, 'transition'])->name('purchase-orders.transition');
 
         Route::redirect('/loyalty', '/loyalty/program');
-        Route::get('/loyalty/program', [LoyaltyController::class, 'index'])
-            ->defaults('section', 'program')
+        Route::get('/loyalty/program', [LoyaltyController::class, 'program'])
             ->name('loyalty.index');
-        Route::get('/loyalty/membership-cards', [LoyaltyController::class, 'index'])
-            ->defaults('section', 'membership-cards');
-        Route::get('/loyalty/packages', [LoyaltyController::class, 'index'])
-            ->defaults('section', 'packages');
-        Route::get('/loyalty/gift-cards', [LoyaltyController::class, 'index'])
-            ->defaults('section', 'gift-cards');
-        Route::get('/loyalty/rewards', [LoyaltyController::class, 'index'])
-            ->defaults('section', 'rewards');
-        Route::get('/loyalty/points', [LoyaltyController::class, 'index'])
-            ->defaults('section', 'points');
+        Route::get('/loyalty/membership-cards', [LoyaltyController::class, 'membershipCards']);
+        Route::get('/loyalty/packages', [LoyaltyController::class, 'packages']);
+        Route::get('/loyalty/gift-cards', [LoyaltyController::class, 'giftCards']);
+        Route::get('/loyalty/rewards', [LoyaltyController::class, 'rewards']);
+        Route::get('/loyalty/points', [LoyaltyController::class, 'points']);
         Route::post('/loyalty/tiers', [LoyaltyController::class, 'storeTier'])->name('loyalty.tiers.store');
         Route::put('/loyalty/tiers/{tier}', [LoyaltyController::class, 'updateTier'])->name('loyalty.tiers.update');
         Route::post('/loyalty/card-types', [LoyaltyController::class, 'storeCardType'])->name('loyalty.card-types.store');
