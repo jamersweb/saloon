@@ -2,45 +2,51 @@
 
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AttendanceLogController;
+use App\Http\Controllers\BackupController;
 use App\Http\Controllers\BookingRuleController;
+use App\Http\Controllers\CrmAutomationController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerPortalController;
-use App\Http\Controllers\CrmAutomationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseEntryController;
+use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\FinanceDashboardController;
 use App\Http\Controllers\FinanceSettingController;
-use App\Http\Controllers\PayrollPeriodController;
-use App\Http\Controllers\TaxInvoiceController;
-use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LeaveRequestController;
 use App\Http\Controllers\LoyaltyController;
+use App\Http\Controllers\PayrollPeriodController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicBookingController;
-use App\Http\Controllers\RoleController;
+use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalonServiceController;
 use App\Http\Controllers\StaffProfileController;
 use App\Http\Controllers\StaffScheduleController;
-use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\TaxInvoiceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicBookingController::class, 'create'])->name('public.booking');
 Route::post('/book', [PublicBookingController::class, 'store'])->name('public.booking.store');
 Route::get('/portal/{token}', [CustomerPortalController::class, 'show'])->name('customer.portal.show');
+Route::get('/portal/nfc/{nfcUid}', [CustomerPortalController::class, 'showByNfc'])->name('customer.portal.nfc');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
+
+Route::get('/backup/daily', [BackupController::class, 'download'])
+    ->middleware(['auth', 'verified', 'throttle:12,1'])
+    ->name('backup.daily');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    Route::middleware('role:owner,manager,staff')->group(function () {
+    Route::middleware('role:owner,manager,staff,reception')->group(function () {
         Route::get('/appointments', [AppointmentController::class, 'index'])->name('appointments.index');
         Route::post('/appointments', [AppointmentController::class, 'store'])->name('appointments.store');
         Route::put('/appointments/{appointment}', [AppointmentController::class, 'update'])->name('appointments.update');
@@ -103,12 +109,27 @@ Route::middleware('auth')->group(function () {
         Route::put('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'update'])->name('purchase-orders.update');
         Route::patch('/purchase-orders/{purchaseOrder}/transition', [PurchaseOrderController::class, 'transition'])->name('purchase-orders.transition');
 
-        Route::get('/loyalty', [LoyaltyController::class, 'index'])->name('loyalty.index');
+        Route::redirect('/loyalty', '/loyalty/program');
+        Route::get('/loyalty/program', [LoyaltyController::class, 'index'])
+            ->defaults('section', 'program')
+            ->name('loyalty.index');
+        Route::get('/loyalty/membership-cards', [LoyaltyController::class, 'index'])
+            ->defaults('section', 'membership-cards');
+        Route::get('/loyalty/packages', [LoyaltyController::class, 'index'])
+            ->defaults('section', 'packages');
+        Route::get('/loyalty/gift-cards', [LoyaltyController::class, 'index'])
+            ->defaults('section', 'gift-cards');
+        Route::get('/loyalty/rewards', [LoyaltyController::class, 'index'])
+            ->defaults('section', 'rewards');
+        Route::get('/loyalty/points', [LoyaltyController::class, 'index'])
+            ->defaults('section', 'points');
         Route::post('/loyalty/tiers', [LoyaltyController::class, 'storeTier'])->name('loyalty.tiers.store');
         Route::put('/loyalty/tiers/{tier}', [LoyaltyController::class, 'updateTier'])->name('loyalty.tiers.update');
         Route::post('/loyalty/card-types', [LoyaltyController::class, 'storeCardType'])->name('loyalty.card-types.store');
         Route::put('/loyalty/card-types/{cardType}', [LoyaltyController::class, 'updateCardType'])->name('loyalty.card-types.update');
         Route::post('/loyalty/cards/assign', [LoyaltyController::class, 'assignCard'])->name('loyalty.cards.assign');
+        Route::post('/loyalty/cards/issue-inventory', [LoyaltyController::class, 'issueInventoryCard'])->name('loyalty.cards.issue-inventory');
+        Route::post('/loyalty/cards/link-customer', [LoyaltyController::class, 'linkInventoryCardToCustomer'])->name('loyalty.cards.link-customer');
         Route::post('/loyalty/cards/nfc-lookup', [LoyaltyController::class, 'lookupCardByNfc'])->name('loyalty.cards.nfc-lookup');
         Route::post('/loyalty/cards/nfc-bind', [LoyaltyController::class, 'bindCardNfc'])->name('loyalty.cards.nfc-bind');
         Route::post('/loyalty/packages', [LoyaltyController::class, 'storePackage'])->name('loyalty.packages.store');
