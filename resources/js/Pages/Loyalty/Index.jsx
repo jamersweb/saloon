@@ -1,6 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LOYALTY_SECTIONS } from './loyaltySections';
 import ProgramSection from './sections/ProgramSection';
 import MembershipCardsSection from './sections/MembershipCardsSection';
@@ -37,6 +37,8 @@ export default function LoyaltyIndex({
     const [editingRewardId, setEditingRewardId] = useState(null);
     const [nfcBridgeStatus, setNfcBridgeStatus] = useState('');
     const [nfcBridgeLoadingTarget, setNfcBridgeLoadingTarget] = useState(null);
+    const [nfcBridgeOnline, setNfcBridgeOnline] = useState(null);
+    const [nfcBridgeChecking, setNfcBridgeChecking] = useState(false);
     const validSectionIds = LOYALTY_SECTIONS.map((entry) => entry.id);
     const activeSection = validSectionIds.includes(section) ? section : 'program';
 
@@ -192,15 +194,58 @@ export default function LoyaltyIndex({
         }
     };
 
+    const checkNfcBridge = async () => {
+        setNfcBridgeChecking(true);
+        setNfcBridgeStatus('Checking NFC bridge connection...');
+        try {
+            await fetch('http://127.0.0.1:35791/uid?consume=0');
+            setNfcBridgeOnline(true);
+            setNfcBridgeStatus('NFC bridge connected. You can scan a card now.');
+        } catch (error) {
+            setNfcBridgeOnline(false);
+            setNfcBridgeStatus('NFC bridge is offline. Start local bridge on http://127.0.0.1:35791.');
+        } finally {
+            setNfcBridgeChecking(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeSection === 'membership-cards' || activeSection === 'gift-cards') {
+            checkNfcBridge();
+        } else {
+            setNfcBridgeStatus('');
+        }
+    }, [activeSection]);
+
     const sectionLabel = LOYALTY_SECTIONS.find((s) => s.id === activeSection)?.label ?? 'Program & tiers';
+    const showNfcControls = activeSection === 'membership-cards' || activeSection === 'gift-cards';
 
     return (
-        <AuthenticatedLayout header={`Loyalty · ${sectionLabel}`}>
-            <Head title={`Loyalty · ${sectionLabel}`} />
+        <AuthenticatedLayout
+            header={`Loyalty - ${sectionLabel}`}
+            headerActions={
+                showNfcControls ? (
+                    <button
+                        type="button"
+                        onClick={checkNfcBridge}
+                        disabled={nfcBridgeChecking}
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        {nfcBridgeChecking ? 'Connecting...' : 'Connect NFC'}
+                    </button>
+                ) : null
+            }
+        >
+            <Head title={`Loyalty - ${sectionLabel}`} />
 
             <div className="space-y-6">
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
-                {(activeSection === 'membership-cards' || activeSection === 'gift-cards') && nfcBridgeStatus && (
+                {showNfcControls && nfcBridgeOnline === false && (
+                    <div className="ta-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                        NFC bridge is offline. Keep the bridge running on the same device where the card reader is connected.
+                    </div>
+                )}
+                {showNfcControls && nfcBridgeStatus && (
                     <div className="ta-card border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">{nfcBridgeStatus}</div>
                 )}
 

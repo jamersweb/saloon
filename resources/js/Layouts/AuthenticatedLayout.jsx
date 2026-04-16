@@ -32,7 +32,7 @@ function NavGroup({ title, open, active, onToggle, children }) {
     );
 }
 
-export default function AuthenticatedLayout({ header, children }) {
+export default function AuthenticatedLayout({ header, headerActions = null, children }) {
     const page = usePage();
     const { auth } = page.props;
     const user = auth.user;
@@ -213,18 +213,21 @@ export default function AuthenticatedLayout({ header, children }) {
                             <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Vina Management System</p>
                             <div className="text-lg font-semibold text-slate-800">{header}</div>
                         </div>
-                        <Dropdown>
-                            <Dropdown.Trigger>
-                                <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
-                                    <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-semibold text-indigo-600">{user?.role?.label ?? 'N/A'}</span>
-                                    {user?.name}
-                                </button>
-                            </Dropdown.Trigger>
-                            <Dropdown.Content>
-                                <Dropdown.Link href={route('profile.edit')}>Profile</Dropdown.Link>
-                                <Dropdown.Link href={route('logout')} method="post" as="button">Log Out</Dropdown.Link>
-                            </Dropdown.Content>
-                        </Dropdown>
+                        <div className="flex items-center gap-3">
+                            {headerActions}
+                            <Dropdown>
+                                <Dropdown.Trigger>
+                                    <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
+                                        <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-semibold text-indigo-600">{user?.role?.label ?? 'N/A'}</span>
+                                        {user?.name}
+                                    </button>
+                                </Dropdown.Trigger>
+                                <Dropdown.Content>
+                                    <Dropdown.Link href={route('profile.edit')}>Profile</Dropdown.Link>
+                                    <Dropdown.Link href={route('logout')} method="post" as="button">Log Out</Dropdown.Link>
+                                </Dropdown.Content>
+                            </Dropdown>
+                        </div>
                     </div>
                     <div className="mx-auto border-t border-slate-100 px-4 py-2 sm:px-6 lg:hidden">
                         <nav className="flex gap-2 overflow-x-auto pb-1">
