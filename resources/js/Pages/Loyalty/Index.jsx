@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { Head, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { LOYALTY_SECTIONS } from './loyaltySections';
 import ProgramSection from './sections/ProgramSection';
@@ -194,35 +194,11 @@ export default function LoyaltyIndex({
 
     const sectionLabel = LOYALTY_SECTIONS.find((s) => s.id === activeSection)?.label ?? 'Program & tiers';
 
-    const onSectionChange = (nextSection) => {
-        router.visit(route('loyalty.index', nextSection), { preserveScroll: true });
-    };
-
     return (
         <AuthenticatedLayout header={`Loyalty · ${sectionLabel}`}>
             <Head title={`Loyalty · ${sectionLabel}`} />
 
             <div className="space-y-6">
-                <div className="ta-card flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                        <h2 className="text-base font-semibold text-slate-800">Loyalty workspace</h2>
-                        <p className="text-xs text-slate-500">Pick a section. Each area only shows its settings and tables.</p>
-                    </div>
-                    <div className="w-full sm:w-72">
-                        <label htmlFor="loyalty-section" className="ta-field-label">Section</label>
-                        <select
-                            id="loyalty-section"
-                            className="ta-input mt-1"
-                            value={activeSection}
-                            onChange={(e) => onSectionChange(e.target.value)}
-                        >
-                            {LOYALTY_SECTIONS.map((s) => (
-                                <option key={s.id} value={s.id}>{s.label}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
                 {(activeSection === 'membership-cards' || activeSection === 'gift-cards') && nfcBridgeStatus && (
                     <div className="ta-card border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">{nfcBridgeStatus}</div>
