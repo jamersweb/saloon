@@ -38,14 +38,13 @@ export default function FinanceExpensesIndex({ expenses, purchaseOrders, categor
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
-                            form
-                                .transform((d) => ({
-                                    ...d,
-                                    amount_subtotal: parseFloat(d.amount_subtotal),
-                                    vat_amount: parseFloat(d.vat_amount),
-                                    purchase_order_id: d.purchase_order_id || null,
-                                }))
-                                .post(route('finance.expenses.store'), { onSuccess: () => form.reset() });
+                            form.transform((d) => ({
+                                ...d,
+                                amount_subtotal: parseFloat(d.amount_subtotal),
+                                vat_amount: parseFloat(d.vat_amount),
+                                purchase_order_id: d.purchase_order_id || null,
+                            }));
+                            form.post(route('finance.expenses.store'), { onSuccess: () => form.reset() });
                         }}
                         className="grid gap-3 md:grid-cols-3"
                     >

@@ -111,7 +111,8 @@ export default function FinanceInvoicesCreate({ customers, services, appointment
                                     quantity: parseFloat(row.quantity) || 0,
                                     unit_price: parseFloat(row.unit_price) || 0,
                                 })),
-                            })).post(route('finance.invoices.store'));
+                            }));
+                            form.post(route('finance.invoices.store'));
                         }}
                         className="space-y-4"
                     >

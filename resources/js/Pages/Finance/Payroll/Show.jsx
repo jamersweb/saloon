@@ -29,16 +29,15 @@ export default function FinancePayrollShow({ period }) {
     };
 
     const saveLine = (lineId) => {
-        lineForm
-            .transform((d) => ({
-                hours_worked: parseFloat(d.hours_worked),
-                hourly_rate: parseFloat(d.hourly_rate),
-                gross_amount: parseFloat(d.gross_amount),
-                notes: d.notes || null,
-            }))
-            .put(route('finance.payroll.lines.update', { payroll_period: period.id, line: lineId }), {
-                onSuccess: () => setEditingId(null),
-            });
+        lineForm.transform((d) => ({
+            hours_worked: parseFloat(d.hours_worked),
+            hourly_rate: parseFloat(d.hourly_rate),
+            gross_amount: parseFloat(d.gross_amount),
+            notes: d.notes || null,
+        }));
+        lineForm.put(route('finance.payroll.lines.update', { payroll_period: period.id, line: lineId }), {
+            onSuccess: () => setEditingId(null),
+        });
     };
 
     return (

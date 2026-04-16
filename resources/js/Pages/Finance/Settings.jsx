@@ -21,13 +21,12 @@ export default function FinanceSettings({ settings }) {
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
-                            form
-                                .transform((d) => ({
-                                    ...d,
-                                    vat_rate_percent: Number(d.vat_rate_percent),
-                                    next_invoice_number: parseInt(d.next_invoice_number, 10),
-                                }))
-                                .patch(route('finance.settings.update'));
+                            form.transform((d) => ({
+                                ...d,
+                                vat_rate_percent: Number(d.vat_rate_percent),
+                                next_invoice_number: parseInt(d.next_invoice_number, 10),
+                            }));
+                            form.patch(route('finance.settings.update'));
                         }}
                         className="grid gap-4 md:grid-cols-2"
                     >

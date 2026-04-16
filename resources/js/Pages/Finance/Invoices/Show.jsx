@@ -197,19 +197,18 @@ export default function FinanceInvoicesShow({ invoice, customers, services, appo
                         <form
                             onSubmit={(e) => {
                                 e.preventDefault();
-                                editForm
-                                    .transform((data) => ({
-                                        ...data,
-                                        customer_id: data.customer_id || null,
-                                        appointment_id: data.appointment_id ? data.appointment_id : null,
-                                        items: data.items.map((row) => ({
-                                            salon_service_id: row.salon_service_id || null,
-                                            description: row.description,
-                                            quantity: parseFloat(row.quantity) || 0,
-                                            unit_price: parseFloat(row.unit_price) || 0,
-                                        })),
-                                    }))
-                                    .put(route('finance.invoices.update', invoice.id));
+                                editForm.transform((data) => ({
+                                    ...data,
+                                    customer_id: data.customer_id || null,
+                                    appointment_id: data.appointment_id ? data.appointment_id : null,
+                                    items: data.items.map((row) => ({
+                                        salon_service_id: row.salon_service_id || null,
+                                        description: row.description,
+                                        quantity: parseFloat(row.quantity) || 0,
+                                        unit_price: parseFloat(row.unit_price) || 0,
+                                    })),
+                                }));
+                                editForm.put(route('finance.invoices.update', invoice.id));
                             }}
                             className="space-y-4"
                         >

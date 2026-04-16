@@ -51,7 +51,6 @@ class StaffProfileController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['nullable', 'string', 'min:8'],
-            'employee_code' => ['required', 'string', 'max:50', 'unique:staff_profiles,employee_code'],
             'phone' => ['nullable', 'string', 'max:30'],
             'skills' => ['nullable', 'string'],
             'hourly_rate' => ['nullable', 'numeric', 'min:0', 'max:99999'],
@@ -68,7 +67,7 @@ class StaffProfileController extends Controller
 
         $profile = StaffProfile::create([
             'user_id' => $user->id,
-            'employee_code' => $data['employee_code'],
+            'employee_code' => $this->generateEmployeeCode(),
             'phone' => $data['phone'] ?? null,
             'skills' => $this->parseSkills($data['skills'] ?? ''),
             'hourly_rate' => isset($data['hourly_rate']) && $data['hourly_rate'] !== '' && $data['hourly_rate'] !== null
@@ -158,5 +157,27 @@ class StaffProfileController extends Controller
             ->filter()
             ->values()
             ->all();
+    }
+
+    private function generateEmployeeCode(): string
+    {
+        $latestCode = StaffProfile::query()
+            ->where('employee_code', 'like', 'EMP-%')
+            ->orderByRaw("CAST(SUBSTR(employee_code, 5) AS INTEGER) DESC")
+            ->value('employee_code');
+
+        $nextNumber = 101;
+
+        if (is_string($latestCode) && preg_match('/^EMP-(\d+)$/', $latestCode, $matches)) {
+            $nextNumber = ((int) $matches[1]) + 1;
+        }
+
+        do {
+            $code = sprintf('EMP-%03d', $nextNumber);
+            $exists = StaffProfile::query()->where('employee_code', $code)->exists();
+            $nextNumber++;
+        } while ($exists);
+
+        return $code;
     }
 }
