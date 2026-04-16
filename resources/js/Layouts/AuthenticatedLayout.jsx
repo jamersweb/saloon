@@ -1,6 +1,7 @@
 import ApplicationLogo from '@/Components/ApplicationLogo';
 import AppFlashPopup from '@/Components/AppFlashPopup';
 import Dropdown from '@/Components/Dropdown';
+import { LOYALTY_SECTIONS } from '@/Pages/Loyalty/loyaltySections';
 import { Link, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -32,7 +33,8 @@ function NavGroup({ title, open, active, onToggle, children }) {
 }
 
 export default function AuthenticatedLayout({ header, children }) {
-    const { auth } = usePage().props;
+    const page = usePage();
+    const { auth } = page.props;
     const user = auth.user;
     const permissions = auth.permissions || {};
     const isStaff = user?.role?.name === 'staff';
@@ -46,7 +48,8 @@ export default function AuthenticatedLayout({ header, children }) {
             || permissions.can_manage_procurement
             || permissions.can_manage_loyalty
             || permissions.can_manage_crm_automation
-            || permissions.can_export_reports,
+            || permissions.can_export_reports
+            || permissions.can_run_daily_backup,
         [permissions]
     );
     const canOperate = useMemo(
@@ -55,6 +58,8 @@ export default function AuthenticatedLayout({ header, children }) {
     );
 
     const navGroups = useMemo(() => {
+        const loyaltyPath = (page.url || '').split('?')[0];
+
         if (isStaff) {
             return [
                 {
@@ -80,6 +85,7 @@ export default function AuthenticatedLayout({ header, children }) {
                 title: 'Overview',
                 items: [
                     { label: 'Dashboard', href: route('dashboard'), active: route().current('dashboard') },
+                    { label: 'Daily backup', href: `${route('dashboard')}#daily-backup`, active: route().current('dashboard'), visible: permissions.can_run_daily_backup },
                 ],
             },
             {
@@ -103,9 +109,22 @@ export default function AuthenticatedLayout({ header, children }) {
                     { label: 'Inventory', href: route('inventory.index'), active: route().current('inventory.*'), visible: permissions.can_manage_inventory },
                     { label: 'Suppliers', href: route('suppliers.index'), active: route().current('suppliers.*'), visible: permissions.can_manage_procurement },
                     { label: 'Purchase Orders', href: route('purchase-orders.index'), active: route().current('purchase-orders.*'), visible: permissions.can_manage_procurement },
-                    { label: 'Loyalty', href: route('loyalty.index'), active: route().current('loyalty.*'), visible: permissions.can_manage_loyalty },
                 ],
             },
+            ...(permissions.can_manage_loyalty
+                ? [
+                      {
+                          key: 'loyalty',
+                          title: 'Loyalty',
+                          items: LOYALTY_SECTIONS.map(({ id, label }) => ({
+                              label,
+                              href: route('loyalty.index', id),
+                              active: route().current('loyalty.index') && loyaltyPath === `/loyalty/${id}`,
+                              visible: true,
+                          })),
+                      },
+                  ]
+                : []),
             {
                 key: 'insights',
                 title: 'Insights',
@@ -139,7 +158,7 @@ export default function AuthenticatedLayout({ header, children }) {
                 items: group.items.filter((item) => item.visible !== false),
             }))
             .filter((group) => group.items.length > 0);
-    }, [permissions, canOperate, isStaff]);
+    }, [permissions, canOperate, isStaff, page.url]);
 
     const [openGroups, setOpenGroups] = useState({});
 
