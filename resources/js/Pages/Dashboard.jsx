@@ -1,5 +1,6 @@
 ﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
 
 const periodButtons = [
     { key: 'today', label: 'Today' },
@@ -34,10 +35,14 @@ export default function Dashboard({
     customerToStaffReviews,
 }) {
     const { flash, auth } = usePage().props;
+    const canDailyBackup = Boolean(auth?.permissions?.can_run_daily_backup);
     const roleName = auth?.user?.role?.name;
     const isStaff = roleName === 'staff';
     const isCustomer = roleName === 'customer';
     const isManagerOrOwner = ['manager', 'owner'].includes(roleName);
+    const [nfcBridgeStatus, setNfcBridgeStatus] = useState('');
+    const [nfcBridgeOnline, setNfcBridgeOnline] = useState(null);
+    const [nfcBridgeChecking, setNfcBridgeChecking] = useState(false);
 
     const staffToCustomerForm = useForm({ customer_id: '', comment: '' });
     const customerToStaffForm = useForm({ staff_profile_id: '', rating: '5', comment: '' });
@@ -53,11 +58,67 @@ export default function Dashboard({
     ];
     const visibleStats = isStaff ? orderedStaffStats.slice(0, 4) : statEntries;
 
+    const checkNfcBridge = async () => {
+        setNfcBridgeChecking(true);
+        setNfcBridgeStatus('Checking NFC bridge connection...');
+        try {
+            await fetch('http://127.0.0.1:35791/uid?consume=0');
+            setNfcBridgeOnline(true);
+            setNfcBridgeStatus('NFC bridge connected. You can scan a card now.');
+        } catch (error) {
+            setNfcBridgeOnline(false);
+            setNfcBridgeStatus('NFC bridge is offline. Start local bridge on http://127.0.0.1:35791.');
+        } finally {
+            setNfcBridgeChecking(false);
+        }
+    };
+
+    useEffect(() => {
+        checkNfcBridge();
+    }, []);
+
     return (
-        <AuthenticatedLayout header={isStaff ? 'My Workspace' : 'Vina Operations Dashboard'}>
+        <AuthenticatedLayout
+            header={isStaff ? 'My Workspace' : 'Vina Operations Dashboard'}
+            headerActions={
+                <button
+                    type="button"
+                    onClick={checkNfcBridge}
+                    disabled={nfcBridgeChecking}
+                    className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    {nfcBridgeChecking ? 'Connecting...' : 'Connect NFC'}
+                </button>
+            }
+        >
             <Head title="Dashboard" />
             <div className="space-y-6">
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
+                {nfcBridgeOnline === false && (
+                    <div className="ta-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                        NFC bridge is offline. Keep the bridge running on the same device where the card reader is connected.
+                    </div>
+                )}
+                {nfcBridgeStatus && (
+                    <div className="ta-card border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">{nfcBridgeStatus}</div>
+                )}
+
+                {canDailyBackup && (
+                    <section id="daily-backup" className="ta-card scroll-mt-24 border-rose-100 bg-rose-50/80 p-5">
+                        <h3 className="text-base font-semibold text-slate-800">Daily database backup</h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                            Download a snapshot of the salon database for safekeeping. Run this at least once per day (for example end of shift). Owners always have this; assign the permission to reception in Roles if needed.
+                        </p>
+                        <div className="mt-4">
+                            <a
+                                href={route('backup.daily')}
+                                className="inline-flex items-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-800 shadow-sm hover:bg-rose-50"
+                            >
+                                Download backup now
+                            </a>
+                        </div>
+                    </section>
+                )}
 
                 {isStaff && (
                     <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
