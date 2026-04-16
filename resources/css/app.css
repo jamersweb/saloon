@@ -62,23 +62,3 @@
     }
 }
 
-@layer utilities {
-    /* Global text remap requested by client:
-       dark/black tones -> white, blue/navy tones -> golden */
-    [class*="text-slate-"],
-    [class*="text-gray-"],
-    [class*="text-zinc-"],
-    [class*="text-neutral-"],
-    [class*="text-stone-"],
-    [class*="text-black"] {
-        color: #ffffff !important;
-    }
-
-    [class*="text-indigo-"],
-    [class*="text-blue-"],
-    [class*="text-sky-"],
-    [class*="text-cyan-"] {
-        color: #E4CDB6 !important;
-    }
-}
-
