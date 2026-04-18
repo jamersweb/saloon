@@ -5,7 +5,7 @@ import { useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function StaffIndex({ staffProfiles, roles }) {
+export default function StaffIndex({ staffProfiles, roles, showDeleted = false, trashedCount = 0 }) {
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
     const [uiError, setUiError] = useState('');
@@ -85,8 +85,93 @@ export default function StaffIndex({ staffProfiles, roles }) {
                 </section>
 
                 <section className="ta-card overflow-hidden">
-                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Team List</h3></div>
-                    <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Code</th><th className="px-5 py-3">Name</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Role</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Skills</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead><tbody>{safeStaffProfiles.map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{s.employee_code}</td><td className="px-5 py-3 text-slate-600">{s.user?.name}</td><td className="px-5 py-3 text-slate-600">{s.user?.email}</td><td className="px-5 py-3 text-slate-600">{s.user?.role_label || '-'}</td><td className="px-5 py-3 text-slate-600">{s.phone || '-'}</td><td className="px-5 py-3 text-slate-600">{(s.skills || []).join(', ') || '-'}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><div className="flex gap-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(s)}>Edit</button><button className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => { if (!window.confirm(`Deactivate ${s.user?.name || 'this staff member'}?`)) return; router.delete(route('staff.destroy', s.id), { onError: (errors) => setUiError(toUserFriendlyError(errors, 'Could not deactivate staff member.')) }); }}>Deactivate</button></div></td></tr>)}</tbody></table></div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                        <h3 className="text-sm font-semibold text-slate-700">{showDeleted ? 'Removed staff' : 'Team List'}</h3>
+                        {(showDeleted || trashedCount > 0) ? (
+                            <button
+                                type="button"
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                onClick={() => router.get(route('staff.index'), showDeleted ? {} : { show_deleted: 1 }, { preserveState: true, replace: true })}
+                            >
+                                {showDeleted ? 'Back to active team' : `Removed staff (${trashedCount})`}
+                            </button>
+                        ) : null}
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th className="px-5 py-3">Code</th>
+                                    <th className="px-5 py-3">Name</th>
+                                    <th className="px-5 py-3">Email</th>
+                                    <th className="px-5 py-3">Role</th>
+                                    <th className="px-5 py-3">Phone</th>
+                                    <th className="px-5 py-3">Skills</th>
+                                    <th className="px-5 py-3">Status</th>
+                                    <th className="px-5 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {safeStaffProfiles.map((s) => (
+                                    <tr key={s.id} className="border-t border-slate-100">
+                                        <td className="px-5 py-3 font-medium text-slate-700">{s.employee_code}</td>
+                                        <td className="px-5 py-3 text-slate-600">{s.user?.name}</td>
+                                        <td className="px-5 py-3 text-slate-600">{s.user?.email}</td>
+                                        <td className="px-5 py-3 text-slate-600">{s.user?.role_label || '-'}</td>
+                                        <td className="px-5 py-3 text-slate-600">{s.phone || '-'}</td>
+                                        <td className="px-5 py-3 text-slate-600">{(s.skills || []).join(', ') || '-'}</td>
+                                        <td className="px-5 py-3">
+                                            {s.deleted_at ? (
+                                                <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">Removed</span>
+                                            ) : (
+                                                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{s.is_active ? 'Active' : 'Inactive'}</span>
+                                            )}
+                                        </td>
+                                        <td className="px-5 py-3">
+                                            <div className="flex flex-wrap gap-2">
+                                                {showDeleted ? (
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
+                                                        onClick={() => {
+                                                            if (!window.confirm(`Restore ${s.user?.name || 'this staff member'} to the team list?`)) return;
+                                                            router.post(route('staff.restore', s.id), {}, { onError: (errors) => setUiError(toUserFriendlyError(errors, 'Could not restore staff member.')) });
+                                                        }}
+                                                    >
+                                                        Restore
+                                                    </button>
+                                                ) : (
+                                                    <>
+                                                        <button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(s)}>Edit</button>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800"
+                                                            onClick={() => {
+                                                                if (!window.confirm(`Deactivate ${s.user?.name || 'this staff member'}? They stay in the team list but cannot be assigned until reactivated.`)) return;
+                                                                router.post(route('staff.deactivate', s.id), {}, { onError: (errors) => setUiError(toUserFriendlyError(errors, 'Could not deactivate staff member.')) });
+                                                            }}
+                                                        >
+                                                            Deactivate
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700"
+                                                            onClick={() => {
+                                                                if (!window.confirm(`Remove ${s.user?.name || 'this staff member'} from the team? This hides them from schedules and assignments. You can restore them from Removed staff.`)) return;
+                                                                router.delete(route('staff.destroy', s.id), { onError: (errors) => setUiError(toUserFriendlyError(errors, 'Could not remove staff member.')) });
+                                                            }}
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </section>
 
                 <Modal show={Boolean(editingId)} onClose={closeEditModal} maxWidth="2xl">

@@ -53,6 +53,17 @@ class AppointmentController extends Controller
         return Inertia::render('Appointments/Index', [
             'appointments' => $appointments,
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes', 'buffer_minutes']),
+            'customers' => Customer::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->limit(750)
+                ->get(['id', 'name', 'phone', 'email'])
+                ->map(fn (Customer $customer) => [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'phone' => (string) ($customer->phone ?? ''),
+                    'email' => (string) ($customer->email ?? ''),
+                ]),
             'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'name' => $staff->user?->name,
@@ -63,7 +74,7 @@ class AppointmentController extends Controller
                 ->get(['id', 'name', 'sku', 'unit']),
             'statusFilter' => $status,
             'bookingRules' => $rules,
-            'defaultStart' => $this->defaultStartAtInterval((int) $rules->slot_interval_minutes, (int) $rules->min_advance_minutes),
+            'defaultStart' => $rules->nextDefaultAppointmentStart(),
         ]);
     }
 
@@ -83,6 +94,10 @@ class AppointmentController extends Controller
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
+        }
+
+        if ($salonError = $availabilityService->validateSalonHours($start, $end)) {
+            return back()->withErrors(['scheduled_start' => $salonError])->withInput();
         }
 
         if (! empty($data['staff_profile_id'])) {
@@ -128,6 +143,10 @@ class AppointmentController extends Controller
 
         if ($timeRangeError = $this->validateTimeRange($start, $end)) {
             return back()->withErrors(['scheduled_end' => $timeRangeError])->withInput();
+        }
+
+        if ($salonError = $availabilityService->validateSalonHours($start, $end)) {
+            return back()->withErrors(['scheduled_start' => $salonError])->withInput();
         }
 
         if (! empty($data['staff_profile_id'])) {
@@ -445,20 +464,6 @@ class AppointmentController extends Controller
         }
 
         return $customer;
-    }
-
-    private function defaultStartAtInterval(int $intervalMinutes, int $minAdvanceMinutes): string
-    {
-        $safeInterval = max(1, $intervalMinutes > 0 ? $intervalMinutes : 30);
-        $base = now()->copy()->addMinutes(max(0, $minAdvanceMinutes));
-        $minutes = (int) $base->format('i');
-        $remainder = $minutes % $safeInterval;
-
-        if ($remainder !== 0) {
-            $base->addMinutes($safeInterval - $remainder);
-        }
-
-        return $base->setSecond(0)->format('Y-m-d\TH:i');
     }
 
     private function serializeAppointment(Appointment $appointment): array

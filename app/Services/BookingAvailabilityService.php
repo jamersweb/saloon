@@ -30,6 +30,28 @@ class BookingAvailabilityService
         return null;
     }
 
+    public function validateSalonHours(Carbon $start, Carbon $end): ?string
+    {
+        $rules = BookingRule::current();
+
+        if ($start->toDateString() !== $end->toDateString()) {
+            return 'Appointments must start and finish on the same calendar day.';
+        }
+
+        $open = $rules->salonOpenOn($start);
+        $close = $rules->salonCloseOn($start);
+
+        if ($start->lt($open)) {
+            return 'Selected time is before salon opening hours.';
+        }
+
+        if ($end->gt($close)) {
+            return 'Selected time extends past salon closing hours.';
+        }
+
+        return null;
+    }
+
     public function validateStaffAvailability(int $staffProfileId, Carbon $start, Carbon $end, ?int $ignoreAppointmentId = null): ?string
     {
         $staff = StaffProfile::query()->find($staffProfileId);

@@ -29,7 +29,7 @@ class PublicBookingController extends Controller
                 'name' => $staff->user?->name,
             ]),
             'bookingRules' => $rules,
-            'defaultStart' => $this->defaultStartAtInterval((int) $rules->slot_interval_minutes, (int) $rules->min_advance_minutes),
+            'defaultStart' => $rules->nextDefaultAppointmentStart(),
         ]);
     }
 
@@ -52,6 +52,10 @@ class PublicBookingController extends Controller
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
+        }
+
+        if ($salonError = $availabilityService->validateSalonHours($start, $end)) {
+            return back()->withErrors(['scheduled_start' => $salonError])->withInput();
         }
 
         $resolvedStaffId = ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null;
@@ -105,19 +109,5 @@ class PublicBookingController extends Controller
         Audit::log(null, 'appointment.public_created', 'Appointment', $appointment->id);
 
         return back()->with('status', 'Booking submitted successfully. We will confirm shortly.');
-    }
-
-    private function defaultStartAtInterval(int $intervalMinutes, int $minAdvanceMinutes): string
-    {
-        $safeInterval = max(1, $intervalMinutes > 0 ? $intervalMinutes : 30);
-        $base = now()->copy()->addMinutes(max(0, $minAdvanceMinutes));
-        $minutes = (int) $base->format('i');
-        $remainder = $minutes % $safeInterval;
-
-        if ($remainder !== 0) {
-            $base->addMinutes($safeInterval - $remainder);
-        }
-
-        return $base->setSecond(0)->format('Y-m-d\TH:i');
     }
 }

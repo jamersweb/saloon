@@ -22,6 +22,7 @@ class Permissions
             'can_manage_crm_automation' => 'Manage CRM automation and campaigns',
             'can_export_reports' => 'Access and export reports',
             'can_manage_finance' => 'Tax invoices, payments, expenses, payroll, and finance reports',
+            'can_run_daily_backup' => 'Download a daily database backup (reception / operations)',
             'can_review_leave_requests' => 'Approve or reject leave requests',
             'can_manage_roles' => 'Create roles and assign permissions',
         ];
@@ -53,6 +54,12 @@ class Permissions
                 'can_operate_frontdesk',
                 'can_manage_attendance',
                 'can_manage_leave_requests',
+            ],
+            'reception' => [
+                'can_operate_frontdesk',
+                'can_manage_attendance',
+                'can_manage_leave_requests',
+                'can_run_daily_backup',
             ],
             default => [],
         };
@@ -94,6 +101,7 @@ class Permissions
             str_starts_with($routeName, 'customers.automation.') => 'can_manage_crm_automation',
             str_starts_with($routeName, 'reports.') => 'can_export_reports',
             str_starts_with($routeName, 'finance.') => 'can_manage_finance',
+            str_starts_with($routeName, 'backup.') => 'can_run_daily_backup',
             str_starts_with($routeName, 'roles.') => 'can_manage_roles',
             default => null,
         };

@@ -4,12 +4,12 @@ import { useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function SchedulesIndex({ staffProfiles, schedules }) {
+export default function SchedulesIndex({ staffProfiles, schedules, defaultShiftStart = '09:00', defaultShiftEnd = '22:00', salonHoursLabel }) {
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
     const today = new Date().toISOString().slice(0, 10);
 
-    const createForm = useForm({ staff_profile_id: '', schedule_date: today, start_time: '10:00', end_time: '20:00', break_start: '', break_end: '', is_day_off: false, notes: '' });
+    const createForm = useForm({ staff_profile_id: '', schedule_date: today, start_time: defaultShiftStart, end_time: defaultShiftEnd, break_start: '', break_end: '', is_day_off: false, notes: '' });
     const editForm = useForm({ start_time: '', end_time: '', break_start: '', break_end: '', is_day_off: false, notes: '' });
 
     const startEdit = (schedule) => {
@@ -33,6 +33,7 @@ export default function SchedulesIndex({ staffProfiles, schedules }) {
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create or Assign Shift</h3>
+                    <p className="mb-3 text-xs text-slate-500">Default shift matches salon operating hours ({salonHoursLabel || `${defaultShiftStart}–${defaultShiftEnd}`}). Shifts must stay within these hours unless you mark a day off.</p>
                     <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('schedules.store'), { onSuccess: () => createForm.reset() }); }} className="grid gap-3 md:grid-cols-7">
                         <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)} required><option value="">Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.employee_code} {s.name}</option>)}</select>{fieldError(createForm, 'staff_profile_id')}</div>
                         <div><label className="ta-field-label">Schedule Date</label><input className="ta-input" type="date" value={createForm.data.schedule_date} onChange={(e) => createForm.setData('schedule_date', e.target.value)} required />{fieldError(createForm, 'schedule_date')}</div>

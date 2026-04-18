@@ -141,6 +141,13 @@ class PackagesAndGiftCardsTest extends TestCase
             ])
             ->assertSessionHasNoErrors()
             ->assertSessionHas('gift_nfc_lookup.code');
+
+        $this->actingAs($user)
+            ->post(route('loyalty.gift-cards.nfc-lookup'), [
+                'gift_nfc_uid' => '  abcd12 ',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('gift_nfc_lookup.code');
     }
 
     public function test_gift_card_nfc_bind_rejects_uid_linked_to_membership_card(): void
@@ -172,7 +179,7 @@ class PackagesAndGiftCardsTest extends TestCase
         CustomerMembershipCard::create([
             'customer_id' => $customer->id,
             'membership_card_type_id' => $cardType->id,
-            'card_number' => 'MEM-1',
+            'card_number' => '555044000002',
             'nfc_uid' => 'SHAREDUID',
             'status' => 'active',
             'issued_at' => now(),

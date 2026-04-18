@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BookingRule;
 use App\Models\StaffProfile;
 use App\Models\StaffSchedule;
 use App\Support\Audit;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,7 +16,12 @@ class StaffScheduleController extends Controller
 {
     public function index(Request $request): Response
     {
+        $rules = BookingRule::current();
+
         return Inertia::render('Schedules/Index', [
+            'defaultShiftStart' => $rules->defaultShiftStart(),
+            'defaultShiftEnd' => $rules->defaultShiftEnd(),
+            'salonHoursLabel' => $rules->defaultShiftStart().'–'.$rules->defaultShiftEnd(),
             'staffProfiles' => StaffProfile::query()->with('user')->where('is_active', true)->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'employee_code' => $staff->employee_code,
@@ -51,6 +58,12 @@ class StaffScheduleController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
+        if (! ($data['is_day_off'] ?? false) && ! empty($data['start_time']) && ! empty($data['end_time'])) {
+            if ($message = $this->shiftSalonHoursError($data['schedule_date'], $data['start_time'], $data['end_time'])) {
+                return back()->withErrors(['start_time' => $message])->withInput();
+            }
+        }
+
         $schedule = StaffSchedule::updateOrCreate(
             [
                 'staff_profile_id' => $data['staff_profile_id'],
@@ -84,6 +97,12 @@ class StaffScheduleController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
+        if (! ($data['is_day_off'] ?? false) && ! empty($data['start_time']) && ! empty($data['end_time'])) {
+            if ($message = $this->shiftSalonHoursError($schedule->schedule_date->toDateString(), $data['start_time'], $data['end_time'])) {
+                return back()->withErrors(['start_time' => $message])->withInput();
+            }
+        }
+
         $schedule->update([
             'start_time' => $data['start_time'] ?? null,
             'end_time' => $data['end_time'] ?? null,
@@ -108,5 +127,27 @@ class StaffScheduleController extends Controller
         Audit::log($request->user()->id, 'schedule.deleted', 'StaffSchedule', $id);
 
         return back()->with('status', 'Schedule removed.');
+    }
+
+    private function shiftSalonHoursError(string $scheduleDate, string $start, string $end): ?string
+    {
+        $rules = BookingRule::current();
+        $day = Carbon::parse($scheduleDate);
+        $shiftStart = Carbon::parse($scheduleDate.' '.$start);
+        $shiftEnd = Carbon::parse($scheduleDate.' '.$end);
+
+        if ($shiftEnd->lessThanOrEqualTo($shiftStart)) {
+            return 'Shift end must be after shift start.';
+        }
+
+        if ($shiftStart->lt($rules->salonOpenOn($day))) {
+            return 'Shift starts before salon opening hours.';
+        }
+
+        if ($shiftEnd->gt($rules->salonCloseOn($day))) {
+            return 'Shift ends after salon closing hours.';
+        }
+
+        return null;
     }
 }

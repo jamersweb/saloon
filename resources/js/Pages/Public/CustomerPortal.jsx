@@ -49,6 +49,19 @@ export default function CustomerPortal({ customer }) {
                         </div>
                     </div>
 
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="ta-card p-5">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Points Spent</div>
+                            <div className="mt-2 text-3xl font-semibold text-rose-700">{customer.points_spent ?? 0}</div>
+                            <p className="text-sm text-slate-500">Total points redeemed so far.</p>
+                        </div>
+                        <div className="ta-card p-5">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Points Remaining</div>
+                            <div className="mt-2 text-3xl font-semibold text-emerald-700">{customer.points_remaining ?? customer.points ?? 0}</div>
+                            <p className="text-sm text-slate-500">Available points balance right now.</p>
+                        </div>
+                    </div>
+
                     <div className="grid gap-6 lg:grid-cols-2">
                         <section className="ta-card overflow-hidden">
                             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-700">Package Summary</div>

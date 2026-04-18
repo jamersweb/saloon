@@ -17,6 +17,7 @@ class RoleSeeder extends Seeder
             ['name' => 'owner', 'label' => 'Owner'],
             ['name' => 'manager', 'label' => 'Manager'],
             ['name' => 'staff', 'label' => 'Staff'],
+            ['name' => 'reception', 'label' => 'Reception'],
             ['name' => 'customer', 'label' => 'Customer'],
         ];
 

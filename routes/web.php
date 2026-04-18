@@ -83,6 +83,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/staff', [StaffProfileController::class, 'index'])->name('staff.index');
         Route::post('/staff', [StaffProfileController::class, 'store'])->name('staff.store');
         Route::put('/staff/{staff}', [StaffProfileController::class, 'update'])->name('staff.update');
+        Route::post('/staff/{staff}/deactivate', [StaffProfileController::class, 'deactivate'])->name('staff.deactivate');
+        Route::post('/staff/{staff}/restore', [StaffProfileController::class, 'restore'])->name('staff.restore');
         Route::delete('/staff/{staff}', [StaffProfileController::class, 'destroy'])->name('staff.destroy');
 
         Route::get('/schedules', [StaffScheduleController::class, 'index'])->name('schedules.index');

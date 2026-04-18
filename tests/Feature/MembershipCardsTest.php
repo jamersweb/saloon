@@ -51,7 +51,7 @@ class MembershipCardsTest extends TestCase
         CustomerMembershipCard::create([
             'customer_id' => $customer->id,
             'membership_card_type_id' => $silver->id,
-            'card_number' => 'SILVER-0001',
+            'card_number' => '555055000001',
             'status' => 'active',
             'issued_at' => now()->subMonth(),
             'activated_at' => now()->subMonth(),
@@ -61,7 +61,7 @@ class MembershipCardsTest extends TestCase
             ->post(route('loyalty.cards.assign'), [
                 'customer_id' => $customer->id,
                 'membership_card_type_id' => $gold->id,
-                'card_number' => 'GOLD-0001',
+                'card_number' => '555055000002',
                 'status' => 'active',
             ])
             ->assertSessionHasNoErrors();
@@ -147,7 +147,7 @@ class MembershipCardsTest extends TestCase
         CustomerMembershipCard::create([
             'customer_id' => $customer->id,
             'membership_card_type_id' => $cardType->id,
-            'card_number' => 'PLAT-0001',
+            'card_number' => '555055000003',
             'nfc_uid' => '04AB77CD',
             'status' => 'active',
             'issued_at' => now()->subDay(),
@@ -160,7 +160,49 @@ class MembershipCardsTest extends TestCase
             ])
             ->assertSessionHasNoErrors()
             ->assertSessionHas('nfc_lookup.customer_name', 'Scan Customer')
-            ->assertSessionHas('nfc_lookup.card_number', 'PLAT-0001');
+            ->assertSessionHas('nfc_lookup.card_number', '555055000003');
+    }
+
+    public function test_membership_nfc_lookup_normalizes_uid_case(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-NFC-CASE',
+            'name' => 'Case Customer',
+            'phone' => '5551313131',
+            'is_active' => true,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Case Tier',
+            'slug' => 'case-tier',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'is_active' => true,
+        ]);
+
+        CustomerMembershipCard::create([
+            'customer_id' => $customer->id,
+            'membership_card_type_id' => $cardType->id,
+            'card_number' => '555099000001',
+            'nfc_uid' => 'AABBCCDD',
+            'status' => 'active',
+            'issued_at' => now()->subDay(),
+            'activated_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.nfc-lookup'), [
+                'nfc_uid' => '  aabbccdd  ',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('nfc_lookup.card_number', '555099000001');
     }
 
     public function test_binding_nfc_uid_can_replace_existing_link_when_requested(): void
@@ -197,7 +239,7 @@ class MembershipCardsTest extends TestCase
         $firstCard = CustomerMembershipCard::create([
             'customer_id' => $firstCustomer->id,
             'membership_card_type_id' => $cardType->id,
-            'card_number' => 'SILVER-0101',
+            'card_number' => '555055000004',
             'nfc_uid' => '0422AA11',
             'status' => 'active',
             'issued_at' => now()->subWeek(),
@@ -207,7 +249,7 @@ class MembershipCardsTest extends TestCase
         $secondCard = CustomerMembershipCard::create([
             'customer_id' => $secondCustomer->id,
             'membership_card_type_id' => $cardType->id,
-            'card_number' => 'SILVER-0202',
+            'card_number' => '555055000005',
             'status' => 'active',
             'issued_at' => now()->subWeek(),
             'activated_at' => now()->subWeek(),
@@ -226,5 +268,157 @@ class MembershipCardsTest extends TestCase
 
         $this->assertNull($firstCard->nfc_uid);
         $this->assertSame('0422AA11', $secondCard->nfc_uid);
+    }
+
+    public function test_pre_issue_inventory_card_has_no_customer_and_numeric_card_number(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Bronze',
+            'slug' => 'bronze',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'validity_days' => 365,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.issue-inventory'), [
+                'membership_card_type_id' => $cardType->id,
+                'status' => 'pending',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $row = CustomerMembershipCard::query()->where('membership_card_type_id', $cardType->id)->first();
+        $this->assertNotNull($row);
+        $this->assertNull($row->customer_id);
+        $this->assertMatchesRegularExpression('/^\d+$/', (string) $row->card_number);
+        $this->assertSame('100000000001', (string) $row->card_number);
+        $this->assertSame('pending', $row->status);
+    }
+
+    public function test_consecutive_inventory_issues_increment_sequence_per_card_type(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Seq Test',
+            'slug' => 'seq-test',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.issue-inventory'), [
+                'membership_card_type_id' => $cardType->id,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.issue-inventory'), [
+                'membership_card_type_id' => $cardType->id,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $numbers = CustomerMembershipCard::query()
+            ->where('membership_card_type_id', $cardType->id)
+            ->orderBy('id')
+            ->pluck('card_number')
+            ->all();
+
+        $this->assertSame(['100000000001', '100000000002'], $numbers);
+    }
+
+    public function test_link_inventory_card_assigns_customer_and_sets_validity(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-LINK-001',
+            'name' => 'Link Customer',
+            'phone' => '5550001111',
+            'is_active' => true,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Bronze',
+            'slug' => 'bronze-link',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'validity_days' => 30,
+            'is_active' => true,
+        ]);
+
+        $inventory = CustomerMembershipCard::create([
+            'customer_id' => null,
+            'membership_card_type_id' => $cardType->id,
+            'card_number' => '777066000099',
+            'status' => 'pending',
+            'issued_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.link-customer'), [
+                'customer_id' => $customer->id,
+                'customer_membership_card_id' => $inventory->id,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $inventory->refresh();
+        $this->assertSame($customer->id, $inventory->customer_id);
+        $this->assertSame('active', $inventory->status);
+        $this->assertNotNull($inventory->activated_at);
+        $this->assertNotNull($inventory->expires_at);
+    }
+
+    public function test_assign_rejects_non_numeric_card_number(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-BADNUM',
+            'name' => 'Bad Num',
+            'phone' => '5550002222',
+            'is_active' => true,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Bronze',
+            'slug' => 'bronze-bad',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.assign'), [
+                'customer_id' => $customer->id,
+                'membership_card_type_id' => $cardType->id,
+                'card_number' => 'ABC-123',
+                'status' => 'active',
+            ])
+            ->assertSessionHasErrors('card_number');
     }
 }

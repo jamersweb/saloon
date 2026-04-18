@@ -29,13 +29,72 @@ const normalizeToInterval = (value, intervalMinutes) => {
     return toDateTimeLocal(date);
 };
 
-export default function AppointmentsIndex({ appointments, services, staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart }) {
+const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+const salonClockBoundary = (bookingRules, key, fallback) => {
+    const raw = String(bookingRules?.[key] || fallback);
+    const m = raw.match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return { h: 9, m: 0 };
+
+    return { h: Math.min(23, Math.max(0, parseInt(m[1], 10))), m: Math.min(59, Math.max(0, parseInt(m[2], 10))) };
+};
+
+/** Earliest selectable instant for a calendar day: salon open, or (on today) the later of that and now+min advance snapped up to slot interval. */
+const salonSelectableBoundsForYmd = (dateYmd, bookingRules, slotIntervalMinutes) => {
+    const open = salonClockBoundary(bookingRules, 'opening_time', '09:00');
+    const close = salonClockBoundary(bookingRules, 'closing_time', '22:00');
+    let minM = open.h * 60 + open.m;
+    const closeM = close.h * 60 + close.m;
+    const max = `${dateYmd}T${pad2(close.h)}:${pad2(close.m)}`;
+
+    const todayYmd = localYmd(new Date());
+    const step = Math.max(1, Number(slotIntervalMinutes || 30));
+    const minAdv = Math.max(0, Number(bookingRules?.min_advance_minutes || 0));
+
+    if (dateYmd === todayYmd) {
+        const threshold = new Date(Date.now() + minAdv * 60000);
+        threshold.setSeconds(0, 0);
+        const thYmd = localYmd(threshold);
+        if (thYmd > dateYmd) {
+            return { min: max, max };
+        }
+        const [Y, M, D] = dateYmd.split('-').map((n) => parseInt(n, 10));
+        const dayStart = new Date(Y, M - 1, D);
+        const minsFloat = (threshold.getTime() - dayStart.getTime()) / 60000;
+        const policyFloor = Math.ceil(minsFloat / step) * step;
+        minM = Math.max(minM, policyFloor);
+    }
+
+    const minH = Math.floor(minM / 60);
+    const minMin = minM % 60;
+    let min = `${dateYmd}T${pad2(minH)}:${pad2(minMin)}`;
+    if (min > max) min = max;
+
+    return { min, max };
+};
+
+const clampDateTimeLocalToSalon = (value, bookingRules, slotIntervalMinutes = 30) => {
+    if (!value || !bookingRules) return value;
+    const [d] = value.split('T');
+    if (!d) return value;
+    const { min, max } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
+    if (value < min) return min;
+    if (value > max) return max;
+
+    return value;
+};
+
+export default function AppointmentsIndex({ appointments, services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart }) {
     const { flash, auth } = usePage().props;
     const canManageFinance = Boolean(auth?.permissions?.can_manage_finance);
     const [editingId, setEditingId] = useState(null);
     const [startServiceId, setStartServiceId] = useState(null);
     const [completeServiceId, setCompleteServiceId] = useState(null);
     const [createEndManuallySet, setCreateEndManuallySet] = useState(false);
+    const [createCustomerMode, setCreateCustomerMode] = useState('new');
+    const [createSelectedCustomerId, setCreateSelectedCustomerId] = useState('');
+    const [editCustomerMode, setEditCustomerMode] = useState('new');
+    const [editSelectedCustomerId, setEditSelectedCustomerId] = useState('');
     const [editEndManuallySet, setEditEndManuallySet] = useState(true);
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
 
@@ -66,11 +125,18 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
 
         startDate.setMinutes(startDate.getMinutes() + totalMinutes);
 
-        return toDateTimeLocal(startDate);
+        let endStr = toDateTimeLocal(startDate);
+        endStr = clampDateTimeLocalToSalon(endStr, bookingRules, slotIntervalMinutes);
+        if (startValue && endStr < startValue) {
+            endStr = clampDateTimeLocalToSalon(startValue, bookingRules, slotIntervalMinutes);
+        }
+
+        return endStr;
     };
 
     const handleCreateStartChange = (value) => {
-        const normalizedValue = normalizeToInterval(value, slotIntervalMinutes);
+        let normalizedValue = normalizeToInterval(value, slotIntervalMinutes);
+        normalizedValue = clampDateTimeLocalToSalon(normalizedValue, bookingRules, slotIntervalMinutes);
         createForm.setData('scheduled_start', normalizedValue);
 
         if (!createEndManuallySet || !createForm.data.scheduled_end) {
@@ -87,12 +153,53 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
     };
 
     const handleEditStartChange = (value) => {
-        const normalizedValue = normalizeToInterval(value, slotIntervalMinutes);
+        let normalizedValue = normalizeToInterval(value, slotIntervalMinutes);
+        normalizedValue = clampDateTimeLocalToSalon(normalizedValue, bookingRules, slotIntervalMinutes);
         editForm.setData('scheduled_start', normalizedValue);
 
         if (!editEndManuallySet || !editForm.data.scheduled_end) {
             editForm.setData('scheduled_end', calculateSuggestedEnd(normalizedValue, editForm.data.service_id));
         }
+    };
+
+    const handleCreateEndChange = (value) => {
+        setCreateEndManuallySet(Boolean(value));
+        if (!value) {
+            createForm.setData('scheduled_end', '');
+            return;
+        }
+        const [d] = value.split('T');
+        if (!d) {
+            createForm.setData('scheduled_end', value);
+            return;
+        }
+        const { min, max } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
+        const start = createForm.data.scheduled_start;
+        const floor = start && start.startsWith(`${d}T`) ? start : min;
+        let v = value;
+        if (v < floor) v = floor;
+        if (v > max) v = max;
+        createForm.setData('scheduled_end', clampDateTimeLocalToSalon(v, bookingRules, slotIntervalMinutes));
+    };
+
+    const handleEditEndChange = (value) => {
+        setEditEndManuallySet(Boolean(value));
+        if (!value) {
+            editForm.setData('scheduled_end', '');
+            return;
+        }
+        const [d] = value.split('T');
+        if (!d) {
+            editForm.setData('scheduled_end', value);
+            return;
+        }
+        const { min, max } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
+        const start = editForm.data.scheduled_start;
+        const floor = start && start.startsWith(`${d}T`) ? start : min;
+        let v = value;
+        if (v < floor) v = floor;
+        if (v > max) v = max;
+        editForm.setData('scheduled_end', clampDateTimeLocalToSalon(v, bookingRules, slotIntervalMinutes));
     };
 
     const handleEditServiceChange = (value) => {
@@ -103,8 +210,22 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
         }
     };
 
+    const applyCustomerToCreateForm = (customer) => {
+        createForm.setData('customer_name', customer?.name ?? '');
+        createForm.setData('customer_phone', customer?.phone ?? '');
+        createForm.setData('customer_email', customer?.email ?? '');
+    };
+
+    const applyCustomerToEditForm = (customer) => {
+        editForm.setData('customer_name', customer?.name ?? '');
+        editForm.setData('customer_phone', customer?.phone ?? '');
+        editForm.setData('customer_email', customer?.email ?? '');
+    };
+
     const startEdit = (appt) => {
         setEditingId(appt.id);
+        setEditCustomerMode('new');
+        setEditSelectedCustomerId('');
         setEditEndManuallySet(Boolean(appt.scheduled_end));
         editForm.setData({
             customer_name: appt.customer_name || '',
@@ -162,6 +283,11 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
     const addProductRow = () => completeForm.setData('products', [...completeForm.data.products, { inventory_item_id: '', quantity: 1, notes: '' }]);
     const removeProductRow = (index) => completeForm.setData('products', completeForm.data.products.filter((_, rowIndex) => rowIndex !== index));
 
+    const createSalonYmd = (createForm.data.scheduled_start || defaultStart || '').split('T')[0] || localYmd(new Date());
+    const createSalonBounds = salonSelectableBoundsForYmd(createSalonYmd, bookingRules, slotIntervalMinutes);
+    const editSalonYmd = (editForm.data.scheduled_start || '').split('T')[0] || localYmd(new Date());
+    const editSalonBounds = salonSelectableBoundsForYmd(editSalonYmd, bookingRules, slotIntervalMinutes);
+
     return (
         <AuthenticatedLayout header="Appointments">
             <Head title="Appointments" />
@@ -176,14 +302,69 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
                 ) : null}
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Appointment</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('appointments.store'), { onSuccess: () => { createForm.reset(); createForm.setData('scheduled_start', defaultStart || ''); setCreateEndManuallySet(false); } }); }} className="grid gap-3 md:grid-cols-4">
-                        <div><label className="ta-field-label">Customer Name</label><input className="ta-input" value={createForm.data.customer_name} onChange={(e) => createForm.setData('customer_name', e.target.value)} required />{fieldError(createForm, 'customer_name')}</div>
-                        <div><label className="ta-field-label">Phone</label><input className="ta-input" value={createForm.data.customer_phone} onChange={(e) => createForm.setData('customer_phone', e.target.value)} required />{fieldError(createForm, 'customer_phone')}</div>
-                        <div><label className="ta-field-label">Email</label><input className="ta-input" value={createForm.data.customer_email} onChange={(e) => createForm.setData('customer_email', e.target.value)} />{fieldError(createForm, 'customer_email')}</div>
+                    <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('appointments.store'), { onSuccess: () => { createForm.reset(); createForm.setData('scheduled_start', defaultStart || ''); setCreateEndManuallySet(false); setCreateCustomerMode('new'); setCreateSelectedCustomerId(''); } }); }} className="grid gap-3 md:grid-cols-4">
+                        <div className="md:col-span-4 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer type</span>
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                                <input type="radio" name="create_customer_mode" className="text-indigo-600" checked={createCustomerMode === 'new'} onChange={() => { setCreateCustomerMode('new'); setCreateSelectedCustomerId(''); }} />
+                                New customer
+                            </label>
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                                <input type="radio" name="create_customer_mode" className="text-indigo-600" checked={createCustomerMode === 'existing'} onChange={() => { setCreateCustomerMode('existing'); setCreateSelectedCustomerId(''); applyCustomerToCreateForm(null); }} />
+                                Existing customer
+                            </label>
+                        </div>
+                        {createCustomerMode === 'existing' ? (
+                            <div className="md:col-span-4">
+                                <label className="ta-field-label">Select customer</label>
+                                <select
+                                    className="ta-input"
+                                    value={createSelectedCustomerId}
+                                    onChange={(e) => {
+                                        const id = e.target.value;
+                                        setCreateSelectedCustomerId(id);
+                                        const customer = customers.find((c) => String(c.id) === id);
+                                        applyCustomerToCreateForm(customer || null);
+                                    }}
+                                >
+                                    <option value="">Search list — choose a customer…</option>
+                                    {customers.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}{c.phone ? ` — ${c.phone}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="mt-1 text-xs text-slate-500">Full name, phone, and email fill in automatically. You can still edit them before saving.</p>
+                            </div>
+                        ) : null}
+                        <div>
+                            <label className="ta-field-label">{createCustomerMode === 'existing' ? 'Name' : 'Full name'}</label>
+                            <input className="ta-input" value={createForm.data.customer_name} onChange={(e) => createForm.setData('customer_name', e.target.value)} required disabled={createCustomerMode === 'existing' && !createSelectedCustomerId} />
+                            {fieldError(createForm, 'customer_name')}
+                        </div>
+                        <div>
+                            <label className="ta-field-label">{createCustomerMode === 'existing' ? 'Phone number' : 'Phone'}</label>
+                            <input className="ta-input" value={createForm.data.customer_phone} onChange={(e) => createForm.setData('customer_phone', e.target.value)} required disabled={createCustomerMode === 'existing' && !createSelectedCustomerId} />
+                            {fieldError(createForm, 'customer_phone')}
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Email</label>
+                            <input className="ta-input" type="email" value={createForm.data.customer_email} onChange={(e) => createForm.setData('customer_email', e.target.value)} disabled={createCustomerMode === 'existing' && !createSelectedCustomerId} />
+                            {fieldError(createForm, 'customer_email')}
+                        </div>
                         <div><label className="ta-field-label">Service</label><select className="ta-input" value={createForm.data.service_id} onChange={(e) => handleCreateServiceChange(e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.duration_minutes}m)</option>)}</select>{fieldError(createForm, 'service_id')}</div>
                         <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(createForm, 'staff_profile_id')}</div>
-                        <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={createForm.data.scheduled_start} onChange={(e) => handleCreateStartChange(e.target.value)} step={slotIntervalMinutes * 60} required />{fieldError(createForm, 'scheduled_start')}</div>
-                        <div><label className="ta-field-label">Scheduled End</label><input className="ta-input" type="datetime-local" value={createForm.data.scheduled_end} onChange={(e) => { const value = e.target.value; setCreateEndManuallySet(Boolean(value)); createForm.setData('scheduled_end', value); }} />{fieldError(createForm, 'scheduled_end')}</div>
+                        <div>
+                            <label className="ta-field-label">Scheduled Start</label>
+                            <p className="mb-1 text-xs text-slate-500">Book between {bookingRules?.opening_time || '09:00'} and {bookingRules?.closing_time || '22:00'} (same calendar day). For today, the earliest start is the next available slot after now (including minimum advance).</p>
+                            <input className="ta-input" type="datetime-local" value={createForm.data.scheduled_start} onChange={(e) => handleCreateStartChange(e.target.value)} min={createSalonBounds.min} max={createSalonBounds.max} step={slotIntervalMinutes * 60} required />
+                            {fieldError(createForm, 'scheduled_start')}
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Scheduled End</label>
+                            <input className="ta-input" type="datetime-local" value={createForm.data.scheduled_end} onChange={(e) => handleCreateEndChange(e.target.value)} min={createSalonBounds.min} max={createSalonBounds.max} step={slotIntervalMinutes * 60} />
+                            {fieldError(createForm, 'scheduled_end')}
+                        </div>
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={createForm.data.status} onChange={(e) => createForm.setData('status', e.target.value)}><option value="confirmed">confirmed</option><option value="pending">pending</option></select>{fieldError(createForm, 'status')}</div>
                         <div className="md:col-span-4"><input className="ta-input" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(createForm, 'notes')}</div>
                         <button className="ta-btn-primary" disabled={createForm.processing}>Create</button>
@@ -413,15 +594,57 @@ export default function AppointmentsIndex({ appointments, services, staffProfile
             <Modal show={Boolean(editingId)} maxWidth="2xl" onClose={() => setEditingId(null)}>
                 <div className="p-6">
                     <h3 className="mb-4 text-base font-semibold text-slate-800">Edit Appointment #{editingId}</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('appointments.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-2">
-                        <div><label className="ta-field-label">Customer Name</label><input className="ta-input" value={editForm.data.customer_name} onChange={(e) => editForm.setData('customer_name', e.target.value)} required />{fieldError(editForm, 'customer_name')}</div>
-                        <div><label className="ta-field-label">Customer Phone</label><input className="ta-input" value={editForm.data.customer_phone} onChange={(e) => editForm.setData('customer_phone', e.target.value)} required />{fieldError(editForm, 'customer_phone')}</div>
-                        <div><label className="ta-field-label">Customer Email</label><input className="ta-input" value={editForm.data.customer_email} onChange={(e) => editForm.setData('customer_email', e.target.value)} />{fieldError(editForm, 'customer_email')}</div>
+                    <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('appointments.update', editingId), { onSuccess: () => { setEditingId(null); setEditCustomerMode('new'); setEditSelectedCustomerId(''); } }); }} className="grid gap-3 md:grid-cols-2">
+                        <div className="md:col-span-2 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer type</span>
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                                <input type="radio" name="edit_customer_mode" className="text-indigo-600" checked={editCustomerMode === 'new'} onChange={() => { setEditCustomerMode('new'); setEditSelectedCustomerId(''); }} />
+                                Keep / edit details
+                            </label>
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                                <input type="radio" name="edit_customer_mode" className="text-indigo-600" checked={editCustomerMode === 'existing'} onChange={() => { setEditCustomerMode('existing'); setEditSelectedCustomerId(''); }} />
+                                Link to existing customer
+                            </label>
+                        </div>
+                        {editCustomerMode === 'existing' ? (
+                            <div className="md:col-span-2">
+                                <label className="ta-field-label">Select customer</label>
+                                <select
+                                    className="ta-input"
+                                    value={editSelectedCustomerId}
+                                    onChange={(e) => {
+                                        const id = e.target.value;
+                                        setEditSelectedCustomerId(id);
+                                        const customer = customers.find((c) => String(c.id) === id);
+                                        applyCustomerToEditForm(customer || null);
+                                    }}
+                                >
+                                    <option value="">Choose a customer…</option>
+                                    {customers.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}{c.phone ? ` — ${c.phone}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : null}
+                        <div><label className="ta-field-label">{editCustomerMode === 'existing' ? 'Name' : 'Full name'}</label><input className="ta-input" value={editForm.data.customer_name} onChange={(e) => editForm.setData('customer_name', e.target.value)} required />{fieldError(editForm, 'customer_name')}</div>
+                        <div><label className="ta-field-label">{editCustomerMode === 'existing' ? 'Phone number' : 'Phone'}</label><input className="ta-input" value={editForm.data.customer_phone} onChange={(e) => editForm.setData('customer_phone', e.target.value)} required />{fieldError(editForm, 'customer_phone')}</div>
+                        <div><label className="ta-field-label">Email</label><input className="ta-input" type="email" value={editForm.data.customer_email} onChange={(e) => editForm.setData('customer_email', e.target.value)} />{fieldError(editForm, 'customer_email')}</div>
                         <div><label className="ta-field-label">Service</label><select className="ta-input" value={editForm.data.service_id} onChange={(e) => handleEditServiceChange(e.target.value)} required><option value="">Service</option>{services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'service_id')}</div>
                         <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'staff_profile_id')}</div>
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
-                        <div><label className="ta-field-label">Scheduled Start</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_start} onChange={(e) => handleEditStartChange(e.target.value)} step={slotIntervalMinutes * 60} required />{fieldError(editForm, 'scheduled_start')}</div>
-                        <div><label className="ta-field-label">Scheduled End</label><input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onChange={(e) => { const value = e.target.value; setEditEndManuallySet(Boolean(value)); editForm.setData('scheduled_end', value); }} />{fieldError(editForm, 'scheduled_end')}</div>
+                        <div>
+                            <label className="ta-field-label">Scheduled Start</label>
+                            <p className="mb-1 text-xs text-slate-500">Book between {bookingRules?.opening_time || '09:00'} and {bookingRules?.closing_time || '22:00'} (same calendar day). For today, the earliest start is the next available slot after now (including minimum advance).</p>
+                            <input className="ta-input" type="datetime-local" value={editForm.data.scheduled_start} onChange={(e) => handleEditStartChange(e.target.value)} min={editSalonBounds.min} max={editSalonBounds.max} step={slotIntervalMinutes * 60} required />
+                            {fieldError(editForm, 'scheduled_start')}
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Scheduled End</label>
+                            <input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onChange={(e) => handleEditEndChange(e.target.value)} min={editSalonBounds.min} max={editSalonBounds.max} step={slotIntervalMinutes * 60} />
+                            {fieldError(editForm, 'scheduled_end')}
+                        </div>
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
                         <div className="md:col-span-2 flex justify-end gap-2 pt-2">
                             <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button>

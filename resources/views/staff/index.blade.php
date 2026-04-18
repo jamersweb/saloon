@@ -28,7 +28,7 @@
                         <td>{{ implode(', ', $staff->skills ?? []) }}</td>
                         <td>{{ $staff->is_active ? 'Active' : 'Inactive' }}</td>
                         <td>
-                            <form method="POST" action="{{ route('staff.destroy', $staff) }}">@csrf @method('DELETE')<button class="text-red-600">Deactivate</button></form>
+                            <form method="POST" action="{{ route('staff.deactivate', $staff) }}">@csrf<button class="text-red-600">Deactivate</button></form>
                         </td>
                     </tr>
                 @endforeach

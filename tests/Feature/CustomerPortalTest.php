@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Appointment;
 use App\Models\Customer;
+use App\Models\CustomerLoyaltyLedger;
 use App\Models\CustomerMembershipCard;
 use App\Models\CustomerPackage;
 use App\Models\CustomerPortalToken;
@@ -90,7 +91,7 @@ class CustomerPortalTest extends TestCase
         CustomerMembershipCard::create([
             'customer_id' => $customer->id,
             'membership_card_type_id' => $cardType->id,
-            'card_number' => 'SILVER-PORTAL-01',
+            'card_number' => '555044000001',
             'status' => 'active',
             'issued_at' => now()->subMonth(),
             'activated_at' => now()->subMonth(),
@@ -153,6 +154,14 @@ class CustomerPortalTest extends TestCase
             'notes' => 'Customer requested scalp treatment.',
         ]);
 
+        CustomerLoyaltyLedger::create([
+            'customer_id' => $customer->id,
+            'points_change' => -40,
+            'balance_after' => 180,
+            'reason' => 'Reward redemption',
+            'reference' => 'REWARD-1',
+        ]);
+
         $portalToken = app(CustomerPortalService::class)->issueToken($customer);
 
         $this->get(route('customer.portal.show', $portalToken->token))
@@ -161,9 +170,62 @@ class CustomerPortalTest extends TestCase
                 ->component('Public/CustomerPortal')
                 ->where('customer.name', 'Public Portal Customer')
                 ->where('customer.current_card', 'Silver')
+                ->where('customer.points_spent', 40)
+                ->where('customer.points_remaining', 180)
                 ->where('customer.packages.0.name', 'Bridal Package')
                 ->where('customer.gift_cards.0.code', 'GIFT-PORTAL-01')
                 ->where('customer.service_history.0.service_name', 'Hair Spa'));
+    }
+
+    public function test_public_customer_portal_can_be_opened_by_membership_card_nfc_uid(): void
+    {
+        $this->withoutVite();
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-NFC-PORTAL-001',
+            'name' => 'NFC Portal Customer',
+            'phone' => '5554040404',
+            'email' => 'nfc-portal@example.com',
+            'is_active' => true,
+        ]);
+
+        $customer->loyaltyAccount()->update([
+            'current_points' => 90,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'NFC Silver',
+            'slug' => 'nfc-silver',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'is_active' => true,
+        ]);
+
+        CustomerMembershipCard::create([
+            'customer_id' => $customer->id,
+            'membership_card_type_id' => $cardType->id,
+            'card_number' => '555077000001',
+            'nfc_uid' => '04AB44CD',
+            'status' => 'active',
+            'issued_at' => now()->subWeek(),
+            'activated_at' => now()->subWeek(),
+        ]);
+
+        CustomerLoyaltyLedger::create([
+            'customer_id' => $customer->id,
+            'points_change' => -10,
+            'balance_after' => 90,
+            'reason' => 'Reward redemption',
+            'reference' => 'REWARD-2',
+        ]);
+
+        $this->get(route('customer.portal.nfc', ['nfcUid' => ' 04ab44cd ']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Public/CustomerPortal')
+                ->where('customer.name', 'NFC Portal Customer')
+                ->where('customer.points_spent', 10)
+                ->where('customer.points_remaining', 90));
     }
 
     public function test_expired_customer_portal_token_returns_not_found(): void

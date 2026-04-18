@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BookingRule;
 use App\Models\Role;
 use App\Models\StaffProfile;
 use App\Models\StaffSchedule;
@@ -16,14 +17,20 @@ use Inertia\Response;
 
 class StaffProfileController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $showDeleted = $request->boolean('show_deleted');
+
+        $staffQuery = $showDeleted
+            ? StaffProfile::query()->onlyTrashed()->with('user.role')->orderByDesc('deleted_at')
+            : StaffProfile::query()->with('user.role')->orderByDesc('id');
+
         return Inertia::render('Staff/Index', [
             'roles' => Role::query()
                 ->where('name', '!=', 'customer')
                 ->orderBy('label')
                 ->get(['id', 'name', 'label']),
-            'staffProfiles' => StaffProfile::query()->with('user.role')->latest()->get()->map(function (StaffProfile $staff) {
+            'staffProfiles' => $staffQuery->get()->map(function (StaffProfile $staff) {
                 return [
                     'id' => $staff->id,
                     'employee_code' => $staff->employee_code,
@@ -31,6 +38,7 @@ class StaffProfileController extends Controller
                     'skills' => $staff->skills ?? [],
                     'hourly_rate' => $staff->hourly_rate !== null ? (float) $staff->hourly_rate : null,
                     'is_active' => $staff->is_active,
+                    'deleted_at' => $staff->deleted_at?->toIso8601String(),
                     'user' => [
                         'id' => $staff->user?->id,
                         'name' => $staff->user?->name,
@@ -40,6 +48,8 @@ class StaffProfileController extends Controller
                     ],
                 ];
             }),
+            'showDeleted' => $showDeleted,
+            'trashedCount' => StaffProfile::onlyTrashed()->count(),
         ]);
     }
 
@@ -78,6 +88,7 @@ class StaffProfileController extends Controller
 
         $monthStart = CarbonImmutable::now()->startOfMonth();
         $monthEnd = CarbonImmutable::now()->endOfMonth();
+        $hours = BookingRule::current();
 
         for ($date = $monthStart; $date->lessThanOrEqualTo($monthEnd); $date = $date->addDay()) {
             StaffSchedule::updateOrCreate(
@@ -86,8 +97,8 @@ class StaffProfileController extends Controller
                     'schedule_date' => $date->toDateString(),
                 ],
                 [
-                    'start_time' => '10:00',
-                    'end_time' => '20:00',
+                    'start_time' => $hours->defaultShiftStart(),
+                    'end_time' => $hours->defaultShiftEnd(),
                     'break_start' => null,
                     'break_end' => null,
                     'is_day_off' => false,
@@ -138,7 +149,7 @@ class StaffProfileController extends Controller
         return back()->with('status', 'Staff updated.');
     }
 
-    public function destroy(Request $request, StaffProfile $staff): RedirectResponse
+    public function deactivate(Request $request, StaffProfile $staff): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
@@ -147,6 +158,29 @@ class StaffProfileController extends Controller
         Audit::log($request->user()->id, 'staff.deactivated', 'StaffProfile', $staff->id);
 
         return back()->with('status', 'Staff deactivated.');
+    }
+
+    public function destroy(Request $request, StaffProfile $staff): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $staff->delete();
+
+        Audit::log($request->user()->id, 'staff.deleted', 'StaffProfile', $staff->id);
+
+        return back()->with('status', 'Staff member removed from the team. Restore from Removed staff if this was a mistake.');
+    }
+
+    public function restore(Request $request, int $staff): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $profile = StaffProfile::onlyTrashed()->findOrFail($staff);
+        $profile->restore();
+
+        Audit::log($request->user()->id, 'staff.restored', 'StaffProfile', $profile->id);
+
+        return back()->with('status', 'Staff member restored to the team list.');
     }
 
     /** @return list<string> */
@@ -161,9 +195,15 @@ class StaffProfileController extends Controller
 
     private function generateEmployeeCode(): string
     {
-        $latestCode = StaffProfile::query()
+        $connection = StaffProfile::query()->getConnection();
+        $numericSuffixOrder = match ($connection->getDriverName()) {
+            'mysql' => 'CAST(SUBSTRING(employee_code, 5) AS UNSIGNED) DESC',
+            default => 'CAST(SUBSTR(employee_code, 5) AS INTEGER) DESC',
+        };
+
+        $latestCode = StaffProfile::withTrashed()
             ->where('employee_code', 'like', 'EMP-%')
-            ->orderByRaw("CAST(SUBSTR(employee_code, 5) AS INTEGER) DESC")
+            ->orderByRaw($numericSuffixOrder)
             ->value('employee_code');
 
         $nextNumber = 101;
@@ -174,7 +214,7 @@ class StaffProfileController extends Controller
 
         do {
             $code = sprintf('EMP-%03d', $nextNumber);
-            $exists = StaffProfile::query()->where('employee_code', $code)->exists();
+            $exists = StaffProfile::withTrashed()->where('employee_code', $code)->exists();
             $nextNumber++;
         } while ($exists);
 

@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Support\Permissions;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -20,6 +21,20 @@ class HandleInertiaRequests extends Middleware
      */
     public function version(Request $request): ?string
     {
+        $manifestPath = public_path('build/manifest.json');
+
+        if (File::exists($manifestPath)) {
+            $hash = @md5_file($manifestPath);
+
+            return is_string($hash) && $hash !== '' ? $hash : parent::version($request);
+        }
+
+        $hotPath = public_path('hot');
+
+        if (File::exists($hotPath)) {
+            return (string) (@filemtime($hotPath) ?: parent::version($request));
+        }
+
         return parent::version($request);
     }
 
