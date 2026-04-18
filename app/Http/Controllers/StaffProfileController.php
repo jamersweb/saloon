@@ -2,13 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\BookingRule;
 use App\Models\Role;
 use App\Models\StaffProfile;
-use App\Models\StaffSchedule;
 use App\Models\User;
+use App\Services\StaffScheduleGeneratorService;
 use App\Support\Audit;
-use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -17,6 +15,8 @@ use Inertia\Response;
 
 class StaffProfileController extends Controller
 {
+    public function __construct(private readonly StaffScheduleGeneratorService $staffScheduleGenerator) {}
+
     public function index(Request $request): Response
     {
         $showDeleted = $request->boolean('show_deleted');
@@ -86,26 +86,7 @@ class StaffProfileController extends Controller
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
 
-        $monthStart = CarbonImmutable::now()->startOfMonth();
-        $monthEnd = CarbonImmutable::now()->endOfMonth();
-        $hours = BookingRule::current();
-
-        for ($date = $monthStart; $date->lessThanOrEqualTo($monthEnd); $date = $date->addDay()) {
-            StaffSchedule::updateOrCreate(
-                [
-                    'staff_profile_id' => $profile->id,
-                    'schedule_date' => $date->toDateString(),
-                ],
-                [
-                    'start_time' => $hours->defaultShiftStart(),
-                    'end_time' => $hours->defaultShiftEnd(),
-                    'break_start' => null,
-                    'break_end' => null,
-                    'is_day_off' => false,
-                    'notes' => 'Auto-assigned monthly default shift',
-                ],
-            );
-        }
+        $this->staffScheduleGenerator->seedMonthForNewStaffProfile($profile);
 
         Audit::log($request->user()->id, 'staff.created', 'StaffProfile', $profile->id, [
             'user_id' => $user->id,

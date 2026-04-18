@@ -89,6 +89,7 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/schedules', [StaffScheduleController::class, 'index'])->name('schedules.index');
         Route::post('/schedules', [StaffScheduleController::class, 'store'])->name('schedules.store');
+        Route::post('/schedules/fill-gaps', [StaffScheduleController::class, 'fillGaps'])->name('schedules.fill-gaps');
         Route::put('/schedules/{schedule}', [StaffScheduleController::class, 'update'])->name('schedules.update');
         Route::delete('/schedules/{schedule}', [StaffScheduleController::class, 'destroy'])->name('schedules.destroy');
         Route::patch('/booking-rules', [BookingRuleController::class, 'update'])->name('booking-rules.update');
@@ -173,13 +174,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/invoices', [TaxInvoiceController::class, 'index'])->name('invoices.index');
             Route::get('/invoices/create', [TaxInvoiceController::class, 'create'])->name('invoices.create');
             Route::post('/invoices', [TaxInvoiceController::class, 'store'])->name('invoices.store');
-            Route::get('/invoices/{invoice}', [TaxInvoiceController::class, 'show'])->name('invoices.show');
-            Route::put('/invoices/{invoice}', [TaxInvoiceController::class, 'update'])->name('invoices.update');
             Route::delete('/invoices/{invoice}', [TaxInvoiceController::class, 'destroy'])->name('invoices.destroy');
-            Route::post('/invoices/{invoice}/finalize', [TaxInvoiceController::class, 'finalize'])->name('invoices.finalize');
             Route::post('/invoices/{invoice}/void', [TaxInvoiceController::class, 'voidInvoice'])->name('invoices.void');
-            Route::post('/invoices/{invoice}/payments', [TaxInvoiceController::class, 'storePayment'])->name('invoices.payments.store');
-            Route::get('/invoices/{invoice}/pdf', [TaxInvoiceController::class, 'pdf'])->name('invoices.pdf');
             Route::post('/invoices/{invoice}/email-receipt', [TaxInvoiceController::class, 'emailReceipt'])->name('invoices.email-receipt');
 
             Route::get('/expenses', [ExpenseEntryController::class, 'index'])->name('expenses.index');
@@ -203,6 +199,14 @@ Route::middleware('auth')->group(function () {
         Route::delete('/roles/{role}', [RoleController::class, 'destroy'])->name('roles.destroy');
 
         Route::patch('/leave-requests/{leaveRequest}/review', [LeaveRequestController::class, 'review'])->name('leave-requests.review');
+    });
+
+    Route::middleware('role:owner,manager,reception')->prefix('finance')->name('finance.')->group(function () {
+        Route::get('/invoices/{invoice}', [TaxInvoiceController::class, 'show'])->name('invoices.show');
+        Route::put('/invoices/{invoice}', [TaxInvoiceController::class, 'update'])->name('invoices.update');
+        Route::post('/invoices/{invoice}/finalize', [TaxInvoiceController::class, 'finalize'])->name('invoices.finalize');
+        Route::post('/invoices/{invoice}/payments', [TaxInvoiceController::class, 'storePayment'])->name('invoices.payments.store');
+        Route::get('/invoices/{invoice}/pdf', [TaxInvoiceController::class, 'pdf'])->name('invoices.pdf');
     });
 });
 

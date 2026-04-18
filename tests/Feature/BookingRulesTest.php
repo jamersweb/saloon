@@ -277,7 +277,7 @@ class BookingRulesTest extends TestCase
             'customer_email' => 'overnight@example.com',
             'service_id' => $service->id,
             'staff_profile_id' => $staffProfile->id,
-            'scheduled_start' => $shiftDate->copy()->setTime(15, 15)->toDateTimeString(),
+            'scheduled_start' => $shiftDate->copy()->setTime(15, 0)->toDateTimeString(),
         ])->assertSessionHasNoErrors();
     }
 }

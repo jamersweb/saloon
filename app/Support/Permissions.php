@@ -22,6 +22,7 @@ class Permissions
             'can_manage_crm_automation' => 'Manage CRM automation and campaigns',
             'can_export_reports' => 'Access and export reports',
             'can_manage_finance' => 'Tax invoices, payments, expenses, payroll, and finance reports',
+            'can_collect_payments' => 'Checkout: create visit tax drafts, issue receipts, and record payments (without full finance access)',
             'can_run_daily_backup' => 'Download a daily database backup (reception / operations)',
             'can_review_leave_requests' => 'Approve or reject leave requests',
             'can_manage_roles' => 'Create roles and assign permissions',
@@ -60,6 +61,7 @@ class Permissions
                 'can_manage_attendance',
                 'can_manage_leave_requests',
                 'can_run_daily_backup',
+                'can_collect_payments',
             ],
             default => [],
         };
@@ -87,6 +89,17 @@ class Permissions
             return str_starts_with($routeName, 'leave-requests.review')
                 ? 'can_review_leave_requests'
                 : 'can_manage_leave_requests';
+        }
+
+        // Reception checkout: role middleware + controller gate; not full finance permission.
+        if (in_array($routeName, [
+            'finance.invoices.show',
+            'finance.invoices.update',
+            'finance.invoices.finalize',
+            'finance.invoices.payments.store',
+            'finance.invoices.pdf',
+        ], true)) {
+            return null;
         }
 
         return match (true) {

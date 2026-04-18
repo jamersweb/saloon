@@ -1,3 +1,5 @@
+import ConfirmActionModal from '@/Components/ConfirmActionModal';
+import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
@@ -9,12 +11,16 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
     const canManage = Boolean(auth?.permissions?.can_manage_inventory);
     const [editingId, setEditingId] = useState(null);
     const [adjustingId, setAdjustingId] = useState(null);
+    const [deactivateItemId, setDeactivateItemId] = useState(null);
+    const [deactivateBusy, setDeactivateBusy] = useState(false);
 
     const createForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
     const editForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
     const adjustForm = useForm({ type: 'in', quantity: 1, reference: '', notes: '' });
 
     const startEdit = (item) => {
+        setAdjustingId(null);
+        adjustForm.clearErrors();
         setEditingId(item.id);
         editForm.setData({
             sku: item.sku,
@@ -31,8 +37,20 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
     };
 
     const startAdjust = (item) => {
+        setEditingId(null);
+        editForm.clearErrors();
         setAdjustingId(item.id);
         adjustForm.setData({ type: 'in', quantity: 1, reference: '', notes: '' });
+        adjustForm.clearErrors();
+    };
+
+    const closeEditModal = () => {
+        setEditingId(null);
+        editForm.clearErrors();
+    };
+
+    const closeAdjustModal = () => {
+        setAdjustingId(null);
         adjustForm.clearErrors();
     };
 
@@ -86,17 +104,18 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                     <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Stock Catalog</h3></div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Stock</th><th className="px-5 py-3">Reorder</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Stock</th><th className="px-5 py-3">Reorder</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
                             <tbody>
                                 {items.map((item) => (
                                     <tr key={item.id} className="border-t border-slate-100">
                                         <td className="px-5 py-3 font-medium text-slate-700">{item.sku}</td>
-                                        <td className="px-5 py-3 text-slate-600">{item.name} {item.category ? `(${item.category})` : ''}</td>
+                                        <td className="px-5 py-3 text-slate-600">{item.name}</td>
+                                        <td className="px-5 py-3 text-slate-600">{item.category || '—'}</td>
                                         <td className={`px-5 py-3 font-semibold ${item.stock_quantity <= item.reorder_level ? 'text-red-600' : 'text-slate-700'}`}>{item.stock_quantity} {item.unit}</td>
                                         <td className="px-5 py-3 text-slate-600">{item.reorder_level}</td>
                                         <td className="px-5 py-3 text-slate-600">{item.selling_price}</td>
                                         <td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{item.is_active ? 'Active' : 'Inactive'}</span></td>
-                                        <td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEdit(item)}>Edit</button><button className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 disabled:opacity-50" disabled={!canManage} onClick={() => startAdjust(item)}>Adjust</button><button className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.delete(route('inventory.destroy', item.id))}>Deactivate</button></div></td>
+                                        <td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEdit(item)}>Edit</button><button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 disabled:opacity-50" disabled={!canManage} onClick={() => startAdjust(item)}>Adjust</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => setDeactivateItemId(item.id)}>Deactivate</button></div></td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -104,10 +123,10 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                     </div>
                 </section>
 
-                {editingId && (
-                    <section className="ta-card p-5">
-                        <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Item #{editingId}</h3>
-                        <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('inventory.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-5">
+                <Modal show={Boolean(editingId)} onClose={closeEditModal} maxWidth="2xl">
+                    <div className="min-w-0 p-6">
+                        <h3 className="mb-4 text-base font-semibold text-slate-800">Edit item #{editingId}</h3>
+                        <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('inventory.update', editingId), { onSuccess: () => closeEditModal() }); }} className="grid min-w-0 gap-3 md:grid-cols-5">
                             <div><label className="ta-field-label">Sku</label><input className="ta-input" value={editForm.data.sku} onChange={(e) => editForm.setData('sku', e.target.value)} required />{fieldError(editForm, 'sku')}</div>
                             <div><label className="ta-field-label">Name</label><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
                             <div><label className="ta-field-label">Category</label><input className="ta-input" value={editForm.data.category} onChange={(e) => editForm.setData('category', e.target.value)} />{fieldError(editForm, 'category')}</div>
@@ -117,23 +136,47 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                             <div><label className="ta-field-label">Stock Quantity</label><input className="ta-input" type="number" min="0" value={editForm.data.stock_quantity} onChange={(e) => editForm.setData('stock_quantity', e.target.value)} required />{fieldError(editForm, 'stock_quantity')}</div>
                             <div><label className="ta-field-label">Reorder Level</label><input className="ta-input" type="number" min="0" value={editForm.data.reorder_level} onChange={(e) => editForm.setData('reorder_level', e.target.value)} required />{fieldError(editForm, 'reorder_level')}</div>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label></div>
-                            <div className="md:col-span-5 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button></div>
+                            <div className="md:col-span-5 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={closeEditModal}>Close</button></div>
                         </form>
-                    </section>
-                )}
+                    </div>
+                </Modal>
 
-                {adjustingId && (
-                    <section className="ta-card p-5">
-                        <h3 className="mb-4 text-sm font-semibold text-slate-700">Adjust Stock</h3>
-                        <form onSubmit={(e) => { e.preventDefault(); adjustForm.post(route('inventory.adjust', adjustingId), { onSuccess: () => setAdjustingId(null) }); }} className="grid gap-3 md:grid-cols-5">
-                            <div><label className="ta-field-label">Type</label><select className="ta-input" value={adjustForm.data.type} onChange={(e) => adjustForm.setData('type', e.target.value)}><option value="in">Stock In (+)</option><option value="out">Stock Out (-)</option><option value="adjustment">Adjustment (+/-)</option></select>{fieldError(adjustForm, 'type')}</div>
-                            <div><label className="ta-field-label">Quantity</label><input className="ta-input" type="number" placeholder="Quantity" value={adjustForm.data.quantity} onChange={(e) => adjustForm.setData('quantity', e.target.value)} required />{fieldError(adjustForm, 'quantity')}</div>
-                            <div><label className="ta-field-label">Reference</label><input className="ta-input" placeholder="Reference" value={adjustForm.data.reference} onChange={(e) => adjustForm.setData('reference', e.target.value)} />{fieldError(adjustForm, 'reference')}</div>
-                            <div><label className="ta-field-label">Notes</label><input className="ta-input" placeholder="Notes" value={adjustForm.data.notes} onChange={(e) => adjustForm.setData('notes', e.target.value)} />{fieldError(adjustForm, 'notes')}</div>
-                            <div className="flex gap-2"><button className="ta-btn-primary" disabled={adjustForm.processing || !canManage}>Apply</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setAdjustingId(null)}>Cancel</button></div>
+                <Modal show={Boolean(adjustingId)} onClose={closeAdjustModal} maxWidth="xl">
+                    <div className="min-w-0 p-6">
+                        <h3 className="mb-4 text-base font-semibold text-slate-800">Adjust stock</h3>
+                        <form onSubmit={(e) => { e.preventDefault(); adjustForm.post(route('inventory.adjust', adjustingId), { onSuccess: () => closeAdjustModal() }); }} className="space-y-4">
+                            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <div className="min-w-0"><label className="ta-field-label">Type</label><select className="ta-input w-full min-w-0" value={adjustForm.data.type} onChange={(e) => adjustForm.setData('type', e.target.value)}><option value="in">Stock In (+)</option><option value="out">Stock Out (-)</option><option value="adjustment">Adjustment (+/-)</option></select>{fieldError(adjustForm, 'type')}</div>
+                                <div className="min-w-0"><label className="ta-field-label">Quantity</label><input className="ta-input w-full min-w-0" type="number" placeholder="Quantity" value={adjustForm.data.quantity} onChange={(e) => adjustForm.setData('quantity', e.target.value)} required />{fieldError(adjustForm, 'quantity')}</div>
+                                <div className="min-w-0 sm:col-span-2 lg:col-span-2"><label className="ta-field-label">Reference</label><input className="ta-input w-full min-w-0" placeholder="Reference" value={adjustForm.data.reference} onChange={(e) => adjustForm.setData('reference', e.target.value)} />{fieldError(adjustForm, 'reference')}</div>
+                                <div className="min-w-0 sm:col-span-2 lg:col-span-4"><label className="ta-field-label">Notes</label><input className="ta-input w-full min-w-0" placeholder="Notes" value={adjustForm.data.notes} onChange={(e) => adjustForm.setData('notes', e.target.value)} />{fieldError(adjustForm, 'notes')}</div>
+                            </div>
+                            <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+                                <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={closeAdjustModal}>Close</button>
+                                <button type="submit" className="ta-btn-primary" disabled={adjustForm.processing || !canManage}>Apply</button>
+                            </div>
                         </form>
-                    </section>
-                )}
+                    </div>
+                </Modal>
+
+                <ConfirmActionModal
+                    show={Boolean(deactivateItemId)}
+                    title="Deactivate this inventory item?"
+                    message="It will be hidden from selection lists. Stock history is preserved."
+                    confirmText="Deactivate"
+                    onClose={() => !deactivateBusy && setDeactivateItemId(null)}
+                    processing={deactivateBusy}
+                    onConfirm={() => {
+                        if (!deactivateItemId) return;
+                        setDeactivateBusy(true);
+                        router.delete(route('inventory.destroy', deactivateItemId), {
+                            onFinish: () => {
+                                setDeactivateBusy(false);
+                                setDeactivateItemId(null);
+                            },
+                        });
+                    }}
+                />
 
                 <section className="ta-card overflow-hidden">
                     <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Recent Stock Transactions</h3></div>

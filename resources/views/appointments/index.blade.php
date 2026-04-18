@@ -36,7 +36,7 @@
                         <td>{{ $appointment->staffProfile?->user?->name ?? 'Unassigned' }}</td>
                         <td>{{ $appointment->status }}</td>
                         <td>
-                            <form method="POST" action="{{ route('appointments.destroy', $appointment) }}">@csrf @method('DELETE')<button class="text-red-600">Cancel</button></form>
+                            <form method="POST" action="{{ route('appointments.destroy', $appointment) }}" onsubmit="return confirm('Permanently delete this appointment? This cannot be undone.');">@csrf @method('DELETE')<button type="submit" class="text-red-600">Delete</button></form>
                         </td>
                     </tr>
                 @endforeach

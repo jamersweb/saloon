@@ -18,6 +18,8 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call(RoleSeeder::class);
+        $this->call(MembershipCardTypesSeeder::class);
+        $this->call(LoyaltyProgramPdfSeeder::class);
 
         $ownerRole = Role::query()->where('name', 'owner')->firstOrFail();
 

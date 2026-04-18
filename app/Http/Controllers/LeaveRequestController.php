@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\LeaveRequest;
 use App\Models\StaffProfile;
+use App\Services\StaffScheduleGeneratorService;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -92,7 +93,7 @@ class LeaveRequestController extends Controller
         return back()->with('status', 'Leave request submitted.');
     }
 
-    public function review(Request $request, LeaveRequest $leaveRequest): RedirectResponse
+    public function review(Request $request, LeaveRequest $leaveRequest, StaffScheduleGeneratorService $scheduleGenerator): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
@@ -100,11 +101,19 @@ class LeaveRequestController extends Controller
             'status' => ['required', Rule::in(['approved', 'rejected', 'cancelled'])],
         ]);
 
+        $previousStatus = $leaveRequest->status;
+
         $leaveRequest->update([
             'status' => $data['status'],
             'reviewed_by' => $request->user()->id,
             'reviewed_at' => now(),
         ]);
+
+        if ($data['status'] === 'approved' && $previousStatus !== 'approved') {
+            $scheduleGenerator->applyApprovedLeave($leaveRequest->fresh());
+        } elseif ($previousStatus === 'approved' && $data['status'] !== 'approved') {
+            $scheduleGenerator->revokeApprovedLeaveFromCalendar($leaveRequest->fresh());
+        }
 
         Audit::log($request->user()->id, 'leave.reviewed', 'LeaveRequest', $leaveRequest->id, ['status' => $data['status']]);
 

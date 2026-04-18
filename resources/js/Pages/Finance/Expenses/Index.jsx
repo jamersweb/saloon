@@ -1,11 +1,15 @@
+import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 
 const money = (value) =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: 'AED', minimumFractionDigits: 2 }).format(Number(value || 0));
 
 export default function FinanceExpensesIndex({ expenses, purchaseOrders, categories }) {
     const { flash } = usePage().props;
+    const [deleteExpenseId, setDeleteExpenseId] = useState(null);
+    const [deleteExpenseBusy, setDeleteExpenseBusy] = useState(false);
     const form = useForm({
         category: 'supplies',
         vendor_name: '',
@@ -150,7 +154,7 @@ export default function FinanceExpensesIndex({ expenses, purchaseOrders, categor
                                                 <button
                                                     type="button"
                                                     className="text-xs text-red-600 hover:underline"
-                                                    onClick={() => confirm('Delete this expense?') && router.delete(route('finance.expenses.destroy', row.id))}
+                                                    onClick={() => setDeleteExpenseId(row.id)}
                                                 >
                                                     Delete
                                                 </button>
@@ -162,6 +166,25 @@ export default function FinanceExpensesIndex({ expenses, purchaseOrders, categor
                         </table>
                     </div>
                 </section>
+
+                <ConfirmActionModal
+                    show={Boolean(deleteExpenseId)}
+                    title="Delete this expense?"
+                    message="This removes the expense from your ledger."
+                    confirmText="Delete"
+                    onClose={() => !deleteExpenseBusy && setDeleteExpenseId(null)}
+                    processing={deleteExpenseBusy}
+                    onConfirm={() => {
+                        if (!deleteExpenseId) return;
+                        setDeleteExpenseBusy(true);
+                        router.delete(route('finance.expenses.destroy', deleteExpenseId), {
+                            onFinish: () => {
+                                setDeleteExpenseBusy(false);
+                                setDeleteExpenseId(null);
+                            },
+                        });
+                    }}
+                />
             </div>
         </AuthenticatedLayout>
     );

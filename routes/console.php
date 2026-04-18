@@ -13,3 +13,6 @@ Schedule::command('app:send-due-service-reminders --channel=sms --policy=fallbac
 
 Schedule::command('app:dispatch-scheduled-campaigns --limit=25')
     ->everyTenMinutes();
+
+Schedule::command('schedules:fill --days=31')
+    ->dailyAt('00:20');

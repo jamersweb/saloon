@@ -27,6 +27,7 @@ const renderStars = (rating) => {
 export default function Dashboard({
     stats,
     upcomingAppointments,
+    awaitingCheckoutVisits = [],
     selectedPeriod,
     periodLabel,
     range,
@@ -94,6 +95,41 @@ export default function Dashboard({
             <Head title="Dashboard" />
             <div className="space-y-6">
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
+                {awaitingCheckoutVisits?.length > 0 && (
+                    <section id="checkout-alerts" className="ta-card border-amber-200 bg-amber-50/90 p-4">
+                        <h3 className="mb-2 text-sm font-semibold text-amber-950">Completed visits — payment or receipt pending</h3>
+                        <p className="mb-3 text-xs text-amber-900/90">
+                            These services are finished but still need a tax receipt and/or payment. Open the invoice to issue the receipt and record how the client paid (including gift cards).
+                        </p>
+                        <ul className="space-y-2 text-sm">
+                            {awaitingCheckoutVisits.map((row) => (
+                                <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/60 py-2 last:border-0">
+                                    <span className="text-amber-950">
+                                        #{row.id} · {row.customer_name} · {row.service_name || 'Service'}
+                                        {row.scheduled_start && (
+                                            <span className="ml-1 text-xs text-amber-900/80">({new Date(row.scheduled_start).toLocaleString()})</span>
+                                        )}
+                                    </span>
+                                    {row.invoice_id ? (
+                                        <Link
+                                            href={route('finance.invoices.show', row.invoice_id)}
+                                            className="shrink-0 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800"
+                                        >
+                                            Open invoice
+                                        </Link>
+                                    ) : (
+                                        <Link
+                                            href={route('appointments.index', { status: 'completed' })}
+                                            className="shrink-0 text-xs font-semibold text-amber-900 underline"
+                                        >
+                                            Go to appointments
+                                        </Link>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
                 {nfcBridgeOnline === false && (
                     <div className="ta-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
                         NFC bridge is offline. Keep the bridge running on the same device where the card reader is connected.

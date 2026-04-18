@@ -73,7 +73,7 @@ class PurchaseOrderController extends Controller
 
         DB::transaction(function () use ($request, $data): void {
             $po = PurchaseOrder::create([
-                'po_number' => 'PO-' . now()->format('Ymd-His') . '-' . random_int(100, 999),
+                'po_number' => 'PO-'.now()->format('Ymd-His').'-'.random_int(100, 999),
                 'supplier_id' => $data['supplier_id'],
                 'status' => PurchaseOrder::STATUS_DRAFT,
                 'order_date' => $data['order_date'],
@@ -101,7 +101,9 @@ class PurchaseOrderController extends Controller
             Audit::log($request->user()?->id, 'purchase_order.created', 'PurchaseOrder', $po->id, ['total_cost' => $total]);
         });
 
-        return back()->with('status', 'Purchase order created.');
+        return back()
+            ->with('status', 'Draft purchase order saved. It appears in the list below.')
+            ->with('created_purchase_order_id', $po->id);
     }
 
     public function update(Request $request, PurchaseOrder $purchaseOrder): RedirectResponse

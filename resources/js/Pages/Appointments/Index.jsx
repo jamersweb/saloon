@@ -1,5 +1,6 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -84,9 +85,11 @@ const clampDateTimeLocalToSalon = (value, bookingRules, slotIntervalMinutes = 30
     return value;
 };
 
-export default function AppointmentsIndex({ appointments, services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart }) {
+export default function AppointmentsIndex({ appointments, services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
     const { flash, auth } = usePage().props;
     const canManageFinance = Boolean(auth?.permissions?.can_manage_finance);
+    const canCollectPayments = Boolean(auth?.permissions?.can_collect_payments);
+    const canCheckout = canManageFinance || canCollectPayments;
     const [editingId, setEditingId] = useState(null);
     const [startServiceId, setStartServiceId] = useState(null);
     const [completeServiceId, setCompleteServiceId] = useState(null);
@@ -96,6 +99,9 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [editCustomerMode, setEditCustomerMode] = useState('new');
     const [editSelectedCustomerId, setEditSelectedCustomerId] = useState('');
     const [editEndManuallySet, setEditEndManuallySet] = useState(true);
+    const [deleteAppointmentId, setDeleteAppointmentId] = useState(null);
+    const [deleteAppointmentBusy, setDeleteAppointmentBusy] = useState(false);
+    const [checkoutFlow, setCheckoutFlow] = useState('draft');
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
 
     const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
@@ -106,7 +112,11 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         completion_notes: '',
         materials_used: '',
         exclude_loyalty_earn: false,
-        create_tax_invoice_draft: false,
+        create_tax_invoice_draft: true,
+        finish_and_pay: false,
+        checkout_payment_method: 'cash',
+        checkout_gift_card_id: '',
+        checkout_paid_at: new Date().toISOString().slice(0, 16),
         after_photo: null,
         products: [{ inventory_item_id: '', quantity: 1, notes: '' }],
     });
@@ -255,12 +265,17 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const openCompleteService = (appt) => {
         setCompleteServiceId(appt.id);
         setStartServiceId(null);
+        setCheckoutFlow(canCheckout ? 'draft' : 'skip');
         completeForm.setData({
             service_report: appt.notes || '',
             completion_notes: appt.service_execution?.completion_notes || '',
             materials_used: appt.service_execution?.materials_used || '',
             exclude_loyalty_earn: false,
-            create_tax_invoice_draft: false,
+            create_tax_invoice_draft: canCheckout,
+            finish_and_pay: false,
+            checkout_payment_method: 'cash',
+            checkout_gift_card_id: '',
+            checkout_paid_at: new Date().toISOString().slice(0, 16),
             after_photo: null,
             products: appt.product_usages?.length
                 ? appt.product_usages.map((usage) => ({
@@ -294,11 +309,35 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             <div className="space-y-6">
                 {flash?.created_tax_invoice_id ? (
                     <div className="ta-card flex flex-wrap items-center justify-between gap-3 border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
-                        <span>Tax invoice draft created for this visit.</span>
+                        <span>Tax invoice is ready for this visit — open it to adjust lines, issue the receipt, or record payment.</span>
                         <Link href={route('finance.invoices.show', flash.created_tax_invoice_id)} className="font-semibold text-indigo-700 underline">
-                            Open draft invoice
+                            Open invoice
                         </Link>
                     </div>
+                ) : null}
+                {canCheckout && appointments.some((a) => a.awaiting_checkout) ? (
+                    <section id="checkout-alerts" className="ta-card border-amber-200 bg-amber-50/90 p-4">
+                        <h3 className="mb-2 text-sm font-semibold text-amber-950">Needs checkout</h3>
+                        <p className="mb-2 text-xs text-amber-900/90">Completed visits below still need a receipt issued and/or payment recorded.</p>
+                        <ul className="list-inside list-disc text-sm text-amber-950">
+                            {appointments
+                                .filter((a) => a.awaiting_checkout)
+                                .slice(0, 8)
+                                .map((a) => (
+                                    <li key={a.id}>
+                                        #{a.id} {a.customer_name}
+                                        {a.checkout_invoice_id ? (
+                                            <>
+                                                {' · '}
+                                                <Link href={route('finance.invoices.show', a.checkout_invoice_id)} className="font-semibold text-amber-900 underline">
+                                                    Open invoice
+                                                </Link>
+                                            </>
+                                        ) : null}
+                                    </li>
+                                ))}
+                        </ul>
+                    </section>
                 ) : null}
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Appointment</h3>
@@ -379,6 +418,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             { value: 'pending', label: 'Pending' },
                             { value: 'confirmed', label: 'Confirmed' },
                             { value: 'upcoming', label: 'Upcoming' },
+                            { value: 'completed', label: 'Completed' },
                         ].map((filter) => (
                             <button
                                 key={filter.value || 'all'}
@@ -411,7 +451,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                     <tr key={a.id} className="border-t border-slate-100 align-top">
                                         <td className="px-5 py-3 text-slate-600">{formatDateTime(a.scheduled_start)}</td>
                                         <td className="px-5 py-3">
-                                            <div className="font-medium text-slate-700">{a.customer_name}</div>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="font-medium text-slate-700">{a.customer_name}</span>
+                                                {a.awaiting_checkout ? (
+                                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">Needs pay</span>
+                                                ) : null}
+                                            </div>
                                             <div className="text-xs text-slate-500">{a.customer_phone}</div>
                                             {a.customer_email && <div className="text-xs text-slate-500">{a.customer_email}</div>}
                                         </td>
@@ -437,9 +482,27 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                             <div className="flex flex-wrap gap-2">
                                                 <button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(a)}>Edit</button>
                                                 {a.status === 'confirmed' && <button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700" onClick={() => openStartService(a)}>Start Service</button>}
-                                                {a.status === 'in_progress' && <button className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700" onClick={() => openCompleteService(a)}>Finish Service</button>}
+                                                {a.status === 'in_progress' && (
+                                                    <button className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700" onClick={() => openCompleteService(a)}>
+                                                        {canCheckout ? 'Finish / Pay' : 'Finish Service'}
+                                                    </button>
+                                                )}
+                                                {a.status === 'completed' && a.awaiting_checkout && a.checkout_invoice_id ? (
+                                                    <Link
+                                                        href={route('finance.invoices.show', a.checkout_invoice_id)}
+                                                        className="inline-flex rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50"
+                                                    >
+                                                        Checkout
+                                                    </Link>
+                                                ) : null}
                                                 {(a.next_statuses || []).filter((next) => !['in_progress', 'completed'].includes(next)).map((next) => <button key={next} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50" onClick={() => transition(a.id, next)}>{statusLabels[next] || next}</button>)}
-                                                {a.next_statuses?.includes('cancelled') && <button className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => router.delete(route('appointments.destroy', a.id))}>Cancel</button>}
+                                                <button
+                                                    type="button"
+                                                    className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
+                                                    onClick={() => setDeleteAppointmentId(a.id)}
+                                                >
+                                                    Delete permanently
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -482,7 +545,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(startForm, 'before_photo')}
                         </div>
                         <div className="flex justify-end gap-2 pt-2">
-                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setStartServiceId(null)}>Cancel</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setStartServiceId(null)}>Close</button>
                             <button className="ta-btn-primary" disabled={startForm.processing}>Start Service</button>
                         </div>
                     </form>
@@ -495,11 +558,21 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
+                            completeForm.transform((data) => ({
+                                ...data,
+                                create_tax_invoice_draft: canCheckout && checkoutFlow !== 'skip',
+                                finish_and_pay: canCheckout && checkoutFlow === 'pay',
+                            }));
                             completeForm.post(route('appointments.service-complete', completeServiceId), {
                                 forceFormData: true,
                                 onSuccess: () => {
+                                    completeForm.transform((d) => d);
                                     setCompleteServiceId(null);
+                                    setCheckoutFlow('draft');
                                     completeForm.reset();
+                                },
+                                onFinish: () => {
+                                    completeForm.transform((d) => d);
                                 },
                             });
                         }}
@@ -533,21 +606,90 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             <p className="mt-1 text-xs text-slate-500">Matches policy when the client pays using gift card balance. You can also link gift card usage to this visit from Loyalty → Consume Gift Card.</p>
                             {fieldError(completeForm, 'exclude_loyalty_earn')}
                         </div>
-                        {canManageFinance ? (
-                            <div className="md:col-span-2">
-                                <label className="flex items-center text-sm text-slate-700">
-                                    <input
-                                        type="checkbox"
-                                        className="mr-2 rounded border-slate-300"
-                                        checked={completeForm.data.create_tax_invoice_draft}
-                                        onChange={(e) => completeForm.setData('create_tax_invoice_draft', e.target.checked)}
-                                    />
-                                    Create tax invoice draft from this visit
-                                </label>
-                                <p className="mt-1 text-xs text-slate-500">
-                                    Adds one line using the booked service price (plus VAT). Finalize and print or email the receipt under Finance → Tax invoices.
-                                </p>
-                                {fieldError(completeForm, 'create_tax_invoice_draft')}
+                        {canCheckout ? (
+                            <div className="md:col-span-2 space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">After this visit</p>
+                                <div className="space-y-2 text-sm text-slate-700">
+                                    <label className="flex cursor-pointer items-start gap-2">
+                                        <input type="radio" className="mt-1" name="checkout_flow" checked={checkoutFlow === 'draft'} onChange={() => setCheckoutFlow('draft')} />
+                                        <span>
+                                            <span className="font-medium">Create tax invoice draft</span>
+                                            <span className="mt-0.5 block text-xs text-slate-500">Default — opens the receipt screen so you can issue the tax invoice and record payment when the client is ready.</span>
+                                        </span>
+                                    </label>
+                                    <label className="flex cursor-pointer items-start gap-2">
+                                        <input type="radio" className="mt-1" name="checkout_flow" checked={checkoutFlow === 'pay'} onChange={() => setCheckoutFlow('pay')} />
+                                        <span>
+                                            <span className="font-medium">Finish &amp; pay now</span>
+                                            <span className="mt-0.5 block text-xs text-slate-500">Completes the visit, creates the draft, issues the tax receipt number, and records one full payment in a single step.</span>
+                                        </span>
+                                    </label>
+                                    <label className="flex cursor-pointer items-start gap-2">
+                                        <input type="radio" className="mt-1" name="checkout_flow" checked={checkoutFlow === 'skip'} onChange={() => setCheckoutFlow('skip')} />
+                                        <span>
+                                            <span className="font-medium">No invoice from this screen</span>
+                                            <span className="mt-0.5 block text-xs text-slate-500">Use when billing is handled separately (for example a package or account client).</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                {checkoutFlow === 'pay' ? (
+                                    <div className="grid gap-3 border-t border-slate-200 pt-3 md:grid-cols-2">
+                                        <div>
+                                            <label className="ta-field-label">Payment method</label>
+                                            <select
+                                                className="ta-input"
+                                                value={completeForm.data.checkout_payment_method}
+                                                onChange={(e) => completeForm.setData('checkout_payment_method', e.target.value)}
+                                            >
+                                                <option value="cash">Cash</option>
+                                                <option value="card">Card</option>
+                                                <option value="bank_transfer">Bank transfer</option>
+                                                <option value="gift_card">Gift card</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                            {fieldError(completeForm, 'checkout_payment_method')}
+                                        </div>
+                                        <div>
+                                            <label className="ta-field-label">Paid at</label>
+                                            <input
+                                                type="datetime-local"
+                                                className="ta-input"
+                                                value={completeForm.data.checkout_paid_at}
+                                                onChange={(e) => completeForm.setData('checkout_paid_at', e.target.value)}
+                                            />
+                                            {fieldError(completeForm, 'checkout_paid_at')}
+                                        </div>
+                                        {completeForm.data.checkout_payment_method === 'gift_card' ? (
+                                            <div className="md:col-span-2">
+                                                <label className="ta-field-label">Gift card</label>
+                                                <select
+                                                    className="ta-input"
+                                                    value={completeForm.data.checkout_gift_card_id}
+                                                    onChange={(e) => completeForm.setData('checkout_gift_card_id', e.target.value)}
+                                                    required
+                                                >
+                                                    <option value="">Select gift card</option>
+                                                    {(completeServiceId
+                                                        ? gift_cards_for_checkout.filter(
+                                                            (g) => !g.assigned_customer_id
+                                                                || String(g.assigned_customer_id)
+                                                                    === String(appointments.find((ap) => String(ap.id) === String(completeServiceId))?.customer_id),
+                                                        )
+                                                        : []
+                                                    ).map((g) => (
+                                                        <option key={g.id} value={g.id}>
+                                                            {g.code} — balance {g.remaining_value}
+                                                            {!g.assigned_customer_id ? ' (unassigned)' : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <p className="mt-1 text-xs text-slate-500">Balance must cover the full invoice total. Cards assigned to another customer are hidden.</p>
+                                                {fieldError(completeForm, 'checkout_gift_card_id')}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
+                                {fieldError(completeForm, 'finish_and_pay')}
                             </div>
                         ) : null}
                         <div className="md:col-span-2 space-y-3 rounded-xl border border-slate-200 p-4">
@@ -583,9 +725,11 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 </div>
                             ))}
                         </div>
-                        <div className="md:col-span-2 flex justify-end gap-2 pt-2">
-                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setCompleteServiceId(null)}>Cancel</button>
-                            <button className="ta-btn-primary" disabled={completeForm.processing}>Finish Service</button>
+                        <div className="md:col-span-2 flex flex-wrap justify-end gap-2 pt-2">
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setCompleteServiceId(null)}>Close</button>
+                            <button className="ta-btn-primary" disabled={completeForm.processing}>
+                                {checkoutFlow === 'pay' && canCheckout ? 'Finish & pay' : 'Finish service'}
+                            </button>
                         </div>
                     </form>
                 </div>
@@ -647,12 +791,31 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         </div>
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
                         <div className="md:col-span-2 flex justify-end gap-2 pt-2">
-                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Close</button>
                             <button className="ta-btn-primary" disabled={editForm.processing}>Save</button>
                         </div>
                     </form>
                 </div>
             </Modal>
+
+            <ConfirmActionModal
+                show={Boolean(deleteAppointmentId)}
+                title="Delete this appointment permanently?"
+                message="This removes the appointment from the database. This cannot be undone."
+                confirmText="Delete permanently"
+                onClose={() => !deleteAppointmentBusy && setDeleteAppointmentId(null)}
+                processing={deleteAppointmentBusy}
+                onConfirm={() => {
+                    if (!deleteAppointmentId) return;
+                    setDeleteAppointmentBusy(true);
+                    router.delete(route('appointments.destroy', deleteAppointmentId), {
+                        onFinish: () => {
+                            setDeleteAppointmentBusy(false);
+                            setDeleteAppointmentId(null);
+                        },
+                    });
+                }}
+            />
         </AuthenticatedLayout>
     );
 }

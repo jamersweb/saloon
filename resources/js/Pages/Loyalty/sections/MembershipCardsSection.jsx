@@ -44,6 +44,9 @@ export default function MembershipCardsSection({
 
     return (
         <div className="space-y-6">
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                Default physical tiers from the Vina loyalty card PDF are Queen, Titanium, and Gold (slugs <span className="font-mono text-slate-800">queen</span>, <span className="font-mono text-slate-800">titanium</span>, <span className="font-mono text-slate-800">gold</span>); seeders align prices and min-points with that document.
+            </p>
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Create membership card type</h3>
                 <form onSubmit={(e) => { e.preventDefault(); createCardTypeForm.post(route('loyalty.card-types.store'), { onSuccess: () => createCardTypeForm.reset('name', 'slug', 'direct_purchase_price', 'validity_days') }); }} className="grid gap-3 md:grid-cols-6">

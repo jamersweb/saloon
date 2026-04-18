@@ -1,5 +1,7 @@
+import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 
 const money = (value, currency = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(value || 0));
@@ -11,8 +13,20 @@ const blankItem = () => ({
     unit_price: '',
 });
 
-export default function FinanceInvoicesShow({ invoice, customers, services, appointments = [], vat_rate_percent, currency_code, payment_methods }) {
+export default function FinanceInvoicesShow({
+    invoice,
+    customers,
+    services,
+    appointments = [],
+    vat_rate_percent,
+    currency_code,
+    payment_methods,
+    gift_cards_for_payment = [],
+    can_manage_full_finance = true,
+}) {
     const { flash } = usePage().props;
+    const [invoiceConfirm, setInvoiceConfirm] = useState(null);
+    const [invoiceConfirmBusy, setInvoiceConfirmBusy] = useState(false);
     const isDraft = invoice.status === 'draft';
 
     const editForm = useForm({
@@ -36,6 +50,7 @@ export default function FinanceInvoicesShow({ invoice, customers, services, appo
         method: 'cash',
         paid_at: new Date().toISOString().slice(0, 16),
         reference_note: '',
+        gift_card_id: '',
     });
 
     const emailForm = useForm({
@@ -127,7 +142,7 @@ export default function FinanceInvoicesShow({ invoice, customers, services, appo
                     )}
                 </div>
 
-                {invoice.status === 'finalized' && (
+                {invoice.status === 'finalized' && can_manage_full_finance && (
                     <section className="ta-card p-5">
                         <h3 className="mb-2 text-sm font-semibold text-slate-700">Email PDF receipt</h3>
                         <p className="mb-4 text-xs text-slate-500">
@@ -328,15 +343,15 @@ export default function FinanceInvoicesShow({ invoice, customers, services, appo
                                 >
                                     Issue tax invoice
                                 </button>
-                                <button
-                                    type="button"
-                                    className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
-                                    onClick={() => {
-                                        if (confirm('Delete this draft?')) router.delete(route('finance.invoices.destroy', invoice.id));
-                                    }}
-                                >
-                                    Delete draft
-                                </button>
+                                {can_manage_full_finance ? (
+                                    <button
+                                        type="button"
+                                        className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
+                                        onClick={() => setInvoiceConfirm('delete_draft')}
+                                    >
+                                        Delete draft
+                                    </button>
+                                ) : null}
                             </div>
                         </form>
                     </section>
@@ -398,7 +413,17 @@ export default function FinanceInvoicesShow({ invoice, customers, services, appo
                                     </div>
                                     <div>
                                         <label className="ta-field-label">Method</label>
-                                        <select className="ta-input" value={payForm.data.method} onChange={(e) => payForm.setData('method', e.target.value)}>
+                                        <select
+                                            className="ta-input"
+                                            value={payForm.data.method}
+                                            onChange={(e) => {
+                                                const method = e.target.value;
+                                                payForm.setData('method', method);
+                                                if (method !== 'gift_card') {
+                                                    payForm.setData('gift_card_id', '');
+                                                }
+                                            }}
+                                        >
                                             {Object.entries(payment_methods).map(([k, label]) => (
                                                 <option key={k} value={k}>
                                                     {label}
@@ -444,19 +469,43 @@ export default function FinanceInvoicesShow({ invoice, customers, services, appo
                             </section>
                         )}
 
-                        {invoice.status === 'finalized' && invoice.amount_paid < 0.01 && (
+                        {can_manage_full_finance && invoice.status === 'finalized' && invoice.amount_paid < 0.01 && (
                             <button
                                 type="button"
                                 className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900"
-                                onClick={() => {
-                                    if (confirm('Void this invoice? It cannot be undone.')) router.post(route('finance.invoices.void', invoice.id));
-                                }}
+                                onClick={() => setInvoiceConfirm('void')}
                             >
                                 Void invoice
                             </button>
                         )}
                     </>
                 )}
+                <ConfirmActionModal
+                    show={Boolean(invoiceConfirm)}
+                    title={invoiceConfirm === 'void' ? 'Void this invoice?' : 'Delete this draft?'}
+                    message={invoiceConfirm === 'void' ? 'Voiding cannot be undone.' : 'This removes the draft invoice permanently.'}
+                    confirmText={invoiceConfirm === 'void' ? 'Void invoice' : 'Delete draft'}
+                    confirmClassName={
+                        invoiceConfirm === 'void'
+                            ? 'rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60'
+                            : undefined
+                    }
+                    onClose={() => !invoiceConfirmBusy && setInvoiceConfirm(null)}
+                    processing={invoiceConfirmBusy}
+                    onConfirm={() => {
+                        if (!invoiceConfirm) return;
+                        setInvoiceConfirmBusy(true);
+                        const finish = () => {
+                            setInvoiceConfirmBusy(false);
+                            setInvoiceConfirm(null);
+                        };
+                        if (invoiceConfirm === 'void') {
+                            router.post(route('finance.invoices.void', invoice.id), {}, { onFinish: finish });
+                            return;
+                        }
+                        router.delete(route('finance.invoices.destroy', invoice.id), { onFinish: finish });
+                    }}
+                />
             </div>
         </AuthenticatedLayout>
     );

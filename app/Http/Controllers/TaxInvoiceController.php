@@ -6,11 +6,14 @@ use App\Mail\TaxInvoiceReceiptMail;
 use App\Models\Appointment;
 use App\Models\Customer;
 use App\Models\FinanceSetting;
+use App\Models\GiftCard;
 use App\Models\InvoicePayment;
 use App\Models\SalonService;
 use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
+use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoiceLineCalculator;
+use App\Services\TaxInvoicePaymentService;
 use App\Support\Audit;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
@@ -24,6 +27,35 @@ use Inertia\Response as InertiaResponse;
 
 class TaxInvoiceController extends Controller
 {
+    protected function authorizeInvoiceAccess(Request $request, TaxInvoice $invoice): void
+    {
+        $user = $request->user();
+        if (! $user) {
+            abort(403);
+        }
+
+        if ($user->hasRole('owner', 'manager')) {
+            return;
+        }
+
+        if ($user->hasPermission('can_manage_finance')) {
+            return;
+        }
+
+        if ($user->hasPermission('can_collect_payments') && $invoice->appointment_id !== null) {
+            return;
+        }
+
+        abort(403);
+    }
+
+    protected function canManageFullFinance(Request $request): bool
+    {
+        $user = $request->user();
+
+        return $user && ($user->hasRole('owner', 'manager') || $user->hasPermission('can_manage_finance'));
+    }
+
     public function index(Request $request): InertiaResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
@@ -142,7 +174,8 @@ class TaxInvoiceController extends Controller
 
     public function show(Request $request, TaxInvoice $invoice): InertiaResponse
     {
-        $this->authorizeRoles($request, 'owner', 'manager');
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+        $this->authorizeInvoiceAccess($request, $invoice);
 
         $invoice->load(['items.salonService:id,name', 'customer:id,name,phone,email', 'appointment.service:id,name', 'payments.createdBy:id,name']);
 
@@ -164,6 +197,26 @@ class TaxInvoiceController extends Controller
                 ->values()
                 ->all()
             : [];
+
+        $giftCardsForPayment = [];
+        if ($invoice->customer_id && ($invoice->status !== TaxInvoice::STATUS_VOID)
+            && ($invoice->isEditable() || $invoice->balanceDue() > 0.009)) {
+            $giftCardsForPayment = GiftCard::query()
+                ->where('status', 'active')
+                ->where(function ($query) use ($invoice): void {
+                    $query->whereNull('assigned_customer_id')
+                        ->orWhere('assigned_customer_id', $invoice->customer_id);
+                })
+                ->orderBy('code')
+                ->get(['id', 'code', 'remaining_value'])
+                ->map(fn (GiftCard $card) => [
+                    'id' => $card->id,
+                    'code' => $card->code,
+                    'remaining_value' => (float) $card->remaining_value,
+                ])
+                ->values()
+                ->all();
+        }
 
         return Inertia::render('Finance/Invoices/Show', [
             'invoice' => [
@@ -208,12 +261,15 @@ class TaxInvoiceController extends Controller
             'currency_code' => $settings->currency_code,
             'payment_methods' => InvoicePayment::methodLabels(),
             'appointments' => $appointments,
+            'gift_cards_for_payment' => $giftCardsForPayment,
+            'can_manage_full_finance' => $this->canManageFullFinance($request),
         ]);
     }
 
     public function update(Request $request, TaxInvoice $invoice): RedirectResponse
     {
-        $this->authorizeRoles($request, 'owner', 'manager');
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+        $this->authorizeInvoiceAccess($request, $invoice);
 
         if (! $invoice->isEditable()) {
             return back()->withErrors(['invoice' => 'Only draft invoices can be edited.']);
@@ -291,28 +347,14 @@ class TaxInvoiceController extends Controller
 
     public function finalize(Request $request, TaxInvoice $invoice): RedirectResponse
     {
-        $this->authorizeRoles($request, 'owner', 'manager');
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+        $this->authorizeInvoiceAccess($request, $invoice);
 
         if (! $invoice->isEditable()) {
             return back()->withErrors(['invoice' => 'Invoice is already finalized or void.']);
         }
 
-        DB::transaction(function () use ($invoice) {
-            FinanceSetting::current();
-            $settings = FinanceSetting::query()->whereKey(1)->lockForUpdate()->firstOrFail();
-
-            $num = (int) $settings->next_invoice_number;
-            $invoiceNumber = $settings->invoice_prefix.str_pad((string) $num, 5, '0', STR_PAD_LEFT);
-
-            $settings->next_invoice_number = $num + 1;
-            $settings->save();
-
-            $invoice->update([
-                'invoice_number' => $invoiceNumber,
-                'status' => TaxInvoice::STATUS_FINALIZED,
-                'issued_at' => now(),
-            ]);
-        });
+        app(TaxInvoiceFinalizeService::class)->finalize($invoice);
 
         Audit::log($request->user()->id, 'finance.invoice.finalized', 'TaxInvoice', $invoice->id, [
             'invoice_number' => $invoice->fresh()->invoice_number,
@@ -342,32 +384,30 @@ class TaxInvoiceController extends Controller
 
     public function storePayment(Request $request, TaxInvoice $invoice): RedirectResponse
     {
-        $this->authorizeRoles($request, 'owner', 'manager');
-
-        if ($invoice->status !== TaxInvoice::STATUS_FINALIZED) {
-            return back()->withErrors(['payment' => 'Payments are only allowed on finalized invoices.']);
-        }
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+        $this->authorizeInvoiceAccess($request, $invoice);
 
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'method' => ['required', Rule::in(array_keys(InvoicePayment::methodLabels()))],
             'paid_at' => ['required', 'date'],
             'reference_note' => ['nullable', 'string', 'max:255'],
+            'gift_card_id' => [
+                'nullable',
+                Rule::requiredIf((string) $request->input('method') === InvoicePayment::METHOD_GIFT_CARD),
+                'exists:gift_cards,id',
+            ],
         ]);
 
-        $balance = $invoice->balanceDue();
-        if ((float) $data['amount'] > $balance + 0.009) {
-            return back()->withErrors(['amount' => 'Amount exceeds balance due ('.number_format($balance, 2).').']);
-        }
+        $invoice->refresh();
 
-        InvoicePayment::query()->create([
-            'tax_invoice_id' => $invoice->id,
+        app(TaxInvoicePaymentService::class)->record($invoice, [
             'amount' => $data['amount'],
             'method' => $data['method'],
             'paid_at' => $data['paid_at'],
             'reference_note' => $data['reference_note'] ?? null,
-            'created_by' => $request->user()->id,
-        ]);
+            'gift_card_id' => isset($data['gift_card_id']) ? (int) $data['gift_card_id'] : null,
+        ], $request->user());
 
         Audit::log($request->user()->id, 'finance.invoice.payment', 'TaxInvoice', $invoice->id, [
             'amount' => $data['amount'],
@@ -379,7 +419,8 @@ class TaxInvoiceController extends Controller
 
     public function pdf(Request $request, TaxInvoice $invoice): Response
     {
-        $this->authorizeRoles($request, 'owner', 'manager');
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+        $this->authorizeInvoiceAccess($request, $invoice);
 
         if ($invoice->status !== TaxInvoice::STATUS_FINALIZED || ! $invoice->invoice_number) {
             abort(404);

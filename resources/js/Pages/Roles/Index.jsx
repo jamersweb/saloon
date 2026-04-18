@@ -1,3 +1,5 @@
+import ConfirmActionModal from '@/Components/ConfirmActionModal';
+import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
@@ -7,6 +9,8 @@ const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 te
 export default function RolesIndex({ roles, permissionCatalog }) {
     const { flash } = usePage().props;
     const [editingRoleId, setEditingRoleId] = useState(null);
+    const [deleteRole, setDeleteRole] = useState(null);
+    const [deleteBusy, setDeleteBusy] = useState(false);
 
     const permissionKeys = useMemo(() => Object.keys(permissionCatalog || {}), [permissionCatalog]);
     const systemRoleNames = new Set(['owner', 'manager', 'staff', 'customer']);
@@ -20,6 +24,11 @@ export default function RolesIndex({ roles, permissionCatalog }) {
             label: role.label,
             permissions: role.permissions || [],
         });
+        editForm.clearErrors();
+    };
+
+    const closeEditModal = () => {
+        setEditingRoleId(null);
         editForm.clearErrors();
     };
 
@@ -102,9 +111,9 @@ export default function RolesIndex({ roles, permissionCatalog }) {
                                         <td className="px-5 py-3 text-slate-600">{role.permissions?.length ?? 0}</td>
                                         <td className="px-5 py-3">
                                             <div className="flex gap-2">
-                                                <button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(role)}>Edit</button>
+                                                <button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(role)}>Edit</button>
                                                 {!systemRoleNames.has(role.name) && (
-                                                    <button className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => router.delete(route('roles.destroy', role.id))}>
+                                                    <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => setDeleteRole({ id: role.id, label: role.label })}>
                                                         Delete
                                                     </button>
                                                 )}
@@ -117,12 +126,12 @@ export default function RolesIndex({ roles, permissionCatalog }) {
                     </div>
                 </section>
 
-                {editingRoleId && (
-                    <section className="ta-card p-5">
-                        <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Role</h3>
+                <Modal show={Boolean(editingRoleId)} onClose={closeEditModal} maxWidth="2xl">
+                    <div className="p-6">
+                        <h3 className="mb-4 text-base font-semibold text-slate-800">Edit role</h3>
                         <form onSubmit={(e) => {
                             e.preventDefault();
-                            editForm.put(route('roles.update', editingRoleId), { onSuccess: () => setEditingRoleId(null) });
+                            editForm.put(route('roles.update', editingRoleId), { onSuccess: () => closeEditModal() });
                         }} className="space-y-4">
                             <div>
                                 <label className="ta-field-label">Label</label>
@@ -147,11 +156,30 @@ export default function RolesIndex({ roles, permissionCatalog }) {
                             </div>
                             <div className="flex gap-2">
                                 <button className="ta-btn-primary" disabled={editForm.processing}>Save</button>
-                                <button type="button" className="ta-btn-secondary" onClick={() => setEditingRoleId(null)}>Cancel</button>
+                                <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={closeEditModal}>Close</button>
                             </div>
                         </form>
-                    </section>
-                )}
+                    </div>
+                </Modal>
+
+                <ConfirmActionModal
+                    show={Boolean(deleteRole)}
+                    title="Delete this role?"
+                    message={deleteRole ? `Are you sure you want to delete “${deleteRole.label}”? Users assigned to this role may need to be reassigned first.` : ''}
+                    confirmText="Delete"
+                    onClose={() => !deleteBusy && setDeleteRole(null)}
+                    processing={deleteBusy}
+                    onConfirm={() => {
+                        if (!deleteRole) return;
+                        setDeleteBusy(true);
+                        router.delete(route('roles.destroy', deleteRole.id), {
+                            onFinish: () => {
+                                setDeleteBusy(false);
+                                setDeleteRole(null);
+                            },
+                        });
+                    }}
+                />
             </div>
         </AuthenticatedLayout>
     );

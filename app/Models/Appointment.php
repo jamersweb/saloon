@@ -13,10 +13,15 @@ class Appointment extends Model
     use HasFactory;
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_CONFIRMED = 'confirmed';
+
     public const STATUS_IN_PROGRESS = 'in_progress';
+
     public const STATUS_COMPLETED = 'completed';
+
     public const STATUS_CANCELLED = 'cancelled';
+
     public const STATUS_NO_SHOW = 'no_show';
 
     /** @var array<string, list<string>> */
@@ -113,5 +118,43 @@ class Appointment extends Model
     public function canTransitionTo(string $nextStatus): bool
     {
         return in_array($nextStatus, $this->nextStatuses(), true);
+    }
+
+    /**
+     * @return array{awaiting_checkout: bool, checkout_invoice_id: int|null}
+     */
+    public function checkoutSummary(): array
+    {
+        if ($this->status !== self::STATUS_COMPLETED) {
+            return ['awaiting_checkout' => false, 'checkout_invoice_id' => null];
+        }
+
+        $this->loadMissing('taxInvoices.payments');
+
+        $active = $this->taxInvoices->where('status', '!=', TaxInvoice::STATUS_VOID);
+
+        if ($active->isEmpty()) {
+            return ['awaiting_checkout' => true, 'checkout_invoice_id' => null];
+        }
+
+        foreach ($active as $inv) {
+            if ($inv->status === TaxInvoice::STATUS_DRAFT) {
+                return [
+                    'awaiting_checkout' => true,
+                    'checkout_invoice_id' => $inv->id,
+                ];
+            }
+        }
+
+        foreach ($active as $inv) {
+            if ($inv->status === TaxInvoice::STATUS_FINALIZED && $inv->balanceDue() > 0.009) {
+                return [
+                    'awaiting_checkout' => true,
+                    'checkout_invoice_id' => $inv->id,
+                ];
+            }
+        }
+
+        return ['awaiting_checkout' => false, 'checkout_invoice_id' => null];
     }
 }

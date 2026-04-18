@@ -8,13 +8,18 @@ use App\Models\AppointmentProductUsage;
 use App\Models\AppointmentServiceLog;
 use App\Models\BookingRule;
 use App\Models\Customer;
+use App\Models\GiftCard;
 use App\Models\InventoryItem;
+use App\Models\InvoicePayment;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
+use App\Models\TaxInvoice;
 use App\Services\BookingAvailabilityService;
 use App\Services\DueServiceManager;
 use App\Services\LoyaltyService;
 use App\Services\TaxInvoiceDraftFromAppointmentService;
+use App\Services\TaxInvoiceFinalizeService;
+use App\Services\TaxInvoicePaymentService;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -32,13 +38,14 @@ class AppointmentController extends Controller
         $status = $request->string('status')->toString();
         $rules = BookingRule::current();
 
-        $appointments = Appointment::query()
+        $appointmentRows = Appointment::query()
             ->with([
                 'service',
                 'staffProfile.user',
                 'serviceExecution.staffProfile.user',
                 'photos',
                 'productUsages.item',
+                'taxInvoices.payments',
             ])
             ->when($status === 'upcoming', function ($query): void {
                 $query->where('scheduled_start', '>=', now())
@@ -47,8 +54,32 @@ class AppointmentController extends Controller
             ->when($status && $status !== 'upcoming', fn ($query) => $query->where('status', $status))
             ->orderByDesc('scheduled_start')
             ->limit(200)
-            ->get()
-            ->map(fn (Appointment $appointment) => $this->serializeAppointment($appointment));
+            ->get();
+
+        $customerIds = $appointmentRows->pluck('customer_id')->filter()->unique()->values()->all();
+
+        $appointments = $appointmentRows->map(fn (Appointment $appointment) => $this->serializeAppointment($appointment, $request));
+
+        $giftCardsForCheckout = $customerIds === []
+            ? []
+            : GiftCard::query()
+                ->where('status', 'active')
+                ->where('remaining_value', '>', 0)
+                ->where(function ($query) use ($customerIds): void {
+                    $query->whereIn('assigned_customer_id', $customerIds)
+                        ->orWhereNull('assigned_customer_id');
+                })
+                ->orderBy('code')
+                ->limit(200)
+                ->get(['id', 'code', 'remaining_value', 'assigned_customer_id'])
+                ->map(fn (GiftCard $card) => [
+                    'id' => $card->id,
+                    'code' => $card->code,
+                    'remaining_value' => (float) $card->remaining_value,
+                    'assigned_customer_id' => $card->assigned_customer_id,
+                ])
+                ->values()
+                ->all();
 
         return Inertia::render('Appointments/Index', [
             'appointments' => $appointments,
@@ -75,6 +106,7 @@ class AppointmentController extends Controller
             'statusFilter' => $status,
             'bookingRules' => $rules,
             'defaultStart' => $rules->nextDefaultAppointmentStart(),
+            'gift_cards_for_checkout' => $giftCardsForCheckout,
         ]);
     }
 
@@ -252,11 +284,29 @@ class AppointmentController extends Controller
             'products.*.notes' => ['nullable', 'string'],
             'exclude_loyalty_earn' => ['nullable', 'boolean'],
             'create_tax_invoice_draft' => ['nullable', 'boolean'],
+            'finish_and_pay' => ['nullable', 'boolean'],
+            'checkout_payment_method' => ['nullable', 'required_if:finish_and_pay,true', Rule::in(array_keys(InvoicePayment::methodLabels()))],
+            'checkout_gift_card_id' => [
+                'nullable',
+                Rule::requiredIf(fn () => $request->boolean('finish_and_pay') && $request->string('checkout_payment_method')->toString() === InvoicePayment::METHOD_GIFT_CARD),
+                'exists:gift_cards,id',
+            ],
+            'checkout_paid_at' => ['nullable', 'date'],
         ]);
+
+        $user = $request->user();
+        $canInvoice = $user && ($user->hasPermission('can_manage_finance') || $user->hasPermission('can_collect_payments'));
+        $finishAndPay = $request->boolean('finish_and_pay');
+
+        if ($finishAndPay && ! $canInvoice) {
+            return back()->withErrors([
+                'finish_and_pay' => 'You do not have permission to issue receipts or record payments.',
+            ])->withInput();
+        }
 
         $createdTaxInvoiceId = null;
 
-        DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager, &$createdTaxInvoiceId): void {
+        DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager, &$createdTaxInvoiceId, $canInvoice, $finishAndPay, $user): void {
             $appointment->update([
                 'status' => Appointment::STATUS_COMPLETED,
                 'exclude_loyalty_earn' => (bool) ($data['exclude_loyalty_earn'] ?? false),
@@ -311,17 +361,68 @@ class AppointmentController extends Controller
             $loyaltyService->earnFromCompletedAppointment($appointment, $request->user()?->id);
             $dueServiceManager->syncForAppointment($appointment);
 
-            if ($request->boolean('create_tax_invoice_draft') && $request->user()?->hasPermission('can_manage_finance')) {
+            $createDraft = $canInvoice && (
+                $finishAndPay
+                || $request->boolean('create_tax_invoice_draft')
+            );
+
+            if ($createDraft && $user) {
                 try {
                     $draft = app(TaxInvoiceDraftFromAppointmentService::class)->create(
                         $appointment->fresh(['service', 'customer']),
-                        $request->user()->id,
-                        $request->user()->name
+                        $user->id,
+                        $user->name
                     );
                     $createdTaxInvoiceId = $draft->id;
                 } catch (\Throwable $e) {
                     report($e);
+                    if ($finishAndPay) {
+                        throw ValidationException::withMessages([
+                            'finish_and_pay' => 'Could not create a tax invoice for this visit. '.$e->getMessage(),
+                        ]);
+                    }
                 }
+            }
+
+            if ($finishAndPay && $canInvoice) {
+                if (! $createdTaxInvoiceId) {
+                    throw ValidationException::withMessages([
+                        'finish_and_pay' => 'Tax invoice was not created; checkout could not continue.',
+                    ]);
+                }
+
+                $invoice = TaxInvoice::query()->findOrFail($createdTaxInvoiceId);
+                $invoice = app(TaxInvoiceFinalizeService::class)->finalize($invoice);
+                $invoice->refresh();
+
+                $method = (string) $data['checkout_payment_method'];
+                $paidAt = filled($data['checkout_paid_at'] ?? null)
+                    ? \Carbon\Carbon::parse((string) $data['checkout_paid_at'])
+                    : now();
+
+                if ($method === InvoicePayment::METHOD_GIFT_CARD) {
+                    $card = GiftCard::query()->findOrFail((int) $data['checkout_gift_card_id']);
+                    if ((float) $card->remaining_value + 0.009 < (float) $invoice->total) {
+                        throw ValidationException::withMessages([
+                            'checkout_gift_card_id' => 'Gift card balance is less than the invoice total.',
+                        ]);
+                    }
+                    if ($invoice->customer_id !== null
+                        && $card->assigned_customer_id !== null
+                        && (int) $card->assigned_customer_id !== (int) $invoice->customer_id) {
+                        throw ValidationException::withMessages([
+                            'checkout_gift_card_id' => 'This gift card is assigned to a different customer than this visit.',
+                        ]);
+                    }
+                }
+
+                app(TaxInvoicePaymentService::class)->record($invoice, [
+                    'amount' => (float) $invoice->total,
+                    'method' => $method,
+                    'paid_at' => $paidAt,
+                    'reference_note' => 'Finish & pay · appointment #'.$appointment->id,
+                    'gift_card_id' => $method === InvoicePayment::METHOD_GIFT_CARD ? (int) $data['checkout_gift_card_id'] : null,
+                ], $user);
             }
         });
 
@@ -331,7 +432,9 @@ class AppointmentController extends Controller
         ]);
 
         $status = 'Service completed.';
-        if ($createdTaxInvoiceId) {
+        if ($finishAndPay && $createdTaxInvoiceId) {
+            $status = 'Service completed, tax receipt issued, and payment recorded.';
+        } elseif ($createdTaxInvoiceId) {
             $status .= ' Tax invoice draft created.';
         }
 
@@ -396,16 +499,22 @@ class AppointmentController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
-        if ($appointment->canTransitionTo(Appointment::STATUS_CANCELLED)) {
-            $appointment->update([
-                'status' => Appointment::STATUS_CANCELLED,
-                'cancellation_reason' => $request->input('cancellation_reason', 'Cancelled by staff'),
-            ]);
+        $appointmentId = $appointment->id;
 
-            Audit::log($request->user()?->id, 'appointment.cancelled', 'Appointment', $appointment->id);
-        }
+        DB::transaction(function () use ($appointment): void {
+            $paths = $appointment->photos()->pluck('path')->filter()->values()->all();
+            foreach ($paths as $path) {
+                if (is_string($path) && $path !== '' && Storage::disk('public')->exists($path)) {
+                    Storage::disk('public')->delete($path);
+                }
+            }
 
-        return back()->with('status', 'Appointment cancelled.');
+            $appointment->delete();
+        });
+
+        Audit::log($request->user()?->id, 'appointment.deleted', 'Appointment', $appointmentId);
+
+        return back()->with('status', 'Appointment deleted permanently.');
     }
 
     private function validatePayload(Request $request, bool $isUpdate = false): array
@@ -466,10 +575,18 @@ class AppointmentController extends Controller
         return $customer;
     }
 
-    private function serializeAppointment(Appointment $appointment): array
+    private function serializeAppointment(Appointment $appointment, Request $request): array
     {
+        $checkout = $appointment->checkoutSummary();
+        $canCheckoutUi = $request->user() && (
+            $request->user()->hasRole('owner', 'manager')
+            || $request->user()->hasPermission('can_manage_finance')
+            || $request->user()->hasPermission('can_collect_payments')
+        );
+
         return [
             'id' => $appointment->id,
+            'customer_id' => $appointment->customer_id,
             'service_id' => $appointment->service_id,
             'staff_profile_id' => $appointment->staff_profile_id,
             'scheduled_start' => $appointment->scheduled_start,
@@ -503,6 +620,8 @@ class AppointmentController extends Controller
                 'quantity' => $usage->quantity,
                 'notes' => $usage->notes,
             ])->values()->all(),
+            'awaiting_checkout' => $canCheckoutUi ? $checkout['awaiting_checkout'] : false,
+            'checkout_invoice_id' => $canCheckoutUi ? $checkout['checkout_invoice_id'] : null,
         ];
     }
 }

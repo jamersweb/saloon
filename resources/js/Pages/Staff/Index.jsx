@@ -1,5 +1,6 @@
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -9,6 +10,8 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
     const [uiError, setUiError] = useState('');
+    const [staffConfirm, setStaffConfirm] = useState(null);
+    const [staffConfirmBusy, setStaffConfirmBusy] = useState(false);
     const safeRoles = Array.isArray(roles) ? roles : [];
     const safeStaffProfiles = Array.isArray(staffProfiles) ? staffProfiles : [];
 
@@ -23,6 +26,33 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
     const closeEditModal = () => {
         setEditingId(null);
         editForm.clearErrors();
+    };
+
+    const staffConfirmCopy = (c) => {
+        if (!c) return { title: '', message: '', confirmText: '', confirmClassName: undefined };
+        const name = c.name || 'this staff member';
+        if (c.action === 'restore') {
+            return {
+                title: 'Restore to team list?',
+                message: `${name} will appear again in schedules and assignments.`,
+                confirmText: 'Restore',
+                confirmClassName: 'rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60',
+            };
+        }
+        if (c.action === 'deactivate') {
+            return {
+                title: 'Deactivate this staff member?',
+                message: `${name} stays in the team list but cannot be assigned until reactivated.`,
+                confirmText: 'Deactivate',
+                confirmClassName: 'rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60',
+            };
+        }
+        return {
+            title: 'Remove from team?',
+            message: `${name} will be hidden from schedules and assignments. You can restore them from Removed staff.`,
+            confirmText: 'Remove',
+            confirmClassName: undefined,
+        };
     };
 
     const startEdit = (staff) => {
@@ -133,10 +163,7 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
                                                     <button
                                                         type="button"
                                                         className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
-                                                        onClick={() => {
-                                                            if (!window.confirm(`Restore ${s.user?.name || 'this staff member'} to the team list?`)) return;
-                                                            router.post(route('staff.restore', s.id), {}, { onError: (errors) => setUiError(toUserFriendlyError(errors, 'Could not restore staff member.')) });
-                                                        }}
+                                                        onClick={() => setStaffConfirm({ action: 'restore', id: s.id, name: s.user?.name || '' })}
                                                     >
                                                         Restore
                                                     </button>
@@ -146,20 +173,14 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
                                                         <button
                                                             type="button"
                                                             className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800"
-                                                            onClick={() => {
-                                                                if (!window.confirm(`Deactivate ${s.user?.name || 'this staff member'}? They stay in the team list but cannot be assigned until reactivated.`)) return;
-                                                                router.post(route('staff.deactivate', s.id), {}, { onError: (errors) => setUiError(toUserFriendlyError(errors, 'Could not deactivate staff member.')) });
-                                                            }}
+                                                            onClick={() => setStaffConfirm({ action: 'deactivate', id: s.id, name: s.user?.name || '' })}
                                                         >
                                                             Deactivate
                                                         </button>
                                                         <button
                                                             type="button"
                                                             className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700"
-                                                            onClick={() => {
-                                                                if (!window.confirm(`Remove ${s.user?.name || 'this staff member'} from the team? This hides them from schedules and assignments. You can restore them from Removed staff.`)) return;
-                                                                router.delete(route('staff.destroy', s.id), { onError: (errors) => setUiError(toUserFriendlyError(errors, 'Could not remove staff member.')) });
-                                                            }}
+                                                            onClick={() => setStaffConfirm({ action: 'remove', id: s.id, name: s.user?.name || '' })}
                                                         >
                                                             Remove
                                                         </button>
@@ -173,6 +194,33 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
                         </table>
                     </div>
                 </section>
+
+                <ConfirmActionModal
+                    show={Boolean(staffConfirm)}
+                    {...(staffConfirm ? staffConfirmCopy(staffConfirm) : {})}
+                    onClose={() => !staffConfirmBusy && setStaffConfirm(null)}
+                    processing={staffConfirmBusy}
+                    onConfirm={() => {
+                        if (!staffConfirm) return;
+                        setStaffConfirmBusy(true);
+                        const finish = () => {
+                            setStaffConfirmBusy(false);
+                            setStaffConfirm(null);
+                        };
+                        const onError = (errors) => {
+                            setUiError(toUserFriendlyError(errors, 'Could not complete this action.'));
+                        };
+                        if (staffConfirm.action === 'restore') {
+                            router.post(route('staff.restore', staffConfirm.id), {}, { onFinish: finish, onError });
+                            return;
+                        }
+                        if (staffConfirm.action === 'deactivate') {
+                            router.post(route('staff.deactivate', staffConfirm.id), {}, { onFinish: finish, onError });
+                            return;
+                        }
+                        router.delete(route('staff.destroy', staffConfirm.id), { onFinish: finish, onError });
+                    }}
+                />
 
                 <Modal show={Boolean(editingId)} onClose={closeEditModal} maxWidth="2xl">
                     <section className="ta-card p-5">

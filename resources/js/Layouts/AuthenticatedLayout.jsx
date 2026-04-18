@@ -94,6 +94,12 @@ export default function AuthenticatedLayout({ header, headerActions = null, chil
                 items: [
                     { label: 'Customers', href: route('customers.index'), active: route().current('customers.*'), visible: canOperate },
                     { label: 'Appointments', href: route('appointments.index'), active: route().current('appointments.*'), visible: canOperate },
+                    {
+                        label: 'Visit checkout',
+                        href: route('appointments.index', { status: 'completed' }),
+                        active: route().current('appointments.*') && (page.url || '').includes('status=completed'),
+                        visible: permissions.can_collect_payments && !permissions.can_manage_finance,
+                    },
                     { label: 'Attendance', href: route('attendance.index'), active: route().current('attendance.*'), visible: canOperate },
                     { label: 'Leave Requests', href: route('leave-requests.index'), active: route().current('leave-requests.*'), visible: canOperate },
                 ],

@@ -27,6 +27,12 @@ class DashboardController extends Controller
             $period = 'today';
         }
 
+        $canSeeCheckoutAlerts = $user && (
+            $user->hasRole('owner', 'manager')
+            || $user->hasPermission('can_manage_finance')
+            || $user->hasPermission('can_collect_payments')
+        );
+
         [$dateFrom, $dateTo, $periodLabel] = $this->resolveDateRange($period);
         $staffProfileId = $user?->staffProfile?->id;
 
@@ -63,6 +69,35 @@ class DashboardController extends Controller
             $staffFeedbackQuery->where('created_by_user_id', $user?->id);
         }
 
+        $awaitingCheckoutVisits = [];
+        if ($canSeeCheckoutAlerts) {
+            $awaitingCheckoutVisits = Appointment::query()
+                ->with(['taxInvoices.payments', 'service:id,name'])
+                ->where('status', Appointment::STATUS_COMPLETED)
+                ->where('scheduled_start', '>=', now()->subDays(14))
+                ->orderByDesc('scheduled_start')
+                ->limit(40)
+                ->get()
+                ->map(function (Appointment $appointment) {
+                    $summary = $appointment->checkoutSummary();
+                    if (! $summary['awaiting_checkout']) {
+                        return null;
+                    }
+
+                    return [
+                        'id' => $appointment->id,
+                        'customer_name' => $appointment->customer_name,
+                        'service_name' => $appointment->service?->name,
+                        'scheduled_start' => $appointment->scheduled_start?->toIso8601String(),
+                        'invoice_id' => $summary['checkout_invoice_id'],
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->take(12)
+                ->all();
+        }
+
         return Inertia::render('Dashboard', [
             'selectedPeriod' => $period,
             'periodLabel' => $periodLabel,
@@ -70,6 +105,7 @@ class DashboardController extends Controller
                 'from' => $dateFrom->toDateString(),
                 'to' => $dateTo->toDateString(),
             ],
+            'awaitingCheckoutVisits' => $awaitingCheckoutVisits,
             'stats' => [
                 'customers' => Customer::count(),
                 'services' => SalonService::count(),

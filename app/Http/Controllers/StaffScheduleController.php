@@ -5,17 +5,23 @@ namespace App\Http\Controllers;
 use App\Models\BookingRule;
 use App\Models\StaffProfile;
 use App\Models\StaffSchedule;
+use App\Services\StaffScheduleGeneratorService;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class StaffScheduleController extends Controller
 {
+    public function __construct(private readonly StaffScheduleGeneratorService $staffScheduleGenerator) {}
+
     public function index(Request $request): Response
     {
+        $this->staffScheduleGenerator->fillRollingWeek();
+
         $rules = BookingRule::current();
 
         return Inertia::render('Schedules/Index', [
@@ -82,6 +88,39 @@ class StaffScheduleController extends Controller
         Audit::log($request->user()->id, 'schedule.upserted', 'StaffSchedule', $schedule->id, $schedule->toArray());
 
         return back()->with('status', 'Schedule saved.');
+    }
+
+    /**
+     * Create missing default schedule rows for all active staff (same logic as {@see \App\Console\Commands\FillStaffSchedulesCommand}).
+     */
+    public function fillGaps(Request $request): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'horizon' => ['required', Rule::in(['week', 'month'])],
+        ]);
+
+        $days = $data['horizon'] === 'week' ? 7 : 31;
+        $start = Carbon::today()->startOfDay();
+        $end = Carbon::today()->copy()->addDays($days - 1)->startOfDay();
+
+        $created = $this->staffScheduleGenerator->fillGapsForActiveStaff($start, $end);
+
+        $rangeLabel = $data['horizon'] === 'week'
+            ? 'the next 7 days ('.$start->toDateString().' – '.$end->toDateString().')'
+            : 'the next 31 days ('.$start->toDateString().' – '.$end->toDateString().')';
+
+        Audit::log($request->user()->id, 'schedule.fill_gaps', 'StaffSchedule', null, [
+            'horizon' => $data['horizon'],
+            'days' => $days,
+            'rows_created' => $created,
+        ]);
+
+        return back()->with(
+            'status',
+            "Added {$created} missing schedule row(s) for {$rangeLabel}. Existing rows were not changed."
+        );
     }
 
     public function update(Request $request, StaffSchedule $schedule): RedirectResponse

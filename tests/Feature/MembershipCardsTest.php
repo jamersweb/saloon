@@ -32,9 +32,9 @@ class MembershipCardsTest extends TestCase
             'is_active' => true,
         ]);
 
-        $silver = MembershipCardType::create([
-            'name' => 'Silver',
-            'slug' => 'silver',
+        $titanium = MembershipCardType::create([
+            'name' => 'Titanium',
+            'slug' => 'titanium-test',
             'kind' => 'physical',
             'min_points' => 100,
             'is_active' => true,
@@ -50,7 +50,7 @@ class MembershipCardsTest extends TestCase
 
         CustomerMembershipCard::create([
             'customer_id' => $customer->id,
-            'membership_card_type_id' => $silver->id,
+            'membership_card_type_id' => $titanium->id,
             'card_number' => '555055000001',
             'status' => 'active',
             'issued_at' => now()->subMonth(),
@@ -68,7 +68,7 @@ class MembershipCardsTest extends TestCase
 
         $this->assertDatabaseHas('customer_membership_cards', [
             'customer_id' => $customer->id,
-            'membership_card_type_id' => $silver->id,
+            'membership_card_type_id' => $titanium->id,
             'status' => 'inactive',
         ]);
 
@@ -90,8 +90,8 @@ class MembershipCardsTest extends TestCase
         ]);
 
         MembershipCardType::create([
-            'name' => 'Silver',
-            'slug' => 'silver',
+            'name' => 'Titanium',
+            'slug' => 'titanium-test',
             'kind' => 'physical',
             'min_points' => 100,
             'is_active' => true,
@@ -215,8 +215,8 @@ class MembershipCardsTest extends TestCase
         $user = User::factory()->create(['role_id' => $managerRole->id]);
 
         $cardType = MembershipCardType::create([
-            'name' => 'Silver',
-            'slug' => 'silver',
+            'name' => 'Titanium',
+            'slug' => 'titanium-test',
             'kind' => 'physical',
             'min_points' => 100,
             'is_active' => true,

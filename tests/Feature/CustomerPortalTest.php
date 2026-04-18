@@ -81,8 +81,8 @@ class CustomerPortalTest extends TestCase
         ]);
 
         $cardType = MembershipCardType::create([
-            'name' => 'Silver',
-            'slug' => 'silver',
+            'name' => 'Titanium',
+            'slug' => 'titanium-portal-test',
             'kind' => 'physical',
             'min_points' => 100,
             'is_active' => true,
@@ -169,7 +169,7 @@ class CustomerPortalTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Public/CustomerPortal')
                 ->where('customer.name', 'Public Portal Customer')
-                ->where('customer.current_card', 'Silver')
+                ->where('customer.current_card', 'Titanium')
                 ->where('customer.points_spent', 40)
                 ->where('customer.points_remaining', 180)
                 ->where('customer.packages.0.name', 'Bridal Package')
@@ -194,8 +194,8 @@ class CustomerPortalTest extends TestCase
         ]);
 
         $cardType = MembershipCardType::create([
-            'name' => 'NFC Silver',
-            'slug' => 'nfc-silver',
+            'name' => 'NFC Titanium',
+            'slug' => 'nfc-titanium',
             'kind' => 'physical',
             'min_points' => 0,
             'is_active' => true,

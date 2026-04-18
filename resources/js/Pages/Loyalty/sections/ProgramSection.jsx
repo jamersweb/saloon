@@ -14,6 +14,10 @@ export default function ProgramSection({
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Auto earn rules</h3>
                 <p className="mb-3 text-xs text-slate-600">How customers earn points from visits and spend. These apply when appointments are completed.</p>
+                <p className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    Vina loyalty card PDF: tiers are Queen (10% / 1×), Titanium (15% / 1.5×), Gold (30% / 3×). Match that here under loyalty tiers. For ~1 point per AED 10 net before the tier multiplier, set{' '}
+                    <span className="font-medium text-slate-700">points per currency</span> to <span className="font-mono text-slate-800">0.1</span> (seeded default). PDF welcome bonuses (100 / 200 / 300 pts) are not auto-issued yet—record them once from the Points section if you use them.
+                </p>
                 <form onSubmit={(e) => { e.preventDefault(); settingsForm.patch(route('loyalty.settings.update')); }} className="grid gap-3 md:grid-cols-5">
                     <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={settingsForm.data.auto_earn_enabled} onChange={(e) => settingsForm.setData('auto_earn_enabled', e.target.checked)} />Enable auto earn on completed appointment</label>{fieldError(settingsForm, 'auto_earn_enabled')}</div>
                     <div><label className="ta-field-label">Points per currency</label><input className="ta-input" type="number" min="0" step="0.01" placeholder="Points per currency" value={settingsForm.data.points_per_currency} onChange={(e) => settingsForm.setData('points_per_currency', e.target.value)} required />{fieldError(settingsForm, 'points_per_currency')}</div>

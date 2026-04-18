@@ -1,3 +1,5 @@
+import ConfirmActionModal from '@/Components/ConfirmActionModal';
+import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
@@ -7,6 +9,8 @@ const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 te
 export default function ServicesIndex({ services }) {
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
+    const [deactivateId, setDeactivateId] = useState(null);
+    const [deactivateBusy, setDeactivateBusy] = useState(false);
 
     const createForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', price: '', is_active: true });
     const editForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', price: '', is_active: true });
@@ -22,6 +26,11 @@ export default function ServicesIndex({ services }) {
             price: service.price ?? '',
             is_active: Boolean(service.is_active),
         });
+        editForm.clearErrors();
+    };
+
+    const closeEditModal = () => {
+        setEditingId(null);
         editForm.clearErrors();
     };
 
@@ -49,15 +58,15 @@ export default function ServicesIndex({ services }) {
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Name</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Duration</th><th className="px-5 py-3">Buffer</th><th className="px-5 py-3">Repeat</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
-                            <tbody>{services.map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{s.name}</td><td className="px-5 py-3 text-slate-600">{s.category || '-'}</td><td className="px-5 py-3 text-slate-600">{s.duration_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.buffer_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.repeat_after_days ? `${s.repeat_after_days}d` : '-'}</td><td className="px-5 py-3 text-slate-600">{s.price}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><div className="flex gap-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(s)}>Edit</button><button className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => router.delete(route('services.destroy', s.id))}>Deactivate</button></div></td></tr>)}</tbody>
+                            <tbody>{services.map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{s.name}</td><td className="px-5 py-3 text-slate-600">{s.category || '-'}</td><td className="px-5 py-3 text-slate-600">{s.duration_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.buffer_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.repeat_after_days ? `${s.repeat_after_days}d` : '-'}</td><td className="px-5 py-3 text-slate-600">{s.price}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(s)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => setDeactivateId(s.id)}>Deactivate</button></div></td></tr>)}</tbody>
                         </table>
                     </div>
                 </section>
 
-                {editingId && (
-                    <section className="ta-card p-5">
-                        <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit Service #{editingId}</h3>
-                        <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('services.update', editingId), { onSuccess: () => setEditingId(null) }); }} className="grid gap-3 md:grid-cols-7">
+                <Modal show={Boolean(editingId)} onClose={closeEditModal} maxWidth="2xl">
+                    <div className="p-6">
+                        <h3 className="mb-4 text-base font-semibold text-slate-800">Edit service #{editingId}</h3>
+                        <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('services.update', editingId), { onSuccess: () => closeEditModal() }); }} className="grid gap-3 md:grid-cols-7">
                             <div><label className="ta-field-label">Name</label><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
                             <div><label className="ta-field-label">Category</label><input className="ta-input" value={editForm.data.category} onChange={(e) => editForm.setData('category', e.target.value)} />{fieldError(editForm, 'category')}</div>
                             <div><label className="ta-field-label">Duration Minutes</label><input className="ta-input" type="number" min="5" value={editForm.data.duration_minutes} onChange={(e) => editForm.setData('duration_minutes', e.target.value)} required />{fieldError(editForm, 'duration_minutes')}</div>
@@ -65,10 +74,29 @@ export default function ServicesIndex({ services }) {
                             <div><label className="ta-field-label">Repeat After Days</label><input className="ta-input" type="number" min="1" value={editForm.data.repeat_after_days ?? ''} onChange={(e) => editForm.setData('repeat_after_days', e.target.value === '' ? null : e.target.value)} />{fieldError(editForm, 'repeat_after_days')}</div>
                             <div><label className="ta-field-label">Price</label><input className="ta-input" type="number" step="0.01" min="0" value={editForm.data.price} onChange={(e) => editForm.setData('price', e.target.value)} required />{fieldError(editForm, 'price')}</div>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label>{fieldError(editForm, 'is_active')}</div>
-                            <div className="md:col-span-6 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Cancel</button></div>
+                            <div className="md:col-span-6 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={closeEditModal}>Close</button></div>
                         </form>
-                    </section>
-                )}
+                    </div>
+                </Modal>
+
+                <ConfirmActionModal
+                    show={Boolean(deactivateId)}
+                    title="Deactivate this service?"
+                    message="The service will be hidden from new bookings. Existing data is kept."
+                    confirmText="Deactivate"
+                    onClose={() => !deactivateBusy && setDeactivateId(null)}
+                    processing={deactivateBusy}
+                    onConfirm={() => {
+                        if (!deactivateId) return;
+                        setDeactivateBusy(true);
+                        router.delete(route('services.destroy', deactivateId), {
+                            onFinish: () => {
+                                setDeactivateBusy(false);
+                                setDeactivateId(null);
+                            },
+                        });
+                    }}
+                />
             </div>
         </AuthenticatedLayout>
     );

@@ -71,6 +71,7 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'status' => fn () => $request->session()->get('status'),
                 'created_tax_invoice_id' => fn () => $request->session()->get('created_tax_invoice_id'),
+                'created_purchase_order_id' => fn () => $request->session()->get('created_purchase_order_id'),
             ],
         ];
     }

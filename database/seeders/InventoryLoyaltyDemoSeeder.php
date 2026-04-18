@@ -20,11 +20,10 @@ class InventoryLoyaltyDemoSeeder extends Seeder
     public function run(): void
     {
         DB::transaction(function (): void {
-            $tiers = collect([
-                ['name' => 'Silver', 'min_points' => 100, 'discount_percent' => 5, 'is_active' => true],
-                ['name' => 'Gold', 'min_points' => 300, 'discount_percent' => 10, 'is_active' => true],
-                ['name' => 'Platinum', 'min_points' => 600, 'discount_percent' => 15, 'is_active' => true],
-            ])->map(fn (array $tier) => LoyaltyTier::updateOrCreate(['name' => $tier['name']], $tier));
+            $tiersByName = LoyaltyTier::query()
+                ->whereIn('name', ['Queen', 'Titanium', 'Gold'])
+                ->get()
+                ->keyBy('name');
 
             $inventoryItems = [
                 ['sku' => 'INV-SHA-001', 'name' => 'Argan Repair Shampoo', 'category' => 'Shampoo', 'unit' => 'bottle', 'cost_price' => 7.5, 'selling_price' => 16.0, 'stock_quantity' => 28, 'reorder_level' => 8, 'is_active' => true],
@@ -73,17 +72,17 @@ class InventoryLoyaltyDemoSeeder extends Seeder
             }
 
             $demoCustomers = [
-                ['name' => 'Aisha Khan', 'phone' => '5551002001', 'email' => 'aisha@example.com', 'points' => 85],
-                ['name' => 'Daniel Reed', 'phone' => '5551002002', 'email' => 'daniel@example.com', 'points' => 220],
-                ['name' => 'Maya Ortiz', 'phone' => '5551002003', 'email' => 'maya@example.com', 'points' => 410],
-                ['name' => 'Sara Lee', 'phone' => '5551002004', 'email' => 'sara@example.com', 'points' => 715],
+                ['name' => 'Aisha Khan', 'phone' => '5551002001', 'email' => 'aisha@example.com', 'points' => 85, 'tier_name' => 'Queen'],
+                ['name' => 'Daniel Reed', 'phone' => '5551002002', 'email' => 'daniel@example.com', 'points' => 220, 'tier_name' => 'Queen'],
+                ['name' => 'Maya Ortiz', 'phone' => '5551002003', 'email' => 'maya@example.com', 'points' => 410, 'tier_name' => 'Queen'],
+                ['name' => 'Sara Lee', 'phone' => '5551002004', 'email' => 'sara@example.com', 'points' => 1500, 'tier_name' => 'Titanium'],
             ];
 
             foreach ($demoCustomers as $index => $entry) {
                 $customer = Customer::updateOrCreate(
                     ['phone' => $entry['phone']],
                     [
-                        'customer_code' => 'CUST-DEMO-' . str_pad((string) ($index + 1), 3, '0', STR_PAD_LEFT),
+                        'customer_code' => 'CUST-DEMO-'.str_pad((string) ($index + 1), 3, '0', STR_PAD_LEFT),
                         'name' => $entry['name'],
                         'email' => $entry['email'],
                         'acquisition_source' => 'demo_seed',
@@ -91,10 +90,12 @@ class InventoryLoyaltyDemoSeeder extends Seeder
                     ]
                 );
 
-                $tier = $tiers
-                    ->filter(fn (LoyaltyTier $tier) => $entry['points'] >= $tier->min_points)
-                    ->sortByDesc('min_points')
-                    ->first();
+                $tier = $tiersByName->get($entry['tier_name'])
+                    ?? LoyaltyTier::query()
+                        ->where('is_active', true)
+                        ->where('min_points', '<=', $entry['points'])
+                        ->orderByDesc('min_points')
+                        ->first();
 
                 CustomerLoyaltyAccount::updateOrCreate(
                     ['customer_id' => $customer->id],
