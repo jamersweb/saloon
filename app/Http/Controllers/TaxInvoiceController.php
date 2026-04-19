@@ -15,7 +15,7 @@ use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoiceLineCalculator;
 use App\Services\TaxInvoicePaymentService;
 use App\Support\Audit;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Support\TaxReceiptPdfView;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -426,15 +426,7 @@ class TaxInvoiceController extends Controller
             abort(404);
         }
 
-        $invoice->load(['items', 'customer', 'payments']);
-        $settings = FinanceSetting::current();
-
-        $pdf = Pdf::loadView('finance.tax_receipt_pdf', [
-            'settings' => $settings,
-            'invoice' => $invoice,
-        ])->setPaper([0, 0, 226.77, 841.89]);
-
-        return $pdf->stream('receipt-'.$invoice->invoice_number.'.pdf');
+        return TaxReceiptPdfView::makePdf($invoice)->stream('receipt-'.$invoice->invoice_number.'.pdf');
     }
 
     public function emailReceipt(Request $request, TaxInvoice $invoice): RedirectResponse

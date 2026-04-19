@@ -4,7 +4,7 @@ namespace App\Mail;
 
 use App\Models\FinanceSetting;
 use App\Models\TaxInvoice;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Support\TaxReceiptPdfView;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
@@ -49,11 +49,7 @@ class TaxInvoiceReceiptMail extends Mailable
      */
     public function attachments(): array
     {
-        $settings = FinanceSetting::current();
-        $pdf = Pdf::loadView('finance.tax_receipt_pdf', [
-            'settings' => $settings,
-            'invoice' => $this->invoice,
-        ])->setPaper([0, 0, 226.77, 841.89]);
+        $pdf = TaxReceiptPdfView::makePdf($this->invoice);
 
         $name = 'receipt-'.$this->invoice->invoice_number.'.pdf';
 

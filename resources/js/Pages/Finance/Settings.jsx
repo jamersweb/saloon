@@ -33,6 +33,9 @@ export default function FinanceSettings({ settings }) {
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Business name (on receipt)</label>
                             <input className="ta-input" value={form.data.business_name} onChange={(e) => form.setData('business_name', e.target.value)} required />
+                            <p className="mt-1 text-xs text-slate-500">
+                                Thermal receipts use <code className="rounded bg-slate-100 px-1">public/images/vina-logo.png</code> (scaled when GD is available, then embedded after Arabic shaping). If the file is missing, an inline SVG badge is used. Line items: item, quantity, and amount (line total including VAT).
+                            </p>
                         </div>
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Address line</label>

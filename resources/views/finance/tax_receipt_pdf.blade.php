@@ -1,23 +1,148 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="utf-8">
-    <style>
-        * { box-sizing: border-box; }
-        body { font-family: DejaVu Sans, sans-serif; font-size: 9px; color: #111; margin: 0; padding: 8px; width: 72mm; }
-        .center { text-align: center; }
-        .muted { color: #444; font-size: 8px; }
-        .title { font-size: 11px; font-weight: bold; margin: 6px 0; }
-        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-        th, td { text-align: left; padding: 2px 0; border-bottom: 1px dashed #ccc; }
-        th { font-size: 7px; text-transform: uppercase; }
-        .num { text-align: right; }
-        .totals td { border: none; padding: 3px 0; font-size: 9px; }
-        .grand { font-weight: bold; font-size: 10px; }
-        hr { border: none; border-top: 1px solid #333; margin: 8px 0; }
+    <style type="text/css">
+        @page {
+            margin: 0 !important;
+        }
+        @media print {
+            @page {
+                margin: 0 !important;
+            }
+        }
+        * {
+            box-sizing: border-box;
+        }
+        html {
+            direction: ltr;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            direction: ltr;
+            font-family: DejaVu Sans, sans-serif;
+            font-size: 7.5px;
+            color: #111;
+            margin: 0 !important;
+            /* Left gutter unchanged; extra right inset stops DomPDF clipping decimals on narrow thermal. */
+            padding: 4pt 14pt 5pt 8pt !important;
+            width: 100%;
+            max-width: 100%;
+            text-align: left;
+        }
+        .logo-wrap {
+            text-align: center;
+            margin: 0 0 5pt;
+        }
+        .receipt-logo {
+            display: block;
+            margin: 0 auto;
+            height: 76px;
+            width: auto;
+            max-width: 96%;
+            object-fit: contain;
+        }
+        .center {
+            text-align: center;
+        }
+        .muted {
+            color: #444;
+            font-size: 6.5px;
+        }
+        .title {
+            font-size: 9px;
+            font-weight: bold;
+            margin: 3px 0;
+        }
+        table.items {
+            width: 97%;
+            max-width: 97%;
+            margin-left: 0;
+            margin-right: auto;
+            table-layout: fixed;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+        table.items th,
+        table.items td {
+            text-align: left;
+            padding: 1px 0;
+            border-bottom: 1px dashed #ccc;
+            vertical-align: top;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+        }
+        table.items th {
+            font-size: 5.5px;
+            text-transform: uppercase;
+        }
+        table.items th.num,
+        table.items td.num {
+            padding-left: 3px;
+            padding-right: 8px;
+        }
+        table.items .col-item {
+            width: 44%;
+        }
+        table.items .col-qty {
+            width: 8%;
+        }
+        table.items .col-line {
+            width: 46%;
+        }
+        table.items .num {
+            text-align: right;
+            white-space: nowrap;
+        }
+        table.totals {
+            width: 97%;
+            max-width: 97%;
+            margin-left: 0;
+            margin-right: auto;
+            table-layout: fixed;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+        table.totals td {
+            border: none;
+            padding: 1px 0;
+            font-size: 7.5px;
+        }
+        table.totals .num {
+            text-align: right;
+            white-space: nowrap;
+            width: 38%;
+            padding-left: 3px;
+            padding-right: 8px;
+        }
+        table.totals .lbl {
+            width: 62%;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+            padding-right: 2px;
+        }
+        .grand {
+            font-weight: bold;
+            font-size: 8.5px;
+        }
+        hr {
+            border: none;
+            border-top: 1px solid #333;
+            margin: 5px 0;
+            width: 97%;
+            margin-left: 0;
+            margin-right: auto;
+        }
+        .ar {
+            font-family: DejaVu Sans, sans-serif;
+        }
     </style>
 </head>
 <body>
+    &#x200E;
+    <div class="logo-wrap">{{ $logo_placeholder }}</div>
+
     <div class="center title">{{ $settings->business_name }}</div>
     @if($settings->address_line)
         <div class="center muted">{{ $settings->address_line }}</div>
@@ -29,25 +154,29 @@
         <div class="center muted">{{ $settings->email }}</div>
     @endif
 
-    <div class="center title" style="margin-top:10px;">Tax Receipt / إيصال ضريبي</div>
+    <div class="center title" style="margin-top:5px;">Tax Receipt / <span class="ar">إيصال ضريبي</span></div>
 
-    <div class="muted" style="margin-top:8px;">Customer / العميل: <strong>{{ $invoice->customer_display_name }}</strong></div>
+    <div class="muted" style="margin-top:5px;">Customer / <span class="ar">العميل</span>: <strong>{{ $invoice->customer_display_name }}</strong></div>
     @if($settings->tax_registration_number)
         <div class="muted">TRN: {{ $settings->tax_registration_number }}</div>
     @endif
-    <div class="muted">Invoice / رقم الفاتورة: <strong>{{ $invoice->invoice_number }}</strong></div>
+    <div class="muted">Invoice / <span class="ar">رقم الفاتورة</span>: <strong>{{ $invoice->invoice_number }}</strong></div>
     @if($invoice->cashier_name)
         <div class="muted">Cashier: {{ $invoice->cashier_name }}</div>
     @endif
-    <div class="muted">Date / التاريخ: {{ $invoice->issued_at?->format('Y-m-d H:i:s') }}</div>
+    <div class="muted">Date / <span class="ar">التاريخ</span>: {{ $invoice->issued_at?->format('Y-m-d H:i:s') }}</div>
 
-    <table>
+    <table class="items">
+        <colgroup>
+            <col class="col-item" />
+            <col class="col-qty" />
+            <col class="col-line" />
+        </colgroup>
         <thead>
             <tr>
-                <th>Item / البند</th>
+                <th>Item<br/><span class="ar" style="font-size:5.5px;">البند</span></th>
                 <th class="num">Qty</th>
-                <th class="num">Price</th>
-                <th class="num">Total</th>
+                <th class="num">Amt<br/><span class="ar" style="font-size:5.5px;">المبلغ</span></th>
             </tr>
         </thead>
         <tbody>
@@ -55,34 +184,36 @@
                 <tr>
                     <td>{{ $item->description }}</td>
                     <td class="num">{{ number_format((float) $item->quantity, 0) }}</td>
-                    <td class="num">{{ number_format((float) $item->unit_price, 2) }}</td>
-                    <td class="num">{{ number_format((float) $item->line_subtotal, 2) }}</td>
+                    <td class="num">{{ number_format((float) $item->line_total, 2) }}</td>
                 </tr>
             @endforeach
         </tbody>
     </table>
 
-    <table class="totals" style="margin-top:6px;">
+    <table class="totals">
+        <colgroup>
+            <col class="lbl" />
+            <col style="width:38%;" />
+        </colgroup>
         <tr>
-            <td>Subtotal / إجمالي الفاتورة</td>
+            <td class="lbl">Subtotal / <span class="ar">إجمالي الفاتورة</span></td>
             <td class="num">{{ number_format((float) $invoice->subtotal, 2) }}</td>
         </tr>
         <tr>
-            <td>VAT ({{ number_format((float) $invoice->items->first()?->tax_rate_percent ?? 0, 2) }}%)</td>
+            <td class="lbl">VAT ({{ number_format((float) $invoice->items->first()?->tax_rate_percent ?? 0, 2) }}%)</td>
             <td class="num">{{ number_format((float) $invoice->vat_amount, 2) }}</td>
         </tr>
         <tr class="grand">
-            <td>Total / المجموع ({{ $settings->currency_code }})</td>
+            <td class="lbl">Total / <span class="ar">المجموع</span> ({{ $settings->currency_code }})</td>
             <td class="num">{{ number_format((float) $invoice->total, 2) }}</td>
         </tr>
     </table>
 
     @php
         $payments = $invoice->payments ?? collect();
-        $paidSum = $payments->sum('amount');
     @endphp
     @if($payments->isNotEmpty())
-        <div class="muted" style="margin-top:8px;">Payments / المدفوعات:</div>
+        <div class="muted" style="margin-top:5px;">Payments / <span class="ar">المدفوعات</span>:</div>
         @foreach($payments as $p)
             <div class="muted">{{ ucfirst(str_replace('_', ' ', $p->method)) }}: {{ number_format((float) $p->amount, 2) }} @ {{ $p->paid_at?->format('Y-m-d H:i') }}</div>
         @endforeach
@@ -90,6 +221,10 @@
 
     <hr>
     <div class="center muted">Thank you! Please come again.</div>
-    <div class="center muted">نتمنى زيارتكم لنا مرة أخرى.</div>
+    <div class="center muted ar">نتمنى زيارتكم لنا مرة أخرى.</div>
+
+    <style type="text/css">
+        @page { margin: 0 !important; }
+    </style>
 </body>
 </html>
