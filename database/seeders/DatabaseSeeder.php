@@ -19,7 +19,9 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(RoleSeeder::class);
         $this->call(MembershipCardTypesSeeder::class);
+        $this->call(VinaMembershipSeriesSeeder::class);
         $this->call(LoyaltyProgramPdfSeeder::class);
+        $this->call(AdminSeeder::class);
 
         $ownerRole = Role::query()->where('name', 'owner')->firstOrFail();
 
@@ -34,6 +36,8 @@ class DatabaseSeeder extends Seeder
         );
 
         $this->call(RoleUserDemoSeeder::class);
+        $this->call(VinaStaffRosterSeeder::class);
+        $this->call(VinaMembershipRosterSeeder::class);
         $this->call(AppointmentDemoSeeder::class);
         $this->call(InventoryLoyaltyDemoSeeder::class);
     }

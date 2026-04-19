@@ -13,6 +13,7 @@ use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\View\View;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -33,8 +34,50 @@ class PublicBookingController extends Controller
         ]);
     }
 
+    public function embedCreate(): View
+    {
+        $rules = BookingRule::current();
+
+        return view('public.embed-booking', [
+            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes']),
+            'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get(),
+            'bookingRules' => $rules,
+            'defaultStart' => $rules->nextDefaultAppointmentStart(),
+        ]);
+    }
+
+    public function embedThanks(): View
+    {
+        return view('public.embed-booking-thanks');
+    }
+
     public function store(Request $request, BookingAvailabilityService $availabilityService, PublicBookingNotificationService $notificationService): RedirectResponse
     {
+        $result = $this->createPublicAppointment($request, $availabilityService, $notificationService);
+
+        if ($result instanceof RedirectResponse) {
+            return $result;
+        }
+
+        return back()->with('status', 'Booking submitted successfully. We will confirm shortly.');
+    }
+
+    public function embedStore(Request $request, BookingAvailabilityService $availabilityService, PublicBookingNotificationService $notificationService): RedirectResponse
+    {
+        $result = $this->createPublicAppointment($request, $availabilityService, $notificationService);
+
+        if ($result instanceof RedirectResponse) {
+            return $result;
+        }
+
+        return redirect()->route('embed.booking.thanks');
+    }
+
+    private function createPublicAppointment(
+        Request $request,
+        BookingAvailabilityService $availabilityService,
+        PublicBookingNotificationService $notificationService,
+    ): Appointment|RedirectResponse {
         $data = $request->validate([
             'service_id' => ['required', 'exists:salon_services,id'],
             'staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
@@ -108,6 +151,6 @@ class PublicBookingController extends Controller
 
         Audit::log(null, 'appointment.public_created', 'Appointment', $appointment->id);
 
-        return back()->with('status', 'Booking submitted successfully. We will confirm shortly.');
+        return $appointment;
     }
 }

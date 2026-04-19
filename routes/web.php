@@ -30,6 +30,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicBookingController::class, 'create'])->name('public.booking');
 Route::post('/book', [PublicBookingController::class, 'store'])->name('public.booking.store');
+
+Route::get('/embed/book', [PublicBookingController::class, 'embedCreate'])->name('embed.booking');
+Route::post('/embed/book', [PublicBookingController::class, 'embedStore'])->name('embed.booking.store');
+Route::get('/embed/book/thanks', [PublicBookingController::class, 'embedThanks'])->name('embed.booking.thanks');
 Route::get('/portal/{token}', [CustomerPortalController::class, 'show'])->name('customer.portal.show');
 Route::get('/portal/nfc/{nfcUid}', [CustomerPortalController::class, 'showByNfc'])->name('customer.portal.nfc');
 
