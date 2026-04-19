@@ -19,7 +19,9 @@ return new class extends Migration
         $driver = Schema::getConnection()->getDriverName();
 
         if (in_array($driver, ['mysql', 'mariadb'], true)) {
-            DB::statement('ALTER TABLE membership_card_sequences MODIFY next_number BIGINT UNSIGNED NOT NULL');
+            $table = Schema::getConnection()->getTablePrefix().'membership_card_sequences';
+
+            DB::statement('ALTER TABLE `'.$table.'` MODIFY `next_number` BIGINT UNSIGNED NOT NULL');
         }
     }
 
