@@ -16,6 +16,18 @@ class MembershipCardService
     /** @var int First auto-issued number (12-digit block). Sequence table stores the *next* number to issue. */
     private const FIRST_ISSUABLE_NUMBER = 100_000_000_001;
 
+    private static bool $ensuredSequenceColumnWidth = false;
+
+    private function ensureSequenceColumnSupportsIssuedCardNumbers(): void
+    {
+        if (self::$ensuredSequenceColumnWidth) {
+            return;
+        }
+
+        MembershipCardSequence::ensureNextNumberColumnIsBigInt();
+        self::$ensuredSequenceColumnWidth = true;
+    }
+
     public function eligibleTypeForPoints(int $points): ?MembershipCardType
     {
         return MembershipCardType::query()
@@ -206,6 +218,8 @@ class MembershipCardService
 
     private function alignSequenceAfterExplicitIssue(MembershipCardType $type, string $trimmedDigits): void
     {
+        $this->ensureSequenceColumnSupportsIssuedCardNumbers();
+
         $n = (int) $trimmedDigits;
         $mustBeAtLeast = $n + 1;
 
@@ -257,6 +271,8 @@ class MembershipCardService
 
     private function allocateNextSequentialCardNumberAttempt(MembershipCardType $type): string
     {
+        $this->ensureSequenceColumnSupportsIssuedCardNumbers();
+
         $row = MembershipCardSequence::query()
             ->where('membership_card_type_id', $type->id)
             ->lockForUpdate()
