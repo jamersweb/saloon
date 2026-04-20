@@ -4,6 +4,23 @@ import { Head, Link, useForm, usePage } from '@inertiajs/react';
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
+const dateTimeLocalMs = (value) => {
+    if (!value) return Number.NaN;
+    const ms = new Date(value).getTime();
+
+    return Number.isNaN(ms) ? Number.NaN : ms;
+};
+
+const dateTimeLocalCompare = (a, b) => {
+    const ta = dateTimeLocalMs(a);
+    const tb = dateTimeLocalMs(b);
+    if (Number.isNaN(ta) || Number.isNaN(tb)) return String(a).localeCompare(String(b));
+    if (ta < tb) return -1;
+    if (ta > tb) return 1;
+
+    return 0;
+};
+
 const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
 const salonClockBoundary = (bookingRules, key, fallback) => {
@@ -41,7 +58,7 @@ const salonSelectableBoundsForYmd = (dateYmd, bookingRules, slotIntervalMinutes)
     const minH = Math.floor(minM / 60);
     const minMin = minM % 60;
     let min = `${dateYmd}T${pad2(minH)}:${pad2(minMin)}`;
-    if (min > max) min = max;
+    if (dateTimeLocalCompare(min, max) > 0) min = max;
 
     return { min, max };
 };
@@ -51,10 +68,32 @@ const clampDateTimeLocalToSalon = (value, bookingRules, slotIntervalMinutes = 30
     const [d] = value.split('T');
     if (!d) return value;
     const { min, max } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
-    if (value < min) return min;
-    if (value > max) return max;
+    if (dateTimeLocalCompare(value, min) < 0) return min;
+    if (dateTimeLocalCompare(value, max) > 0) return max;
 
     return value;
+};
+
+const toDateTimeLocal = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+};
+
+/** Snap minutes to booking slot interval (matches server BookingAvailabilityService). */
+const normalizeToInterval = (value, intervalMinutes) => {
+    if (!value) return '';
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+
+    const safeInterval = Math.max(1, Number(intervalMinutes || 1));
+    const snappedMinutes = Math.round(date.getMinutes() / safeInterval) * safeInterval;
+    date.setMinutes(snappedMinutes, 0, 0);
+
+    return toDateTimeLocal(date);
 };
 
 export default function Booking({ services, staffProfiles, bookingRules, defaultStart }) {
@@ -66,7 +105,6 @@ export default function Booking({ services, staffProfiles, bookingRules, default
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
     const bookingStartYmd = (data.scheduled_start || defaultStart || '').split('T')[0] || localYmd(new Date());
     const bookingStartBounds = salonSelectableBoundsForYmd(bookingStartYmd, bookingRules, slotIntervalMinutes);
-    const slotStepSeconds = slotIntervalMinutes * 60;
 
     const submit = (e) => {
         e.preventDefault();
@@ -123,10 +161,13 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                                 className="ta-input md:col-span-2"
                                 type="datetime-local"
                                 value={data.scheduled_start}
-                                onChange={(e) => setData('scheduled_start', clampDateTimeLocalToSalon(e.target.value, bookingRules, slotIntervalMinutes))}
+                                onInput={(e) => {
+                                    let v = normalizeToInterval(e.currentTarget.value, slotIntervalMinutes);
+                                    v = clampDateTimeLocalToSalon(v, bookingRules, slotIntervalMinutes);
+                                    setData('scheduled_start', v);
+                                }}
                                 min={bookingStartBounds.min}
                                 max={bookingStartBounds.max}
-                                step={slotStepSeconds}
                                 required
                             />
                         </div>

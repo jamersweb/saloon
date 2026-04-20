@@ -210,6 +210,20 @@
     const pad2 = function (value) { return String(value).padStart(2, '0'); };
     const localYmd = function (d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
 
+    const dateTimeLocalMs = function (value) {
+        if (!value) return NaN;
+        const ms = new Date(value).getTime();
+        return Number.isNaN(ms) ? NaN : ms;
+    };
+    const dateTimeLocalCompare = function (a, b) {
+        const ta = dateTimeLocalMs(a);
+        const tb = dateTimeLocalMs(b);
+        if (Number.isNaN(ta) || Number.isNaN(tb)) return String(a).localeCompare(String(b));
+        if (ta < tb) return -1;
+        if (ta > tb) return 1;
+        return 0;
+    };
+
     const salonClockBoundary = function (bookingRules, key, fallback) {
         const raw = String((bookingRules && bookingRules[key]) || fallback);
         const m = raw.match(/^(\d{1,2}):(\d{2})/);
@@ -244,7 +258,7 @@
         const minH = Math.floor(minM / 60);
         const minMin = minM % 60;
         let min = dateYmd + 'T' + pad2(minH) + ':' + pad2(minMin);
-        if (min > max) min = max;
+        if (dateTimeLocalCompare(min, max) > 0) min = max;
 
         return { min: min, max: max };
     };
@@ -254,9 +268,23 @@
         const d = value.split('T')[0];
         if (!d) return value;
         const bounds = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
-        if (value < bounds.min) return bounds.min;
-        if (value > bounds.max) return bounds.max;
+        if (dateTimeLocalCompare(value, bounds.min) < 0) return bounds.min;
+        if (dateTimeLocalCompare(value, bounds.max) > 0) return bounds.max;
         return value;
+    };
+
+    const toDateTimeLocal = function (date) {
+        return date.getFullYear() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate()) + 'T' + pad2(date.getHours()) + ':' + pad2(date.getMinutes());
+    };
+
+    const normalizeToInterval = function (value, intervalMinutes) {
+        if (!value) return '';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        const safeInterval = Math.max(1, Number(intervalMinutes || 1));
+        const snapped = Math.round(date.getMinutes() / safeInterval) * safeInterval;
+        date.setMinutes(snapped, 0, 0);
+        return toDateTimeLocal(date);
     };
 
     const bookingRules = @json($bookingRulesForJs);
@@ -265,7 +293,6 @@
     if (!input) return;
 
     const slotIntervalMinutes = Math.max(1, Number(bookingRules.slot_interval_minutes || 30));
-    const slotStepSeconds = slotIntervalMinutes * 60;
 
     function refreshBounds() {
         const value = input.value || defaultStart || '';
@@ -273,12 +300,14 @@
         const bookingStartBounds = salonSelectableBoundsForYmd(bookingStartYmd, bookingRules, slotIntervalMinutes);
         input.min = bookingStartBounds.min;
         input.max = bookingStartBounds.max;
-        input.step = String(slotStepSeconds);
-        input.value = clampDateTimeLocalToSalon(value, bookingRules, slotIntervalMinutes);
+        input.removeAttribute('step');
+        var snapped = normalizeToInterval(value, slotIntervalMinutes);
+        input.value = clampDateTimeLocalToSalon(snapped, bookingRules, slotIntervalMinutes);
     }
 
-    input.addEventListener('change', function () {
-        input.value = clampDateTimeLocalToSalon(input.value, bookingRules, slotIntervalMinutes);
+    input.addEventListener('input', function () {
+        var v = normalizeToInterval(input.value, slotIntervalMinutes);
+        input.value = clampDateTimeLocalToSalon(v, bookingRules, slotIntervalMinutes);
         refreshBounds();
     });
 

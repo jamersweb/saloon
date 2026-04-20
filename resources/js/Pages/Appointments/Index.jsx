@@ -2,12 +2,34 @@ import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { flushSync } from 'react-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const statusLabels = { pending: 'Pending', confirmed: 'Confirm', in_progress: 'Start', completed: 'Complete', cancelled: 'Cancel', no_show: 'No-show' };
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 const isSeedReferenceNote = (value) => /^SEED-APPT-\d{12}-\d+$/i.test(String(value || '').trim());
 const pad2 = (value) => String(value).padStart(2, '0');
+
+/** Parse datetime-local string to epoch ms (local); invalid → NaN. */
+const dateTimeLocalMs = (value) => {
+    if (!value) return Number.NaN;
+    const ms = new Date(value).getTime();
+
+    return Number.isNaN(ms) ? Number.NaN : ms;
+};
+
+/** Compare two datetime-local values (-1 / 0 / 1). Falls back to string compare if unparsable. */
+const dateTimeLocalCompare = (a, b) => {
+    const ta = dateTimeLocalMs(a);
+    const tb = dateTimeLocalMs(b);
+    if (Number.isNaN(ta) || Number.isNaN(tb)) return String(a).localeCompare(String(b));
+
+    if (ta < tb) return -1;
+    if (ta > tb) return 1;
+
+    return 0;
+};
+
 const toDateTimeLocal = (value) => {
     if (!value) return '';
     const date = new Date(value);
@@ -16,20 +38,6 @@ const toDateTimeLocal = (value) => {
     return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 };
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : 'N/A';
-const normalizeToInterval = (value, intervalMinutes) => {
-    if (!value) return '';
-
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-
-    const safeInterval = Math.max(1, Number(intervalMinutes || 1));
-    const currentMinutes = date.getMinutes();
-    const snappedMinutes = Math.round(currentMinutes / safeInterval) * safeInterval;
-    date.setMinutes(snappedMinutes, 0, 0);
-
-    return toDateTimeLocal(date);
-};
-
 const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
 const salonClockBoundary = (bookingRules, key, fallback) => {
@@ -69,20 +77,35 @@ const salonSelectableBoundsForYmd = (dateYmd, bookingRules, slotIntervalMinutes)
     const minH = Math.floor(minM / 60);
     const minMin = minM % 60;
     let min = `${dateYmd}T${pad2(minH)}:${pad2(minMin)}`;
-    if (min > max) min = max;
+    if (dateTimeLocalCompare(min, max) > 0) min = max;
 
     return { min, max };
 };
 
+/** Full salon window for one calendar day (used for ends and suggested end). */
 const clampDateTimeLocalToSalon = (value, bookingRules, slotIntervalMinutes = 30) => {
     if (!value || !bookingRules) return value;
     const [d] = value.split('T');
     if (!d) return value;
     const { min, max } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
-    if (value < min) return min;
-    if (value > max) return max;
+    if (dateTimeLocalCompare(value, min) < 0) return min;
+    if (dateTimeLocalCompare(value, max) > 0) return max;
 
     return value;
+};
+
+/** Staff start time: enforce open/today policy floor only; end-of-day ceiling (salon close is enforced on end time server-side). */
+const clampStaffStartDatetimeLocal = (value, bookingRules, slotIntervalMinutes = 30) => {
+    if (!value || !bookingRules) return value;
+    const [d] = value.split('T');
+    if (!d) return value;
+    const { min } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
+    const ceiling = `${d}T23:59`;
+    let v = value;
+    if (dateTimeLocalCompare(v, min) < 0) v = min;
+    if (dateTimeLocalCompare(v, ceiling) > 0) v = ceiling;
+
+    return v;
 };
 
 export default function AppointmentsIndex({ appointments, services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
@@ -104,6 +127,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [checkoutFlow, setCheckoutFlow] = useState('draft');
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
 
+    const createStartRef = useRef(null);
+    const editStartRef = useRef(null);
+    const [createStartMount, setCreateStartMount] = useState(0);
+    const [createStartYmd, setCreateStartYmd] = useState(() => ((defaultStart || '').split('T')[0] || localYmd(new Date())));
+    const [editStartYmd, setEditStartYmd] = useState(() => localYmd(new Date()));
+    const [editStartMountKey, setEditStartMountKey] = useState(0);
+
     const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
     const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
     const startForm = useForm({ intake_notes: '', service_notes: '', before_photo: null });
@@ -120,6 +150,39 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         after_photo: null,
         products: [{ inventory_item_id: '', quantity: 1, notes: '' }],
     });
+
+    useEffect(() => {
+        const y = (defaultStart || '').split('T')[0] || localYmd(new Date());
+        setCreateStartYmd(y);
+    }, [defaultStart]);
+
+    const createStartDefault = useMemo(
+        () => clampStaffStartDatetimeLocal(defaultStart || '', bookingRules, slotIntervalMinutes),
+        [bookingRules, defaultStart, slotIntervalMinutes, createStartMount],
+    );
+
+    useEffect(() => {
+        const el = createStartRef.current;
+        if (!el || document.activeElement === el) {
+            return;
+        }
+        const next = createForm.data.scheduled_start || '';
+        if (next && el.value !== next) {
+            el.value = next;
+        }
+    }, [createForm.data.scheduled_start]);
+
+    useEffect(() => {
+        const el = editStartRef.current;
+        if (!el || document.activeElement === el || !editingId) {
+            return;
+        }
+        const next = editForm.data.scheduled_start || '';
+        if (next && el.value !== next) {
+            el.value = next;
+        }
+    }, [editForm.data.scheduled_start, editingId]);
+
     const calculateSuggestedEnd = (startValue, serviceId) => {
         if (!startValue || !serviceId) return '';
 
@@ -137,39 +200,22 @@ export default function AppointmentsIndex({ appointments, services, customers = 
 
         let endStr = toDateTimeLocal(startDate);
         endStr = clampDateTimeLocalToSalon(endStr, bookingRules, slotIntervalMinutes);
-        if (startValue && endStr < startValue) {
+        if (startValue && dateTimeLocalCompare(endStr, startValue) < 0) {
             endStr = clampDateTimeLocalToSalon(startValue, bookingRules, slotIntervalMinutes);
         }
 
         return endStr;
     };
 
-    const handleCreateStartChange = (value) => {
-        let normalizedValue = normalizeToInterval(value, slotIntervalMinutes);
-        normalizedValue = clampDateTimeLocalToSalon(normalizedValue, bookingRules, slotIntervalMinutes);
-        createForm.setData('scheduled_start', normalizedValue);
-
-        if (!createEndManuallySet || !createForm.data.scheduled_end) {
-            createForm.setData('scheduled_end', calculateSuggestedEnd(normalizedValue, createForm.data.service_id));
-        }
-    };
-
     const handleCreateServiceChange = (value) => {
-        createForm.setData('service_id', value);
-
-        if (!createEndManuallySet || !createForm.data.scheduled_end) {
-            createForm.setData('scheduled_end', calculateSuggestedEnd(createForm.data.scheduled_start, value));
-        }
-    };
-
-    const handleEditStartChange = (value) => {
-        let normalizedValue = normalizeToInterval(value, slotIntervalMinutes);
-        normalizedValue = clampDateTimeLocalToSalon(normalizedValue, bookingRules, slotIntervalMinutes);
-        editForm.setData('scheduled_start', normalizedValue);
-
-        if (!editEndManuallySet || !editForm.data.scheduled_end) {
-            editForm.setData('scheduled_end', calculateSuggestedEnd(normalizedValue, editForm.data.service_id));
-        }
+        const startVal = createStartRef.current?.value || createForm.data.scheduled_start || '';
+        createForm.setData((prev) => ({
+            ...prev,
+            service_id: value,
+            scheduled_end: !createEndManuallySet || !prev.scheduled_end
+                ? calculateSuggestedEnd(startVal, value)
+                : prev.scheduled_end,
+        }));
     };
 
     const handleCreateEndChange = (value) => {
@@ -184,11 +230,11 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             return;
         }
         const { min, max } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
-        const start = createForm.data.scheduled_start;
+        const start = createStartRef.current?.value || createForm.data.scheduled_start || '';
         const floor = start && start.startsWith(`${d}T`) ? start : min;
         let v = value;
-        if (v < floor) v = floor;
-        if (v > max) v = max;
+        if (dateTimeLocalCompare(v, floor) < 0) v = floor;
+        if (dateTimeLocalCompare(v, max) > 0) v = max;
         createForm.setData('scheduled_end', clampDateTimeLocalToSalon(v, bookingRules, slotIntervalMinutes));
     };
 
@@ -204,19 +250,54 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             return;
         }
         const { min, max } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
-        const start = editForm.data.scheduled_start;
+        const start = editStartRef.current?.value || editForm.data.scheduled_start || '';
         const floor = start && start.startsWith(`${d}T`) ? start : min;
         let v = value;
-        if (v < floor) v = floor;
-        if (v > max) v = max;
+        if (dateTimeLocalCompare(v, floor) < 0) v = floor;
+        if (dateTimeLocalCompare(v, max) > 0) v = max;
         editForm.setData('scheduled_end', clampDateTimeLocalToSalon(v, bookingRules, slotIntervalMinutes));
     };
 
     const handleEditServiceChange = (value) => {
-        editForm.setData('service_id', value);
+        const startVal = editStartRef.current?.value || editForm.data.scheduled_start || '';
+        editForm.setData((prev) => ({
+            ...prev,
+            service_id: value,
+            scheduled_end: !editEndManuallySet || !prev.scheduled_end
+                ? calculateSuggestedEnd(startVal, value)
+                : prev.scheduled_end,
+        }));
+    };
 
-        if (!editEndManuallySet || !editForm.data.scheduled_end) {
-            editForm.setData('scheduled_end', calculateSuggestedEnd(editForm.data.scheduled_start, value));
+    const syncCreateStartFromInput = (rawValue) => {
+        const [ymd] = (rawValue || '').split('T');
+        if (ymd) setCreateStartYmd(ymd);
+        const clamped = clampStaffStartDatetimeLocal(rawValue || '', bookingRules, slotIntervalMinutes);
+        createForm.setData((prev) => ({
+            ...prev,
+            scheduled_start: clamped,
+            scheduled_end: !createEndManuallySet || !prev.scheduled_end
+                ? calculateSuggestedEnd(clamped, prev.service_id)
+                : prev.scheduled_end,
+        }));
+        if (createStartRef.current && createStartRef.current.value !== clamped) {
+            createStartRef.current.value = clamped;
+        }
+    };
+
+    const syncEditStartFromInput = (rawValue) => {
+        const [ymd] = (rawValue || '').split('T');
+        if (ymd) setEditStartYmd(ymd);
+        const clamped = clampStaffStartDatetimeLocal(rawValue || '', bookingRules, slotIntervalMinutes);
+        editForm.setData((prev) => ({
+            ...prev,
+            scheduled_start: clamped,
+            scheduled_end: !editEndManuallySet || !prev.scheduled_end
+                ? calculateSuggestedEnd(clamped, prev.service_id)
+                : prev.scheduled_end,
+        }));
+        if (editStartRef.current && editStartRef.current.value !== clamped) {
+            editStartRef.current.value = clamped;
         }
     };
 
@@ -233,17 +314,20 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     };
 
     const startEdit = (appt) => {
+        const startStr = toDateTimeLocal(appt.scheduled_start);
+        setEditStartYmd(startStr.split('T')[0] || localYmd(new Date()));
         setEditingId(appt.id);
         setEditCustomerMode('new');
         setEditSelectedCustomerId('');
         setEditEndManuallySet(Boolean(appt.scheduled_end));
+        setEditStartMountKey((k) => k + 1);
         editForm.setData({
             customer_name: appt.customer_name || '',
             customer_phone: appt.customer_phone || '',
             customer_email: appt.customer_email || '',
             service_id: appt.service_id || '',
             staff_profile_id: appt.staff_profile_id || '',
-            scheduled_start: toDateTimeLocal(appt.scheduled_start),
+            scheduled_start: startStr,
             scheduled_end: toDateTimeLocal(appt.scheduled_end),
             status: appt.status || 'confirmed',
             notes: appt.notes || '',
@@ -298,10 +382,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const addProductRow = () => completeForm.setData('products', [...completeForm.data.products, { inventory_item_id: '', quantity: 1, notes: '' }]);
     const removeProductRow = (index) => completeForm.setData('products', completeForm.data.products.filter((_, rowIndex) => rowIndex !== index));
 
-    const createSalonYmd = (createForm.data.scheduled_start || defaultStart || '').split('T')[0] || localYmd(new Date());
-    const createSalonBounds = salonSelectableBoundsForYmd(createSalonYmd, bookingRules, slotIntervalMinutes);
-    const editSalonYmd = (editForm.data.scheduled_start || '').split('T')[0] || localYmd(new Date());
-    const editSalonBounds = salonSelectableBoundsForYmd(editSalonYmd, bookingRules, slotIntervalMinutes);
+    const createSalonBounds = salonSelectableBoundsForYmd(createStartYmd, bookingRules, slotIntervalMinutes);
+    const editSalonBounds = salonSelectableBoundsForYmd(editStartYmd, bookingRules, slotIntervalMinutes);
+    const editEndYmd = (editForm.data.scheduled_end || editForm.data.scheduled_start || '').split('T')[0] || editStartYmd;
+    const editEndSalonBounds = salonSelectableBoundsForYmd(editEndYmd, bookingRules, slotIntervalMinutes);
+    const editingAppt = appointments.find((a) => String(a.id) === String(editingId));
+    const editStartDefault = editingAppt ? toDateTimeLocal(editingAppt.scheduled_start) : (editForm.data.scheduled_start || '');
 
     return (
         <AuthenticatedLayout header="Appointments">
@@ -341,7 +427,34 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                 ) : null}
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Appointment</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('appointments.store'), { onSuccess: () => { createForm.reset(); createForm.setData('scheduled_start', defaultStart || ''); setCreateEndManuallySet(false); setCreateCustomerMode('new'); setCreateSelectedCustomerId(''); } }); }} className="grid gap-3 md:grid-cols-4">
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            flushSync(() => {
+                                const v = clampStaffStartDatetimeLocal(
+                                    createStartRef.current?.value || createForm.data.scheduled_start || '',
+                                    bookingRules,
+                                    slotIntervalMinutes,
+                                );
+                                const [ymd] = v.split('T');
+                                if (ymd) setCreateStartYmd(ymd);
+                                createForm.setData('scheduled_start', v);
+                            });
+                            createForm.post(route('appointments.store'), {
+                                onSuccess: () => {
+                                    createForm.reset();
+                                    const next = clampStaffStartDatetimeLocal(defaultStart || '', bookingRules, slotIntervalMinutes);
+                                    createForm.setData('scheduled_start', next);
+                                    setCreateStartYmd((defaultStart || '').split('T')[0] || localYmd(new Date()));
+                                    setCreateStartMount((m) => m + 1);
+                                    setCreateEndManuallySet(false);
+                                    setCreateCustomerMode('new');
+                                    setCreateSelectedCustomerId('');
+                                },
+                            });
+                        }}
+                        className="grid gap-3 md:grid-cols-4"
+                    >
                         <div className="md:col-span-4 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
                             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer type</span>
                             <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
@@ -395,13 +508,23 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(createForm, 'staff_profile_id')}</div>
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
-                            <p className="mb-1 text-xs text-slate-500">Book between {bookingRules?.opening_time || '09:00'} and {bookingRules?.closing_time || '22:00'} (same calendar day). For today, the earliest start is the next available slot after now (including minimum advance).</p>
-                            <input className="ta-input" type="datetime-local" value={createForm.data.scheduled_start} onChange={(e) => handleCreateStartChange(e.target.value)} min={createSalonBounds.min} max={createSalonBounds.max} step={slotIntervalMinutes * 60} required />
+                            <p className="mb-1 text-xs text-slate-500">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. For today, the earliest start is the next available time after now (including minimum advance).</p>
+                            <input
+                                key={`create-start-${createStartMount}`}
+                                ref={createStartRef}
+                                className="ta-input"
+                                type="datetime-local"
+                                defaultValue={createStartDefault}
+                                onInput={(e) => syncCreateStartFromInput(e.currentTarget.value)}
+                                min={createSalonBounds.min}
+                                max={`${createStartYmd}T23:59`}
+                                required
+                            />
                             {fieldError(createForm, 'scheduled_start')}
                         </div>
                         <div>
                             <label className="ta-field-label">Scheduled End</label>
-                            <input className="ta-input" type="datetime-local" value={createForm.data.scheduled_end} onChange={(e) => handleCreateEndChange(e.target.value)} min={createSalonBounds.min} max={createSalonBounds.max} step={slotIntervalMinutes * 60} />
+                            <input className="ta-input" type="datetime-local" value={createForm.data.scheduled_end} onInput={(e) => handleCreateEndChange(e.currentTarget.value)} min={createSalonBounds.min} max={createSalonBounds.max} />
                             {fieldError(createForm, 'scheduled_end')}
                         </div>
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={createForm.data.status} onChange={(e) => createForm.setData('status', e.target.value)}><option value="confirmed">confirmed</option><option value="pending">pending</option></select>{fieldError(createForm, 'status')}</div>
@@ -738,7 +861,29 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             <Modal show={Boolean(editingId)} maxWidth="2xl" onClose={() => setEditingId(null)}>
                 <div className="p-6">
                     <h3 className="mb-4 text-base font-semibold text-slate-800">Edit Appointment #{editingId}</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); editForm.put(route('appointments.update', editingId), { onSuccess: () => { setEditingId(null); setEditCustomerMode('new'); setEditSelectedCustomerId(''); } }); }} className="grid gap-3 md:grid-cols-2">
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            flushSync(() => {
+                                const v = clampStaffStartDatetimeLocal(
+                                    editStartRef.current?.value || editForm.data.scheduled_start || '',
+                                    bookingRules,
+                                    slotIntervalMinutes,
+                                );
+                                const [ymd] = v.split('T');
+                                if (ymd) setEditStartYmd(ymd);
+                                editForm.setData('scheduled_start', v);
+                            });
+                            editForm.put(route('appointments.update', editingId), {
+                                onSuccess: () => {
+                                    setEditingId(null);
+                                    setEditCustomerMode('new');
+                                    setEditSelectedCustomerId('');
+                                },
+                            });
+                        }}
+                        className="grid gap-3 md:grid-cols-2"
+                    >
                         <div className="md:col-span-2 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
                             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer type</span>
                             <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
@@ -780,13 +925,23 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
-                            <p className="mb-1 text-xs text-slate-500">Book between {bookingRules?.opening_time || '09:00'} and {bookingRules?.closing_time || '22:00'} (same calendar day). For today, the earliest start is the next available slot after now (including minimum advance).</p>
-                            <input className="ta-input" type="datetime-local" value={editForm.data.scheduled_start} onChange={(e) => handleEditStartChange(e.target.value)} min={editSalonBounds.min} max={editSalonBounds.max} step={slotIntervalMinutes * 60} required />
+                            <p className="mb-1 text-xs text-slate-500">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. For today, the earliest start is the next available time after now (including minimum advance).</p>
+                            <input
+                                key={`edit-start-${editStartMountKey}`}
+                                ref={editStartRef}
+                                className="ta-input"
+                                type="datetime-local"
+                                defaultValue={editStartDefault}
+                                onInput={(e) => syncEditStartFromInput(e.currentTarget.value)}
+                                min={editSalonBounds.min}
+                                max={`${editStartYmd}T23:59`}
+                                required
+                            />
                             {fieldError(editForm, 'scheduled_start')}
                         </div>
                         <div>
                             <label className="ta-field-label">Scheduled End</label>
-                            <input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onChange={(e) => handleEditEndChange(e.target.value)} min={editSalonBounds.min} max={editSalonBounds.max} step={slotIntervalMinutes * 60} />
+                            <input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onInput={(e) => handleEditEndChange(e.currentTarget.value)} min={editEndSalonBounds.min} max={editEndSalonBounds.max} />
                             {fieldError(editForm, 'scheduled_end')}
                         </div>
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>

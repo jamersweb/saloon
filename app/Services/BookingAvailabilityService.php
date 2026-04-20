@@ -11,7 +11,10 @@ use Carbon\Carbon;
 
 class BookingAvailabilityService
 {
-    public function validateAdvanceWindow(Carbon $start): ?string
+    /**
+     * @param  bool  $enforceSlotInterval  When false (e.g. staff booking in admin), minute-of-hour may fall between slot steps; public booking keeps this true.
+     */
+    public function validateAdvanceWindow(Carbon $start, bool $enforceSlotInterval = true): ?string
     {
         $rules = BookingRule::current();
 
@@ -23,7 +26,11 @@ class BookingAvailabilityService
             return 'Selected slot exceeds advance booking window.';
         }
 
-        if ((int) $rules->slot_interval_minutes > 0 && ((int) $start->format('i')) % (int) $rules->slot_interval_minutes !== 0) {
+        if (
+            $enforceSlotInterval
+            && (int) $rules->slot_interval_minutes > 0
+            && ((int) $start->format('i')) % (int) $rules->slot_interval_minutes !== 0
+        ) {
             return 'Selected slot does not match slot interval policy.';
         }
 
@@ -68,8 +75,8 @@ class BookingAvailabilityService
             return 'Selected staff is not scheduled for that time.';
         }
 
-        $shiftStart = Carbon::parse($schedule->schedule_date->toDateString() . ' ' . $schedule->start_time);
-        $shiftEnd = Carbon::parse($schedule->schedule_date->toDateString() . ' ' . $schedule->end_time);
+        $shiftStart = Carbon::parse($schedule->schedule_date->toDateString().' '.$schedule->start_time);
+        $shiftEnd = Carbon::parse($schedule->schedule_date->toDateString().' '.$schedule->end_time);
 
         if ($shiftEnd->lessThanOrEqualTo($shiftStart)) {
             $shiftEnd->addDay();
@@ -89,8 +96,8 @@ class BookingAvailabilityService
         }
 
         if ($schedule->break_start && $schedule->break_end) {
-            $breakStart = Carbon::parse($schedule->schedule_date->toDateString() . ' ' . $schedule->break_start);
-            $breakEnd = Carbon::parse($schedule->schedule_date->toDateString() . ' ' . $schedule->break_end);
+            $breakStart = Carbon::parse($schedule->schedule_date->toDateString().' '.$schedule->break_start);
+            $breakEnd = Carbon::parse($schedule->schedule_date->toDateString().' '.$schedule->break_end);
 
             if ($breakEnd->lessThanOrEqualTo($breakStart)) {
                 $breakEnd->addDay();

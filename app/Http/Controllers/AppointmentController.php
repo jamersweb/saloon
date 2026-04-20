@@ -124,7 +124,7 @@ class AppointmentController extends Controller
             return back()->withErrors(['scheduled_end' => $timeRangeError])->withInput();
         }
 
-        if ($windowError = $availabilityService->validateAdvanceWindow($start)) {
+        if ($windowError = $availabilityService->validateAdvanceWindow($start, enforceSlotInterval: false)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
         }
 
