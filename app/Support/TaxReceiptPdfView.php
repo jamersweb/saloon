@@ -48,6 +48,14 @@ final class TaxReceiptPdfView
      */
     public static function logoImgHtml(): string
     {
+        $svgPath = public_path('images/vina-logo.svg');
+        if (is_file($svgPath) && is_readable($svgPath)) {
+            $svg = file_get_contents($svgPath);
+            if ($svg !== false && trim($svg) !== '') {
+                return '<img class="receipt-logo" src="data:image/svg+xml;base64,'.base64_encode($svg).'" alt="" />';
+            }
+        }
+
         $path = public_path('images/vina-logo.png');
         if (is_file($path) && is_readable($path)) {
             $binary = self::compactLogoPngBinary($path);

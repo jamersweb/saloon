@@ -115,27 +115,30 @@ class AppointmentController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
         $data = $this->validatePayload($request);
-
-        $service = SalonService::findOrFail($data['service_id']);
-        $start = Carbon::parse($data['scheduled_start']);
-        $end = Carbon::parse($data['scheduled_end'] ?? $start->copy()->addMinutes($service->duration_minutes + $service->buffer_minutes));
-
-        if ($timeRangeError = $this->validateTimeRange($start, $end)) {
-            return back()->withErrors(['scheduled_end' => $timeRangeError])->withInput();
+        $serviceIds = $this->resolveServiceIdsFromPayload($data);
+        if ($serviceIds === []) {
+            return back()->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
         }
+
+        $start = Carbon::parse($data['scheduled_start']);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null);
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start, enforceSlotInterval: false)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
         }
 
-        if ($salonError = $availabilityService->validateSalonHours($start, $end)) {
-            return back()->withErrors(['scheduled_start' => $salonError])->withInput();
-        }
-
-        if (! empty($data['staff_profile_id'])) {
-            $staffAvailabilityError = $availabilityService->validateStaffAvailability((int) $data['staff_profile_id'], $start, $end);
-            if ($staffAvailabilityError) {
-                return back()->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
+        foreach ($servicePlans as $plan) {
+            if ($timeRangeError = $this->validateTimeRange($plan['start'], $plan['end'])) {
+                return back()->withErrors(['scheduled_end' => $timeRangeError])->withInput();
+            }
+            if ($salonError = $availabilityService->validateSalonHours($plan['start'], $plan['end'])) {
+                return back()->withErrors(['scheduled_start' => $salonError])->withInput();
+            }
+            if (! empty($data['staff_profile_id'])) {
+                $staffAvailabilityError = $availabilityService->validateStaffAvailability((int) $data['staff_profile_id'], $plan['start'], $plan['end']);
+                if ($staffAvailabilityError) {
+                    return back()->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
+                }
             }
         }
 
@@ -145,22 +148,32 @@ class AppointmentController extends Controller
             $data['customer_email'] ?? null,
         );
 
-        $appointment = Appointment::create([
-            ...$data,
-            'customer_id' => $customer->id,
-            'booked_by' => $request->user()?->id,
-            'scheduled_start' => $start,
-            'scheduled_end' => $end,
-            'source' => $data['source'] ?? 'admin',
-            'status' => $data['status'] ?? Appointment::STATUS_CONFIRMED,
-        ]);
+        $created = [];
+        DB::transaction(function () use ($request, $data, $customer, $servicePlans, &$created): void {
+            foreach ($servicePlans as $plan) {
+                $created[] = Appointment::create([
+                    ...$data,
+                    'service_id' => $plan['service']->id,
+                    'customer_id' => $customer->id,
+                    'booked_by' => $request->user()?->id,
+                    'scheduled_start' => $plan['start'],
+                    'scheduled_end' => $plan['end'],
+                    'source' => $data['source'] ?? 'admin',
+                    'status' => $data['status'] ?? Appointment::STATUS_CONFIRMED,
+                ]);
+            }
+        });
 
-        Audit::log($request->user()?->id, 'appointment.created', 'Appointment', $appointment->id, [
-            'scheduled_start' => $start->toDateTimeString(),
-            'scheduled_end' => $end->toDateTimeString(),
-        ]);
+        foreach ($created as $appointment) {
+            Audit::log($request->user()?->id, 'appointment.created', 'Appointment', $appointment->id, [
+                'scheduled_start' => $appointment->scheduled_start?->toDateTimeString(),
+                'scheduled_end' => $appointment->scheduled_end?->toDateTimeString(),
+                'service_id' => $appointment->service_id,
+            ]);
+        }
 
-        return back()->with('status', 'Appointment created.');
+        $count = count($created);
+        return back()->with('status', $count > 1 ? "Appointments created ({$count} services)." : 'Appointment created.');
     }
 
     public function update(Request $request, Appointment $appointment, BookingAvailabilityService $availabilityService): RedirectResponse
@@ -168,23 +181,27 @@ class AppointmentController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
         $data = $this->validatePayload($request, true);
+        $serviceIds = $this->resolveServiceIdsFromPayload($data);
+        if ($serviceIds === []) {
+            return back()->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
+        }
 
-        $service = SalonService::findOrFail($data['service_id']);
         $start = Carbon::parse($data['scheduled_start']);
-        $end = Carbon::parse($data['scheduled_end'] ?? $start->copy()->addMinutes($service->duration_minutes + $service->buffer_minutes));
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null);
 
-        if ($timeRangeError = $this->validateTimeRange($start, $end)) {
-            return back()->withErrors(['scheduled_end' => $timeRangeError])->withInput();
-        }
-
-        if ($salonError = $availabilityService->validateSalonHours($start, $end)) {
-            return back()->withErrors(['scheduled_start' => $salonError])->withInput();
-        }
-
-        if (! empty($data['staff_profile_id'])) {
-            $staffAvailabilityError = $availabilityService->validateStaffAvailability((int) $data['staff_profile_id'], $start, $end, $appointment->id);
-            if ($staffAvailabilityError) {
-                return back()->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
+        foreach ($servicePlans as $idx => $plan) {
+            if ($timeRangeError = $this->validateTimeRange($plan['start'], $plan['end'])) {
+                return back()->withErrors(['scheduled_end' => $timeRangeError])->withInput();
+            }
+            if ($salonError = $availabilityService->validateSalonHours($plan['start'], $plan['end'])) {
+                return back()->withErrors(['scheduled_start' => $salonError])->withInput();
+            }
+            if (! empty($data['staff_profile_id'])) {
+                $ignoreAppointmentId = $idx === 0 ? $appointment->id : null;
+                $staffAvailabilityError = $availabilityService->validateStaffAvailability((int) $data['staff_profile_id'], $plan['start'], $plan['end'], $ignoreAppointmentId);
+                if ($staffAvailabilityError) {
+                    return back()->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
+                }
             }
         }
 
@@ -194,16 +211,36 @@ class AppointmentController extends Controller
             $data['customer_email'] ?? null,
         );
 
-        $appointment->update([
-            ...$data,
-            'customer_id' => $customer->id,
-            'scheduled_start' => $start,
-            'scheduled_end' => $end,
-        ]);
+        DB::transaction(function () use ($appointment, $data, $customer, $servicePlans): void {
+            $first = $servicePlans[0];
+            $appointment->update([
+                ...$data,
+                'service_id' => $first['service']->id,
+                'customer_id' => $customer->id,
+                'scheduled_start' => $first['start'],
+                'scheduled_end' => $first['end'],
+            ]);
+
+            if (count($servicePlans) > 1) {
+                for ($i = 1; $i < count($servicePlans); $i++) {
+                    $plan = $servicePlans[$i];
+                    Appointment::create([
+                        ...$data,
+                        'service_id' => $plan['service']->id,
+                        'customer_id' => $customer->id,
+                        'booked_by' => $appointment->booked_by ?? request()->user()?->id,
+                        'scheduled_start' => $plan['start'],
+                        'scheduled_end' => $plan['end'],
+                        'source' => $appointment->source ?: ($data['source'] ?? 'admin'),
+                        'status' => $data['status'] ?? $appointment->status,
+                    ]);
+                }
+            }
+        });
 
         Audit::log($request->user()?->id, 'appointment.updated', 'Appointment', $appointment->id);
 
-        return back()->with('status', 'Appointment updated.');
+        return back()->with('status', count($servicePlans) > 1 ? 'Appointment updated and additional service appointments added.' : 'Appointment updated.');
     }
 
     public function startService(Request $request, Appointment $appointment): RedirectResponse
@@ -520,7 +557,9 @@ class AppointmentController extends Controller
     private function validatePayload(Request $request, bool $isUpdate = false): array
     {
         return $request->validate([
-            'service_id' => ['required', 'exists:salon_services,id'],
+            'service_id' => ['nullable', 'exists:salon_services,id'],
+            'service_ids' => ['nullable', 'array', 'min:1'],
+            'service_ids.*' => ['integer', 'exists:salon_services,id'],
             'staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'source' => ['nullable', Rule::in(['public', 'admin'])],
             'status' => ['nullable', Rule::in([
@@ -541,6 +580,62 @@ class AppointmentController extends Controller
             'notes' => ['nullable', 'string'],
             'cancellation_reason' => ['nullable', 'string'],
         ]);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<int, int>
+     */
+    private function resolveServiceIdsFromPayload(array $data): array
+    {
+        $raw = $data['service_ids'] ?? [];
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        $ids = array_values(array_unique(array_map('intval', array_filter($raw, fn ($v) => (string) $v !== ''))));
+
+        if ($ids === [] && ! empty($data['service_id'])) {
+            $ids = [(int) $data['service_id']];
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @param array<int, int> $serviceIds
+     * @return array<int, array{service: SalonService, start: Carbon, end: Carbon}>
+     */
+    private function buildServicePlans(array $serviceIds, Carbon $start, ?string $requestedEnd): array
+    {
+        $services = SalonService::query()->whereIn('id', $serviceIds)->get()->keyBy('id');
+        $plans = [];
+        $cursor = $start->copy();
+
+        foreach ($serviceIds as $idx => $serviceId) {
+            /** @var SalonService|null $service */
+            $service = $services->get($serviceId);
+            if (! $service) {
+                continue;
+            }
+
+            $itemStart = $cursor->copy();
+            if ($idx === 0 && count($serviceIds) === 1 && ! empty($requestedEnd)) {
+                $itemEnd = Carbon::parse($requestedEnd);
+            } else {
+                $itemEnd = $itemStart->copy()->addMinutes((int) $service->duration_minutes + (int) $service->buffer_minutes);
+            }
+
+            $plans[] = [
+                'service' => $service,
+                'start' => $itemStart,
+                'end' => $itemEnd,
+            ];
+
+            $cursor = $itemEnd->copy();
+        }
+
+        return $plans;
     }
 
     private function validateTimeRange(Carbon $start, Carbon $end): ?string

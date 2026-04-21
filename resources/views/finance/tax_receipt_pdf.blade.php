@@ -22,7 +22,7 @@
         body {
             direction: ltr;
             font-family: DejaVu Sans, sans-serif;
-            font-size: 7.5px;
+            font-size: 10px;
             color: #111;
             margin: 0 !important;
             /* Left gutter unchanged; extra right inset stops DomPDF clipping decimals on narrow thermal. */
@@ -48,10 +48,10 @@
         }
         .muted {
             color: #444;
-            font-size: 6.5px;
+            font-size: 8.5px;
         }
         .title {
-            font-size: 9px;
+            font-size: 12px;
             font-weight: bold;
             margin: 3px 0;
         }
@@ -74,7 +74,7 @@
             overflow-wrap: anywhere;
         }
         table.items th {
-            font-size: 5.5px;
+            font-size: 8px;
             text-transform: uppercase;
         }
         table.items th.num,
@@ -107,7 +107,7 @@
         table.totals td {
             border: none;
             padding: 1px 0;
-            font-size: 7.5px;
+            font-size: 10px;
         }
         table.totals .num {
             text-align: right;
@@ -124,7 +124,7 @@
         }
         .grand {
             font-weight: bold;
-            font-size: 8.5px;
+            font-size: 11px;
         }
         hr {
             border: none;
