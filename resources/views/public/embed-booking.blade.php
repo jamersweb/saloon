@@ -155,11 +155,10 @@
                 <input id="customer_email" name="customer_email" type="email" placeholder="Email" value="{{ old('customer_email') }}">
             </div>
             <div class="field">
-                <label for="service_id">Service</label>
-                <select id="service_id" name="service_id" required>
-                    <option value="">Select service</option>
+                <label for="service_ids">Services</label>
+                <select id="service_ids" name="service_ids[]" multiple required size="6">
                     @foreach ($services as $service)
-                        <option value="{{ $service->id }}" @selected(old('service_id') == $service->id)>
+                        <option value="{{ $service->id }}" @selected(in_array((string) $service->id, array_map('strval', old('service_ids', [])), true))>
                             {{ $service->name }} ({{ $service->duration_minutes }} min)
                         </option>
                     @endforeach

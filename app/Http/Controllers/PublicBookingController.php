@@ -11,6 +11,8 @@ use App\Services\BookingAvailabilityService;
 use App\Services\PublicBookingNotificationService;
 use App\Support\Audit;
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -79,7 +81,9 @@ class PublicBookingController extends Controller
         PublicBookingNotificationService $notificationService,
     ): Appointment|RedirectResponse {
         $data = $request->validate([
-            'service_id' => ['required', 'exists:salon_services,id'],
+            'service_id' => ['nullable', 'exists:salon_services,id'],
+            'service_ids' => ['nullable', 'array', 'min:1'],
+            'service_ids.*' => ['integer', 'exists:salon_services,id'],
             'staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'scheduled_start' => ['required', 'date'],
             'customer_name' => ['required', 'string', 'max:255'],
@@ -88,28 +92,48 @@ class PublicBookingController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
-        $service = SalonService::findOrFail($data['service_id']);
+        $serviceIds = $this->resolveServiceIdsFromPayload($data);
+        if ($serviceIds === []) {
+            return back()->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
+        }
+
         $start = Carbon::parse($data['scheduled_start']);
-        $end = $start->copy()->addMinutes($service->duration_minutes + $service->buffer_minutes);
+        $services = SalonService::query()
+            ->whereIn('id', $serviceIds)
+            ->where('is_active', true)
+            ->get()
+            ->keyBy('id');
+
+        if ($services->count() !== count($serviceIds)) {
+            return back()->withErrors(['service_ids' => 'One or more selected services are unavailable.'])->withInput();
+        }
+
+        $plans = $this->buildServicePlans($start, $serviceIds, $services);
+        $lastPlan = end($plans);
+        $end = $lastPlan['end'];
         $rules = BookingRule::current();
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
         }
 
-        if ($salonError = $availabilityService->validateSalonHours($start, $end)) {
-            return back()->withErrors(['scheduled_start' => $salonError])->withInput();
+        foreach ($plans as $plan) {
+            if ($salonError = $availabilityService->validateSalonHours($plan['start'], $plan['end'])) {
+                return back()->withErrors(['scheduled_start' => $salonError])->withInput();
+            }
         }
 
         $resolvedStaffId = ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null;
 
         if ($resolvedStaffId) {
-            $staffAvailabilityError = $availabilityService->validateStaffAvailability($resolvedStaffId, $start, $end);
-            if ($staffAvailabilityError) {
-                return back()->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
+            foreach ($plans as $plan) {
+                $staffAvailabilityError = $availabilityService->validateStaffAvailability($resolvedStaffId, $plan['start'], $plan['end']);
+                if ($staffAvailabilityError) {
+                    return back()->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
+                }
             }
         } else {
-            $resolvedStaffId = $availabilityService->findAnyAvailableStaffId($start, $end);
+            $resolvedStaffId = $this->findAnyFullyAvailableStaffId($plans, $availabilityService);
             if (! $resolvedStaffId) {
                 return back()->withErrors(['scheduled_start' => 'No staff available for the selected slot.'])->withInput();
             }
@@ -133,24 +157,87 @@ class PublicBookingController extends Controller
             $customer->update($updates);
         }
 
-        $appointment = Appointment::create([
-            'customer_id' => $customer->id,
-            'service_id' => $service->id,
-            'staff_profile_id' => $resolvedStaffId,
-            'source' => 'public',
-            'status' => $rules->public_requires_approval ? Appointment::STATUS_PENDING : Appointment::STATUS_CONFIRMED,
-            'scheduled_start' => $start,
-            'scheduled_end' => $end,
-            'customer_name' => $data['customer_name'],
-            'customer_phone' => $data['customer_phone'],
-            'customer_email' => $data['customer_email'] ?? null,
-            'notes' => $data['notes'] ?? null,
-        ]);
+        $firstAppointment = null;
+        foreach ($plans as $plan) {
+            $appointment = Appointment::create([
+                'customer_id' => $customer->id,
+                'service_id' => $plan['service']->id,
+                'staff_profile_id' => $resolvedStaffId,
+                'source' => 'public',
+                'status' => $rules->public_requires_approval ? Appointment::STATUS_PENDING : Appointment::STATUS_CONFIRMED,
+                'scheduled_start' => $plan['start'],
+                'scheduled_end' => $plan['end'],
+                'customer_name' => $data['customer_name'],
+                'customer_phone' => $data['customer_phone'],
+                'customer_email' => $data['customer_email'] ?? null,
+                'notes' => $data['notes'] ?? null,
+            ]);
+            $firstAppointment ??= $appointment;
+        }
 
-        $notificationService->notifyTeam($customer, $appointment);
+        $notificationService->notifyTeam($customer, $firstAppointment);
 
-        Audit::log(null, 'appointment.public_created', 'Appointment', $appointment->id);
+        Audit::log(null, 'appointment.public_created', 'Appointment', $firstAppointment->id);
 
-        return $appointment;
+        return $firstAppointment;
+    }
+
+    private function resolveServiceIdsFromPayload(array $data): array
+    {
+        $raw = $data['service_ids'] ?? [];
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        $ids = array_values(array_unique(array_map('intval', array_filter($raw, fn ($id) => $id !== null && $id !== ''))));
+
+        if ($ids === [] && ! empty($data['service_id'])) {
+            $ids = [(int) $data['service_id']];
+        }
+
+        return $ids;
+    }
+
+    private function buildServicePlans(CarbonInterface $start, array $serviceIds, Collection $servicesById): array
+    {
+        $plans = [];
+        $cursor = Carbon::parse($start);
+
+        foreach ($serviceIds as $serviceId) {
+            /** @var SalonService $service */
+            $service = $servicesById->get((int) $serviceId);
+            $segmentStart = $cursor->copy();
+            $segmentEnd = $segmentStart->copy()->addMinutes((int) $service->duration_minutes + (int) $service->buffer_minutes);
+
+            $plans[] = [
+                'service' => $service,
+                'start' => $segmentStart,
+                'end' => $segmentEnd,
+            ];
+
+            $cursor = $segmentEnd->copy();
+        }
+
+        return $plans;
+    }
+
+    private function findAnyFullyAvailableStaffId(array $plans, BookingAvailabilityService $availabilityService): ?int
+    {
+        $staffIds = StaffProfile::query()->where('is_active', true)->pluck('id')->all();
+
+        foreach ($staffIds as $staffId) {
+            $allAvailable = true;
+            foreach ($plans as $plan) {
+                if ($availabilityService->validateStaffAvailability((int) $staffId, $plan['start'], $plan['end'])) {
+                    $allAvailable = false;
+                    break;
+                }
+            }
+            if ($allAvailable) {
+                return (int) $staffId;
+            }
+        }
+
+        return null;
     }
 }

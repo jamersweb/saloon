@@ -1,6 +1,7 @@
 import ApplicationLogo from '@/Components/ApplicationLogo';
 import AppFlashPopup from '@/Components/AppFlashPopup';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { useMemo, useState } from 'react';
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
@@ -98,13 +99,31 @@ const normalizeToInterval = (value, intervalMinutes) => {
 
 export default function Booking({ services, staffProfiles, bookingRules, defaultStart }) {
     const { errors } = usePage().props;
+    const [serviceSearch, setServiceSearch] = useState('');
     const { data, setData, post, processing } = useForm({
-        customer_name: '', customer_phone: '', customer_email: '', service_id: '', staff_profile_id: '', scheduled_start: defaultStart || '', notes: '',
+        customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], staff_profile_id: '', scheduled_start: defaultStart || '', notes: '',
     });
 
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
     const bookingStartYmd = (data.scheduled_start || defaultStart || '').split('T')[0] || localYmd(new Date());
     const bookingStartBounds = salonSelectableBoundsForYmd(bookingStartYmd, bookingRules, slotIntervalMinutes);
+    const selectedServiceIds = data.service_ids || [];
+    const availableServices = useMemo(
+        () => services.filter((s) => !selectedServiceIds.includes(String(s.id))),
+        [services, selectedServiceIds],
+    );
+    const filteredServices = useMemo(
+        () => availableServices.filter((s) => s.name.toLowerCase().includes(serviceSearch.toLowerCase())),
+        [availableServices, serviceSearch],
+    );
+
+    const setSelectedServices = (ids) => {
+        setData({
+            ...data,
+            service_ids: ids,
+            service_id: ids[0] || '',
+        });
+    };
 
     const submit = (e) => {
         e.preventDefault();
@@ -142,11 +161,40 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                             <input className="ta-input md:col-span-2" placeholder="Email" value={data.customer_email} onChange={(e) => setData('customer_email', e.target.value)} />
                         </div>
                         <div>
-                            <label className="ta-field-label">Service</label>
-                            <select className="ta-input" value={data.service_id} onChange={(e) => setData('service_id', e.target.value)} required>
-                                <option value="">Select service</option>
-                                {services.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.duration_minutes} min)</option>)}
-                            </select>
+                            <label className="ta-field-label">Services</label>
+                            <input className="ta-input" placeholder="Search and add service" value={serviceSearch} onChange={(e) => setServiceSearch(e.target.value)} />
+                            <div className="mt-2 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+                                {filteredServices.map((s) => (
+                                    <button
+                                        key={s.id}
+                                        type="button"
+                                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                        onClick={() => setSelectedServices([...selectedServiceIds, String(s.id)])}
+                                    >
+                                        <span>{s.name}</span>
+                                        <span className="text-slate-500">{s.duration_minutes} min</span>
+                                    </button>
+                                ))}
+                                {filteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {selectedServiceIds.map((id) => {
+                                    const service = services.find((s) => String(s.id) === String(id));
+                                    if (!service) return null;
+                                    return (
+                                        <button
+                                            key={id}
+                                            type="button"
+                                            className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700"
+                                            onClick={() => setSelectedServices(selectedServiceIds.filter((x) => x !== id))}
+                                        >
+                                            {service.name} x
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {errors.service_id && <div className="mt-1 text-sm text-red-600">{errors.service_id}</div>}
+                            {errors.service_ids && <div className="mt-1 text-sm text-red-600">{errors.service_ids}</div>}
                         </div>
                         <div>
                             <label className="ta-field-label">Staff Profile</label>
