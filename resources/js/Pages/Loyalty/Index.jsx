@@ -44,8 +44,8 @@ export default function LoyaltyIndex({
 
     const createTierForm = useForm({ name: '', min_points: 0, discount_percent: 0, earn_multiplier: 1, is_active: true });
     const editTierForm = useForm({ name: '', min_points: 0, discount_percent: 0, earn_multiplier: 1, is_active: true });
-    const createCardTypeForm = useForm({ name: '', slug: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
-    const editCardTypeForm = useForm({ name: '', slug: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
+    const createCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
+    const editCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
     const assignCardForm = useForm({ customer_id: '', membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'active', notes: '' });
     const issueInventoryForm = useForm({ membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'pending', notes: '' });
     const linkInventoryForm = useForm({ customer_id: '', customer_membership_card_id: '', status: 'active', notes: '' });
@@ -130,7 +130,6 @@ export default function LoyaltyIndex({
         setEditingCardTypeId(cardType.id);
         editCardTypeForm.setData({
             name: cardType.name,
-            slug: cardType.slug,
             kind: cardType.kind,
             min_points: cardType.min_points,
             direct_purchase_price: cardType.direct_purchase_price ?? '',

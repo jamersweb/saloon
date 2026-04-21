@@ -25,6 +25,7 @@ use App\Services\PackageBalanceService;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -410,7 +411,6 @@ class LoyaltyController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('membership_card_types', 'name')],
-            'slug' => ['required', 'string', 'max:100', Rule::unique('membership_card_types', 'slug')],
             'kind' => ['required', Rule::in(['physical', 'virtual', 'gift'])],
             'min_points' => ['required', 'integer', 'min:0'],
             'direct_purchase_price' => ['nullable', 'numeric', 'min:0'],
@@ -421,7 +421,7 @@ class LoyaltyController extends Controller
 
         $cardType = MembershipCardType::create([
             ...$data,
-            'slug' => strtolower($data['slug']),
+            'slug' => $this->generateUniqueCardTypeSlug($data['name']),
             'is_active' => (bool) ($data['is_active'] ?? true),
             'is_transferable' => (bool) ($data['is_transferable'] ?? false),
         ]);
@@ -437,7 +437,6 @@ class LoyaltyController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('membership_card_types', 'name')->ignore($cardType->id)],
-            'slug' => ['required', 'string', 'max:100', Rule::unique('membership_card_types', 'slug')->ignore($cardType->id)],
             'kind' => ['required', Rule::in(['physical', 'virtual', 'gift'])],
             'min_points' => ['required', 'integer', 'min:0'],
             'direct_purchase_price' => ['nullable', 'numeric', 'min:0'],
@@ -448,7 +447,7 @@ class LoyaltyController extends Controller
 
         $cardType->update([
             ...$data,
-            'slug' => strtolower($data['slug']),
+            'slug' => $this->generateUniqueCardTypeSlug($data['name'], $cardType->id),
             'is_active' => (bool) ($data['is_active'] ?? false),
             'is_transferable' => (bool) ($data['is_transferable'] ?? false),
         ]);
@@ -1044,5 +1043,32 @@ class LoyaltyController extends Controller
                 },
             ],
         ];
+    }
+
+    private function generateUniqueCardTypeSlug(string $name, ?int $ignoreId = null): string
+    {
+        $base = Str::slug($name);
+        if ($base === '') {
+            $base = 'card-type';
+        }
+
+        $suffix = '';
+        $attempt = 0;
+
+        while (true) {
+            $candidate = substr($base, 0, 100 - strlen($suffix)).$suffix;
+
+            $exists = MembershipCardType::query()
+                ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+                ->where('slug', $candidate)
+                ->exists();
+
+            if (! $exists) {
+                return $candidate;
+            }
+
+            $attempt++;
+            $suffix = '-'.$attempt;
+        }
     }
 }
