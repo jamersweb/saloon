@@ -1,0 +1,1337 @@
+{
+  "source_pdf": "C:/Users/Hp/OneDrive/Desktop/tut/UPDATED - LAKME PRICELIST UPDATED 2026-1.pdf",
+  "items_by_sku": {
+    "COLLAGE": {
+      "sku": "COLLAGE",
+      "name": "CLAIR 60ML",
+      "selling_price": 31.5,
+      "cost_price": 18.9,
+      "family": "Lakme"
+    },
+    "GLOSS": {
+      "sku": "GLOSS",
+      "name": "60 ML",
+      "selling_price": 31.5,
+      "cost_price": 18.9,
+      "family": "Lakme"
+    },
+    "CHROMA": {
+      "sku": "CHROMA",
+      "name": "60 ML",
+      "selling_price": 43.75,
+      "cost_price": 26.25,
+      "family": "Lakme"
+    },
+    "GLAZE": {
+      "sku": "GLAZE",
+      "name": "60 ML",
+      "selling_price": 35.0,
+      "cost_price": 21.0,
+      "family": "Lakme"
+    },
+    "P-1001-15-220V": {
+      "sku": "P-1001-15-220V",
+      "name": "COLLAGE HYDROX 20V 1000ML.",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "Lakme"
+    },
+    "P-1001-15-230V": {
+      "sku": "P-1001-15-230V",
+      "name": "COLLAGE HYDROX 30V 1000ML.",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "Lakme"
+    },
+    "P-1001-15-240V": {
+      "sku": "P-1001-15-240V",
+      "name": "COLLAGE HYDROX 40V 1000ML.",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "Lakme"
+    },
+    "P-1001-15-210V": {
+      "sku": "P-1001-15-210V",
+      "name": "COLLAGE HYDROX 10V 1000ML.",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "Lakme"
+    },
+    "P-1001-15-218V": {
+      "sku": "P-1001-15-218V",
+      "name": "COLLAGE HYDROX 1000 ML 18 V.",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "Lakme"
+    },
+    "8429421403016": {
+      "sku": "8429421403016",
+      "name": "COLLAGE HYDROX 1000 ML 28 V.",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "Lakme"
+    },
+    "8429421404013": {
+      "sku": "8429421404013",
+      "name": "COLLAGE HYDROX 1000 ML 38 V.",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "Lakme"
+    },
+    "8429421400015": {
+      "sku": "8429421400015",
+      "name": "COLLAGE HYDROX 1000 ML-6V",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "Lakme"
+    },
+    "8429421401012": {
+      "sku": "8429421401012",
+      "name": "COLLAGE HYDROX 1000 ML 9 V.",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "Lakme"
+    },
+    "8429421400114": {
+      "sku": "8429421400114",
+      "name": "COLLAGE HYDROX 120 ML -6V",
+      "selling_price": 17.5,
+      "cost_price": 10.5,
+      "family": "Lakme"
+    },
+    "8429421401111": {
+      "sku": "8429421401111",
+      "name": "COLLAGE HYDROX 120 ML-9V",
+      "selling_price": 17.5,
+      "cost_price": 10.5,
+      "family": "Lakme"
+    },
+    "8429421402118": {
+      "sku": "8429421402118",
+      "name": "COLLAGE HYDROX 120 ML-18V",
+      "selling_price": 17.5,
+      "cost_price": 10.5,
+      "family": "Lakme"
+    },
+    "8429421403115": {
+      "sku": "8429421403115",
+      "name": "COLLAGE HYDROX 120 ML - 28V",
+      "selling_price": 17.5,
+      "cost_price": 10.5,
+      "family": "Lakme"
+    },
+    "8429421404112": {
+      "sku": "8429421404112",
+      "name": "COLLAGE HYDROX 120 ML - 38V",
+      "selling_price": 17.5,
+      "cost_price": 10.5,
+      "family": "Lakme"
+    },
+    "8429421425117": {
+      "sku": "8429421425117",
+      "name": "COLLAGE HYDROX 90 ML.-10V",
+      "selling_price": 10.5,
+      "cost_price": 6.3,
+      "family": "Lakme"
+    },
+    "8429421422116": {
+      "sku": "8429421422116",
+      "name": "COLLAGE HYDROX 90 ML.-20V",
+      "selling_price": 10.5,
+      "cost_price": 6.3,
+      "family": "Lakme"
+    },
+    "8429421423113": {
+      "sku": "8429421423113",
+      "name": "COLLAGE HYDROX 90 ML.-30V",
+      "selling_price": 10.5,
+      "cost_price": 6.3,
+      "family": "Lakme"
+    },
+    "P-1001-15-340V": {
+      "sku": "P-1001-15-340V",
+      "name": "COLLAGE HYDROX 90 ML.-40V",
+      "selling_price": 10.5,
+      "cost_price": 6.3,
+      "family": "Lakme"
+    },
+    "8429421421010": {
+      "sku": "8429421421010",
+      "name": "GLOSS EMULSION 1000 ML",
+      "selling_price": 40.25,
+      "cost_price": 24.15,
+      "family": "Lakme"
+    },
+    "8429421426015": {
+      "sku": "8429421426015",
+      "name": "GLOSS EMULSION LONG LASTING 1000 ML",
+      "selling_price": 40.25,
+      "cost_price": 24.15,
+      "family": "Lakme"
+    },
+    "8429421421119": {
+      "sku": "8429421421119",
+      "name": "GLOSS EMULSION 120 ML",
+      "selling_price": 10.5,
+      "cost_price": 6.3,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421426114": {
+      "sku": "8429421426114",
+      "name": "GLOSS EMULSION LONG LASTING 120 ML",
+      "selling_price": 10.5,
+      "cost_price": 6.3,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421721011": {
+      "sku": "8429421721011",
+      "name": "CHROMA DEVELOPER 6V 1000 ML",
+      "selling_price": 52.5,
+      "cost_price": 31.5,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421722018": {
+      "sku": "8429421722018",
+      "name": "CHROMA DEVELOPER 18V 1000 ML",
+      "selling_price": 52.5,
+      "cost_price": 31.5,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421723015": {
+      "sku": "8429421723015",
+      "name": "CHROMA DEVELOPER 28V 1000 ML",
+      "selling_price": 52.5,
+      "cost_price": 31.5,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421488220": {
+      "sku": "8429421488220",
+      "name": "CHROMA DEVELOPER 28V 60 ML",
+      "selling_price": 15.75,
+      "cost_price": 9.45,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421721110": {
+      "sku": "8429421721110",
+      "name": "CHROMA DEVELOPER 6V 60 ML",
+      "selling_price": 15.75,
+      "cost_price": 9.45,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421722117": {
+      "sku": "8429421722117",
+      "name": "CHROMA DEVELOPER 18V 60 ML",
+      "selling_price": 15.75,
+      "cost_price": 9.45,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "40501": {
+      "sku": "40501",
+      "name": "GLAZE COLOR ACTIVATOR 5V CREAM 1000",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "40601": {
+      "sku": "40601",
+      "name": "GLAZE COLOR ACTIVATOR 5V LIQUID 1000",
+      "selling_price": 49.88,
+      "cost_price": 29.93,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421411219": {
+      "sku": "8429421411219",
+      "name": "K.BLONDE COMPACT POWDER-CREAM 500 GR.",
+      "selling_price": 131.25,
+      "cost_price": 78.75,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421411240": {
+      "sku": "8429421411240",
+      "name": "K. BLONDE CREAM AMMONIA-FREE 200 GRM",
+      "selling_price": 113.75,
+      "cost_price": 68.25,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "41123": {
+      "sku": "41123",
+      "name": "K.BLONDE CLEACHING CLAY 450 GRM.",
+      "selling_price": 161.0,
+      "cost_price": 96.6,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421411110": {
+      "sku": "8429421411110",
+      "name": "K BLONDE ADVANCED BLEACHING POWDER",
+      "selling_price": 192.5,
+      "cost_price": 115.5,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421488013": {
+      "sku": "8429421488013",
+      "name": "K-WAVE 0",
+      "selling_price": 43.75,
+      "cost_price": 26.25,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421488112": {
+      "sku": "8429421488112",
+      "name": "K-WAVE 1",
+      "selling_price": 43.75,
+      "cost_price": 26.25,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421488211": {
+      "sku": "8429421488211",
+      "name": "K-WAVE 2",
+      "selling_price": 43.75,
+      "cost_price": 26.25,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421481014": {
+      "sku": "8429421481014",
+      "name": "K-STRAIGHT 0",
+      "selling_price": 101.5,
+      "cost_price": 60.9,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421481113": {
+      "sku": "8429421481113",
+      "name": "K-STRAIGHT 1",
+      "selling_price": 101.5,
+      "cost_price": 60.9,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421482011": {
+      "sku": "8429421482011",
+      "name": "K-STRAIGHT IONIC 0",
+      "selling_price": 161.0,
+      "cost_price": 96.6,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421482110": {
+      "sku": "8429421482110",
+      "name": "K-STRAIGHT IONIC 1",
+      "selling_price": 161.0,
+      "cost_price": 96.6,
+      "family": "GLOSS - DEVELOPING EMULSION"
+    },
+    "8429421455015": {
+      "sku": "8429421455015",
+      "name": "LAK-2 CONDITIONER 300 ML.",
+      "selling_price": 71.75,
+      "cost_price": 43.05,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421458511": {
+      "sku": "8429421458511",
+      "name": "LAKME METAL REMOVER 300 ML",
+      "selling_price": 130.0,
+      "cost_price": 78.0,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421430074": {
+      "sku": "8429421430074",
+      "name": "KTHPY. BIOARGAN CONSUMER PACK",
+      "selling_price": 350.0,
+      "cost_price": 210.0,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421430029": {
+      "sku": "8429421430029",
+      "name": "K TPY BIOARGAN OIL 125 Ml (43002)",
+      "selling_price": 141.75,
+      "cost_price": 85.05,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421430043": {
+      "sku": "8429421430043",
+      "name": "K TPY BIOARGAN SHAMPOO 300 ML 43004",
+      "selling_price": 120.75,
+      "cost_price": 72.45,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421430098": {
+      "sku": "8429421430098",
+      "name": "K THPY BIOARGAN SHAMPOO 1000ML 43009",
+      "selling_price": 240.0,
+      "cost_price": 144.0,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421430050": {
+      "sku": "8429421430050",
+      "name": "K TPY BIOARGAN HYDRATING MASK- 250m",
+      "selling_price": 182.0,
+      "cost_price": 109.2,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421434126": {
+      "sku": "8429421434126",
+      "name": "K.THPY REPAIR SH. 300 ML",
+      "selling_price": 61.25,
+      "cost_price": 36.75,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421434133": {
+      "sku": "8429421434133",
+      "name": "K.THPY REPAIR SH. 1000 ML (43413)",
+      "selling_price": 110.0,
+      "cost_price": 66.0,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421434324": {
+      "sku": "8429421434324",
+      "name": "K.THPY REPAIR GEL 30 ML (43432)",
+      "selling_price": 115.5,
+      "cost_price": 69.3,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421434423": {
+      "sku": "8429421434423",
+      "name": "K.THPY REPAIR NOURISHING MASK 250 ML",
+      "selling_price": 92.75,
+      "cost_price": 55.65,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421435123": {
+      "sku": "8429421435123",
+      "name": "K.THPY REPAIR CONDITIONING FLUID 300 ML",
+      "selling_price": 77.0,
+      "cost_price": 46.2,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421435130": {
+      "sku": "8429421435130",
+      "name": "K.THPY REPAIR CONDITIONING FLUID 1000 ML",
+      "selling_price": 130.0,
+      "cost_price": 78.0,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421430128": {
+      "sku": "8429421430128",
+      "name": "K.THPY ACTIVE SH. 300 ML",
+      "selling_price": 61.25,
+      "cost_price": 36.75,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "8429421430135": {
+      "sku": "8429421430135",
+      "name": "K.THPY ACTIVE SH. 1000 ML",
+      "selling_price": 152.25,
+      "cost_price": 91.35,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421430326": {
+      "sku": "8429421430326",
+      "name": "K.THPY ACTIVE LOTION 125 ML (43032)",
+      "selling_price": 105.0,
+      "cost_price": 63.0,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421430623": {
+      "sku": "8429421430623",
+      "name": "K.THPY ACTIVE FORTIFYING MASK 250 ML",
+      "selling_price": 98.0,
+      "cost_price": 58.8,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421430630": {
+      "sku": "8429421430630",
+      "name": "K.THPY ACTIVE FORTIFYING MASK 1000 ML",
+      "selling_price": 241.5,
+      "cost_price": 144.9,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421432122": {
+      "sku": "8429421432122",
+      "name": "K.THPY PURIFYING SH. 300 ML",
+      "selling_price": 61.25,
+      "cost_price": 36.75,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421432139": {
+      "sku": "8429421432139",
+      "name": "K.THPY PURIFYING SH. 1000 ML",
+      "selling_price": 110.0,
+      "cost_price": 66.0,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421432221": {
+      "sku": "8429421432221",
+      "name": "K.THPY PURIFYING MATT MASK 6U. X  15 ML",
+      "selling_price": 141.75,
+      "cost_price": 85.05,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421436120": {
+      "sku": "8429421436120",
+      "name": "K.THPY PEELING SH. OILY 300ML",
+      "selling_price": 61.25,
+      "cost_price": 36.75,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421436137": {
+      "sku": "8429421436137",
+      "name": "K.THPY PEELING SH. OILY 1000ML",
+      "selling_price": 110.0,
+      "cost_price": 66.0,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421437127": {
+      "sku": "8429421437127",
+      "name": "K.THPY PEELING SH. DRY 300ML",
+      "selling_price": 61.25,
+      "cost_price": 36.75,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421437134": {
+      "sku": "8429421437134",
+      "name": "K.THPY PEELING SH. DRY 1000ML",
+      "selling_price": 110.0,
+      "cost_price": 66.0,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421431125": {
+      "sku": "8429421431125",
+      "name": "K.THPY SENSITIVE RELAXING SH. 300 ML",
+      "selling_price": 61.25,
+      "cost_price": 36.75,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421431132": {
+      "sku": "8429421431132",
+      "name": "K.THPY SENSITIVE RELAXING SH. 1000 ML",
+      "selling_price": 110.0,
+      "cost_price": 66.0,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421431323": {
+      "sku": "8429421431323",
+      "name": "K.THPY SENSITIVE NIGHT DROPS 30 ML (43132)",
+      "selling_price": 95.0,
+      "cost_price": 57.0,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421431422": {
+      "sku": "8429421431422",
+      "name": "K.THPY SENSITIVE RELAXING BALM 300 ML",
+      "selling_price": 89.25,
+      "cost_price": 53.55,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421431439": {
+      "sku": "8429421431439",
+      "name": "K.THPY SENSITIVE RELAXING BALM 1000 ML",
+      "selling_price": 194.25,
+      "cost_price": 116.55,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421490023": {
+      "sku": "8429421490023",
+      "name": "I.PLEX TRIAL KIT 100ml",
+      "selling_price": 603.75,
+      "cost_price": 362.25,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "8429421805599": {
+      "sku": "8429421805599",
+      "name": "I.PLEX RITUAL KIT",
+      "selling_price": 140.0,
+      "cost_price": 84.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421490115": {
+      "sku": "8429421490115",
+      "name": "I.PLEX 1 PREMIUM BOND 500ML 49011",
+      "selling_price": 805.0,
+      "cost_price": 483.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421490214": {
+      "sku": "8429421490214",
+      "name": "I.PLEX 2 KERATECH I.POWER 500ML 49021",
+      "selling_price": 805.0,
+      "cost_price": 483.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421490337": {
+      "sku": "8429421490337",
+      "name": "I.PLEX 3 HAIR PERFECTION 100ML",
+      "selling_price": 218.75,
+      "cost_price": 131.25,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421462129": {
+      "sku": "8429421462129",
+      "name": "K.FINISH CURLS CURL ACTIVATOR GEL 150 ML",
+      "selling_price": 55.0,
+      "cost_price": 33.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421460620": {
+      "sku": "8429421460620",
+      "name": "K.FINISH POLISH SHEEN SPRAY 200 ML",
+      "selling_price": 55.0,
+      "cost_price": 33.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421460019": {
+      "sku": "8429421460019",
+      "name": "K.FINISH RINGS CURL FLEXIBLE BALM 150 ML",
+      "selling_price": 55.0,
+      "cost_price": 33.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421469432": {
+      "sku": "8429421469432",
+      "name": "K STYL SHAPE BRUSHING LOTION 300ML",
+      "selling_price": 50.0,
+      "cost_price": 30.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421469012": {
+      "sku": "8429421469012",
+      "name": "K.STYLING TAMER STRAIGHTENER GEL 150 ML",
+      "selling_price": 55.0,
+      "cost_price": 33.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421467018": {
+      "sku": "8429421467018",
+      "name": "K.BEAUTY TOP-TEN STYLE-CARE BALM 150 ML",
+      "selling_price": 90.0,
+      "cost_price": 54.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421467414": {
+      "sku": "8429421467414",
+      "name": "K.BEAUTY BODY THICKENING SPRAY 150 ML",
+      "selling_price": 80.0,
+      "cost_price": 48.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440325": {
+      "sku": "8429421440325",
+      "name": "TKN REFRESH BLACK COFEE SHAMPOO-300ml",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421442329": {
+      "sku": "8429421442329",
+      "name": "TKN REFRESH CORAL RED SHAMPOO 300ML",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421442121": {
+      "sku": "8429421442121",
+      "name": "TKN REFRESH COCOA BROWN SHAMPOO 300ml",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440424": {
+      "sku": "8429421440424",
+      "name": "TKN REFRESH BLACK COFEE MASK-250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421442428": {
+      "sku": "8429421442428",
+      "name": "TKN REFRESH CORAL RED MASK 250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421442824": {
+      "sku": "8429421442824",
+      "name": "TKN REFRESH VIOLET LAVENDER MASK-250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421442817": {
+      "sku": "8429421442817",
+      "name": "TKN REFRESH VIOLET LAVENDER MASK-1000ml",
+      "selling_price": 225.0,
+      "cost_price": 135.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440523": {
+      "sku": "8429421440523",
+      "name": "TKN CREATIVE GREY LILAC MASK-250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440622": {
+      "sku": "8429421440622",
+      "name": "TKN CREATIVE DESERT SAND MASK-250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440721": {
+      "sku": "8429421440721",
+      "name": "TKN CREATIVE CLEAR MASK-250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440820": {
+      "sku": "8429421440820",
+      "name": "TKN CREATIVE PALE ROSE MASK-250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421441025": {
+      "sku": "8429421441025",
+      "name": "TKN CREATIVE FUCHSIA MASK-250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421464239": {
+      "sku": "8429421464239",
+      "name": "TKN CREATIVE BLUE COLOR MASK-250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "K.FINISH": {
+      "sku": "K.FINISH",
+      "name": "MATT MATT WORKING WAX 75 ML",
+      "selling_price": 75.0,
+      "cost_price": 45.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421460200": {
+      "sku": "8429421460200",
+      "name": "K.FINISH FIBER MOLDING PASTE 75 ML",
+      "selling_price": 75.0,
+      "cost_price": 45.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421465328": {
+      "sku": "8429421465328",
+      "name": "KSTY. SEA MIST SEA SPRAY 150 ML",
+      "selling_price": 40.0,
+      "cost_price": 24.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421491112": {
+      "sku": "8429421491112",
+      "name": "AURA FASE 01 MICELLAR SHAMPOO 1000ML",
+      "selling_price": 262.5,
+      "cost_price": 157.5,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421491211": {
+      "sku": "8429421491211",
+      "name": "AURA FASE 02 ACTIVE TREATMENT 1000ML",
+      "selling_price": 525.0,
+      "cost_price": 315.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421491310": {
+      "sku": "8429421491310",
+      "name": "AURA FASE 03 HYALURONIC MASK 1000ML",
+      "selling_price": 1925.0,
+      "cost_price": 1155.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421458535": {
+      "sku": "8429421458535",
+      "name": "TKN METAL REMOVER PRE-SHAMPOO 150 ML",
+      "selling_price": 90.0,
+      "cost_price": 54.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421458559": {
+      "sku": "8429421458559",
+      "name": "TKN METAL REMOVER PROTECTOR MIST 300 ML",
+      "selling_price": 125.0,
+      "cost_price": 75.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421457729": {
+      "sku": "8429421457729",
+      "name": "TKN PRO AGEING SH 300 ML",
+      "selling_price": 90.0,
+      "cost_price": 54.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421457323": {
+      "sku": "8429421457323",
+      "name": "TKN PRO AGEING MASK 250 ML",
+      "selling_price": 182.0,
+      "cost_price": 109.2,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421457439": {
+      "sku": "8429421457439",
+      "name": "TKN PRO AGEING SCALP SERUM 100 ML",
+      "selling_price": 190.0,
+      "cost_price": 114.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421457538": {
+      "sku": "8429421457538",
+      "name": "TKN PRO AGEING SERUM 50 ML",
+      "selling_price": 150.0,
+      "cost_price": 90.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421455220": {
+      "sku": "8429421455220",
+      "name": "L2 CLASSIC CONDITIONER 300 ML",
+      "selling_price": 90.0,
+      "cost_price": 54.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421455329": {
+      "sku": "8429421455329",
+      "name": "L2 CURLS CONDITIONER 300 ML",
+      "selling_price": 90.0,
+      "cost_price": 54.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421455428": {
+      "sku": "8429421455428",
+      "name": "L2 BLONDE CONDITIONER 300 ML",
+      "selling_price": 90.0,
+      "cost_price": 54.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421455527": {
+      "sku": "8429421455527",
+      "name": "L2 CARE CONDITIONER 300 ML",
+      "selling_price": 90.0,
+      "cost_price": 54.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421455237": {
+      "sku": "8429421455237",
+      "name": "L2 CLASSIC CONDITIONER 100 ML",
+      "selling_price": 50.0,
+      "cost_price": 30.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421455435": {
+      "sku": "8429421455435",
+      "name": "L2 BLONDE CONDITIONER 100 ML",
+      "selling_price": 50.0,
+      "cost_price": 30.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421455534": {
+      "sku": "8429421455534",
+      "name": "L2 CARE CONDITIONER 100 ML",
+      "selling_price": 50.0,
+      "cost_price": 30.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421458313": {
+      "sku": "8429421458313",
+      "name": "LKM STAIN REMOVER 150 ML.",
+      "selling_price": 75.0,
+      "cost_price": 45.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421441124": {
+      "sku": "8429421441124",
+      "name": "TKN ORGANIC BALANCE SHAMPOO 300ML",
+      "selling_price": 91.0,
+      "cost_price": 54.6,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421441315": {
+      "sku": "8429421441315",
+      "name": "TKN ORGANIC BALANCE TREATMENT 1000ML",
+      "selling_price": 353.5,
+      "cost_price": 212.1,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421441322": {
+      "sku": "8429421441322",
+      "name": "TKN ORGANIC BALANCE TREATMENT 250ML",
+      "selling_price": 141.75,
+      "cost_price": 85.05,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421441230": {
+      "sku": "8429421441230",
+      "name": "TKN ORGANIC BALANCE HYDRA-OIL 200ML",
+      "selling_price": 141.75,
+      "cost_price": 85.05,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421449120": {
+      "sku": "8429421449120",
+      "name": "TKN FULL DEFENSE SHAMPOO 300ML",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421449113": {
+      "sku": "8429421449113",
+      "name": "TKN FULL DEFENSE SHAMPOO 1000ML",
+      "selling_price": 131.25,
+      "cost_price": 78.75,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421449533": {
+      "sku": "8429421449533",
+      "name": "TKN FULL DEFENSE MIST 300ML",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421449328": {
+      "sku": "8429421449328",
+      "name": "TKN FULL DEFENSE TREATMENT 250ML",
+      "selling_price": 120.75,
+      "cost_price": 72.45,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421446419": {
+      "sku": "8429421446419",
+      "name": "TKN BODY MAKER BALM 1000ML",
+      "selling_price": 135.0,
+      "cost_price": 81.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421446532": {
+      "sku": "8429421446532",
+      "name": "TKN BODY MAKER MIST 300ML",
+      "selling_price": 90.0,
+      "cost_price": 54.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421444125": {
+      "sku": "8429421444125",
+      "name": "TKN FRIZZ CONTROL SHAMPOO 300ML",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421444453": {
+      "sku": "8429421444453",
+      "name": "TKN FRIZZ CONTROL TREATMENT 500ml",
+      "selling_price": 220.0,
+      "cost_price": 132.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421444422": {
+      "sku": "8429421444422",
+      "name": "TKN FRIZZ CONTROL TREATMENT 250ML",
+      "selling_price": 120.75,
+      "cost_price": 72.45,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421444224": {
+      "sku": "8429421444224",
+      "name": "TKN FRIZZ CONTROL CONDITIONER 300ML",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421444217": {
+      "sku": "8429421444217",
+      "name": "TKN FRIZZ CONTROL CONDITIONER 1000ML",
+      "selling_price": 241.5,
+      "cost_price": 144.9,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421444323": {
+      "sku": "8429421444323",
+      "name": "TKN FRIZZ CONTROL PROTECTOR 300ML",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421444538": {
+      "sku": "8429421444538",
+      "name": "TKN FRIZZ CONTROL CREAM 150ML",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421445221": {
+      "sku": "8429421445221",
+      "name": "TKN COLOR STAY CONDITIONER-300ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421445214": {
+      "sku": "8429421445214",
+      "name": "TKN COLOR STAY CONDITIONER-1000ml",
+      "selling_price": 194.25,
+      "cost_price": 116.55,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421445313": {
+      "sku": "8429421445313",
+      "name": "TKN COLOR STAY TREATMENT-1000ml",
+      "selling_price": 222.25,
+      "cost_price": 133.35,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421443128": {
+      "sku": "8429421443128",
+      "name": "TKN PERFECT CLEANSE SHAMPOO 300ML",
+      "selling_price": 77.0,
+      "cost_price": 46.2,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421443111": {
+      "sku": "8429421443111",
+      "name": "TKN PERFECT CLEANSE SHAMPOO 1000 ML",
+      "selling_price": 182.0,
+      "cost_price": 109.2,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421448123": {
+      "sku": "8429421448123",
+      "name": "TKN ARGAN OIL SHAMPOO 300ML",
+      "selling_price": 120.75,
+      "cost_price": 72.45,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421448116": {
+      "sku": "8429421448116",
+      "name": "TKN ARGAN OIL SHAMPOO 1000ML",
+      "selling_price": 182.0,
+      "cost_price": 109.2,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421448321": {
+      "sku": "8429421448321",
+      "name": "TKN ARGAN OIL TREATMENT 250ML",
+      "selling_price": 141.75,
+      "cost_price": 85.05,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421448314": {
+      "sku": "8429421448314",
+      "name": "TKN ARGAN OIL TREATMENT 1000ML",
+      "selling_price": 504.0,
+      "cost_price": 302.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421447126": {
+      "sku": "8429421447126",
+      "name": "TKN DEEP CARE SHAMPOO-300ml",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421447119": {
+      "sku": "8429421447119",
+      "name": "TKN DEEP CARE SHAMPOO-1000ml",
+      "selling_price": 152.25,
+      "cost_price": 91.35,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421447225": {
+      "sku": "8429421447225",
+      "name": "TKN DEEP CARE CONDITIONER-300ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421447218": {
+      "sku": "8429421447218",
+      "name": "TKN DEEP CARE CONDITIONER-1000ml",
+      "selling_price": 241.5,
+      "cost_price": 144.9,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421447324": {
+      "sku": "8429421447324",
+      "name": "TKN DEEP CARE TREATMENT-250ml",
+      "selling_price": 120.75,
+      "cost_price": 72.45,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421447317": {
+      "sku": "8429421447317",
+      "name": "TKN DEEP CARE TREATMENT-1000ml",
+      "selling_price": 222.25,
+      "cost_price": 133.35,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421447430": {
+      "sku": "8429421447430",
+      "name": "TKN DEEP CARE DROPS 100 ML.",
+      "selling_price": 101.25,
+      "cost_price": 60.27,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440127": {
+      "sku": "8429421440127",
+      "name": "TKN WHITE SILVER SHAMPOO-300ml",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440110": {
+      "sku": "8429421440110",
+      "name": "TKN WHITE SILVER SHAMPOO-1000ml",
+      "selling_price": 152.25,
+      "cost_price": 91.35,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440226": {
+      "sku": "8429421440226",
+      "name": "TKN WHITE SILVER MASK-250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440219": {
+      "sku": "8429421440219",
+      "name": "TKN WHITE SILVER MASK-1000ml",
+      "selling_price": 266.0,
+      "cost_price": 159.6,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421440141": {
+      "sku": "8429421440141",
+      "name": "TKN WHITE SILVER SHAMPOO-5000ml",
+      "selling_price": 416.66,
+      "cost_price": 250.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "K2.0": {
+      "sku": "K2.0",
+      "name": "RESTORE SH 300 ML",
+      "selling_price": 125.0,
+      "cost_price": 75.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421490221": {
+      "sku": "8429421490221",
+      "name": "K2.0 RESTORE CONDITIONER 300 ML",
+      "selling_price": 150.0,
+      "cost_price": 90.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421490320": {
+      "sku": "8429421490320",
+      "name": "K2.0 RESTORE MASK 250 ML",
+      "selling_price": 165.0,
+      "cost_price": 99.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421490436": {
+      "sku": "8429421490436",
+      "name": "K2.0 HYALURONIC TREATMENT 100 ML",
+      "selling_price": 210.0,
+      "cost_price": 126.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421490535": {
+      "sku": "8429421490535",
+      "name": "K2.0 PROTECTOR OIL 30 ML",
+      "selling_price": 210.0,
+      "cost_price": 126.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "8429421808750": {
+      "sku": "8429421808750",
+      "name": "K2.0 RESTORE TREATMENT KIT",
+      "selling_price": 420.0,
+      "cost_price": 252.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    }
+  },
+  "items_by_name": {
+    "1000ML": {
+      "sku": null,
+      "name": "1000ml",
+      "selling_price": 152.25,
+      "cost_price": 91.35,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "ML (43422)": {
+      "sku": null,
+      "name": "ML (43422)",
+      "selling_price": 190.75,
+      "cost_price": 114.45,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "(43443)": {
+      "sku": null,
+      "name": "(43443)",
+      "selling_price": 190.0,
+      "cost_price": 114.0,
+      "family": "LAKME BLEACHING- K.BLONDE"
+    },
+    "(43622)": {
+      "sku": null,
+      "name": "(43622)",
+      "selling_price": 141.75,
+      "cost_price": 85.05,
+      "family": "K.THERAPY REPAIR (DRY HAIR)"
+    },
+    "ML": {
+      "sku": null,
+      "name": "ML",
+      "selling_price": 95.0,
+      "cost_price": 57.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "300 ML": {
+      "sku": null,
+      "name": "300 ML",
+      "selling_price": 125.0,
+      "cost_price": 75.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "150 M": {
+      "sku": null,
+      "name": "150 M",
+      "selling_price": 60.0,
+      "cost_price": 36.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "200 ML": {
+      "sku": null,
+      "name": "200 ML",
+      "selling_price": 94.5,
+      "cost_price": 94.5,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "300ML": {
+      "sku": null,
+      "name": "300ml",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN REFRESH SAFFRON COPPER MASK 250ML": {
+      "sku": null,
+      "name": "TKN REFRESH SAFFRON COPPER MASK 250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN REFRESH COCOA BROWN MASK 250ML": {
+      "sku": null,
+      "name": "TKN REFRESH COCOA BROWN MASK 250ml",
+      "selling_price": 110.25,
+      "cost_price": 66.15,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN METAL REMOVER HYDRA-MASK 250 M": {
+      "sku": null,
+      "name": "TKN METAL REMOVER HYDRA-MASK 250 M",
+      "selling_price": 150.0,
+      "cost_price": 90.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "L2 CURLS CONDITIONER 100 ML": {
+      "sku": null,
+      "name": "L2 CURLS CONDITIONER 100 ML",
+      "selling_price": 50.0,
+      "cost_price": 30.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN ORGANIC BALANCE SHAMPOO 1000ML": {
+      "sku": null,
+      "name": "TKN ORGANIC BALANCE SHAMPOO 1000ML",
+      "selling_price": 273.0,
+      "cost_price": 165.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN ORGANIC BALANCE OIL 100ML": {
+      "sku": null,
+      "name": "TKN ORGANIC BALANCE OIL 100ML",
+      "selling_price": 141.75,
+      "cost_price": 85.05,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN FULL DEFENSE TREATMENT 1000ML": {
+      "sku": null,
+      "name": "TKN FULL DEFENSE TREATMENT 1000ML",
+      "selling_price": 302.75,
+      "cost_price": 181.65,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN BODY MAKER SHAMPOO 1000 ML.": {
+      "sku": null,
+      "name": "TKN BODY MAKER SHAMPOO 1000 ML.",
+      "selling_price": 152.25,
+      "cost_price": 91.35,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN BODY MAKER SHAMPOO 300 ML. (47612)": {
+      "sku": null,
+      "name": "TKN BODY MAKER SHAMPOO 300 ML. (47612)",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN BODY MAKER BALM 300ML": {
+      "sku": null,
+      "name": "TKN BODY MAKER BALM 300ML",
+      "selling_price": 70.0,
+      "cost_price": 42.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN FRIZZ CONTROL SHAMPOO 1000ML": {
+      "sku": null,
+      "name": "TKN FRIZZ CONTROL SHAMPOO 1000ml",
+      "selling_price": 201.25,
+      "cost_price": 120.75,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN FRIZZ CONTROL TREATMENT 1000ML": {
+      "sku": null,
+      "name": "TKN FRIZZ CONTROL TREATMENT 1000ml",
+      "selling_price": 302.75,
+      "cost_price": 181.65,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN COLOR STAY SHAMPOO-300ML": {
+      "sku": null,
+      "name": "TKN COLOR STAY SHAMPOO-300ml",
+      "selling_price": 84.0,
+      "cost_price": 50.4,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN COLOR STAY SHAMPOO-1000ML": {
+      "sku": null,
+      "name": "TKN COLOR STAY SHAMPOO-1000ml",
+      "selling_price": 182.0,
+      "cost_price": 109.2,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN COLOR STAY TREATMENT-250ML": {
+      "sku": null,
+      "name": "TKN COLOR STAY TREATMENT-250ml",
+      "selling_price": 120.75,
+      "cost_price": 72.45,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN COLOR STAY SHAMPOO-5000ML": {
+      "sku": null,
+      "name": "TKN COLOR STAY SHAMPOO-5000ml",
+      "selling_price": 475.0,
+      "cost_price": 285.0,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    },
+    "TKN ARGAN OIL DRY 125ML": {
+      "sku": null,
+      "name": "TKN ARGAN OIL DRY 125ML",
+      "selling_price": 161.0,
+      "cost_price": 96.6,
+      "family": "K.THERAPY PEELING (DANDRUFF)"
+    }
+  }
+}

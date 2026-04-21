@@ -43,6 +43,7 @@ class CustomerController extends Controller
 
         $customers = Customer::query()
             ->with(self::PROFILE_RELATIONS)
+            ->where('is_active', true)
             ->when($query, function ($builder) use ($query) {
                 $builder->where(function ($q) use ($query) {
                     $q->where('name', 'like', "%{$query}%")
@@ -157,6 +158,17 @@ class CustomerController extends Controller
         Audit::log($request->user()?->id, 'customer.updated', 'Customer', $customer->id);
 
         return back()->with('status', 'Customer updated.');
+    }
+
+    public function destroy(Request $request, Customer $customer): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $customer->update(['is_active' => false]);
+
+        Audit::log($request->user()?->id, 'customer.deactivated', 'Customer', $customer->id);
+
+        return to_route('customers.index')->with('status', 'Customer deleted.');
     }
 
     private function serializeCustomerProfile(Customer $customer): array

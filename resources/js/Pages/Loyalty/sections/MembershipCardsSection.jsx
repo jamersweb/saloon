@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+
 export default function MembershipCardsSection({
     fieldError,
     canManage,
@@ -17,7 +19,11 @@ export default function MembershipCardsSection({
     nfcLookupForm,
     nfcBindForm,
     readUidFromBridge,
+    importCsv,
+    exportCsv,
 }) {
+    const importFileRef = useRef(null);
+
     const copyNfcPortalUrl = async (nfcUid) => {
         if (!nfcUid) {
             return;
@@ -44,6 +50,20 @@ export default function MembershipCardsSection({
 
     return (
         <div className="space-y-6">
+            <section className="ta-card p-4">
+                <div className="flex items-center gap-2">
+                    <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        importCsv?.('membership_cards', file, () => {
+                            if (importFileRef.current) importFileRef.current.value = '';
+                        });
+                    }} />
+                    <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => importFileRef.current?.click()}>Import CSV</button>
+                    <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => window.location.href = route('data-transfer.template', { entity: 'membership_cards' })}>Template CSV</button>
+                    <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => exportCsv?.('membership_cards')}>Export CSV</button>
+                </div>
+            </section>
+
             <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                 Default physical tiers from the Vina loyalty card PDF are Queen, Titanium, and Gold (slugs <span className="font-mono text-slate-800">queen</span>, <span className="font-mono text-slate-800">titanium</span>, <span className="font-mono text-slate-800">gold</span>); seeders align prices and min-points with that document.
             </p>

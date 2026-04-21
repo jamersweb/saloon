@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm, usePage } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import { LOYALTY_SECTIONS } from './loyaltySections';
 import ProgramSection from './sections/ProgramSection';
@@ -209,6 +209,21 @@ export default function LoyaltyIndex({
         }
     };
 
+    const importCsv = (entity, file, resetInput) => {
+        if (!file) return;
+        router.post(route('data-transfer.import', { entity }), { csv_file: file }, {
+            forceFormData: true,
+            preserveScroll: true,
+            onFinish: () => {
+                if (typeof resetInput === 'function') resetInput();
+            },
+        });
+    };
+
+    const exportCsv = (entity) => {
+        window.location.href = route('data-transfer.export', { entity });
+    };
+
     useEffect(() => {
         if (activeSection === 'membership-cards' || activeSection === 'gift-cards') {
             checkNfcBridge();
@@ -283,6 +298,8 @@ export default function LoyaltyIndex({
                         nfcLookupForm={nfcLookupForm}
                         nfcBindForm={nfcBindForm}
                         readUidFromBridge={readUidFromBridge}
+                        importCsv={importCsv}
+                        exportCsv={exportCsv}
                     />
                 )}
 
@@ -314,6 +331,8 @@ export default function LoyaltyIndex({
                         appointmentsForRedeem={appointmentsForRedeem}
                         nfcBridgeLoadingTarget={nfcBridgeLoadingTarget}
                         readUidFromBridge={readUidFromBridge}
+                        importCsv={importCsv}
+                        exportCsv={exportCsv}
                     />
                 )}
 

@@ -38,6 +38,7 @@ class DatabaseSeeder extends Seeder
         $this->call(RoleUserDemoSeeder::class);
         $this->call(VinaStaffRosterSeeder::class);
         $this->call(VinaMembershipRosterSeeder::class);
+        $this->call(CatalogImportSeeder::class);
         $this->call(AppointmentDemoSeeder::class);
         $this->call(InventoryLoyaltyDemoSeeder::class);
     }

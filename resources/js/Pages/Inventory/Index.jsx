@@ -2,7 +2,7 @@ import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
@@ -13,6 +13,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
     const [adjustingId, setAdjustingId] = useState(null);
     const [deactivateItemId, setDeactivateItemId] = useState(null);
     const [deactivateBusy, setDeactivateBusy] = useState(false);
+    const importFileRef = useRef(null);
 
     const createForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
     const editForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
@@ -52,6 +53,19 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
     const closeAdjustModal = () => {
         setAdjustingId(null);
         adjustForm.clearErrors();
+    };
+
+    const handleInventoryImport = (event) => {
+        const file = event.target.files?.[0];
+        if (!file || !canManage) return;
+
+        router.post(route('data-transfer.import', { entity: 'inventory' }), { csv_file: file }, {
+            forceFormData: true,
+            preserveScroll: true,
+            onFinish: () => {
+                if (importFileRef.current) importFileRef.current.value = '';
+            },
+        });
     };
 
     return (
@@ -101,7 +115,15 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                 </section>
 
                 <section className="ta-card overflow-hidden">
-                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Stock Catalog</h3></div>
+                    <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                        <h3 className="text-sm font-semibold text-slate-700">Stock Catalog</h3>
+                        <div className="flex items-center gap-2">
+                            <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleInventoryImport} />
+                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => importFileRef.current?.click()}>Import CSV</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.template', { entity: 'inventory' }); }}>Template CSV</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.export', { entity: 'inventory' }); }}>Export CSV</button>
+                        </div>
+                    </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Stock</th><th className="px-5 py-3">Reorder</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
@@ -202,8 +224,6 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
         </AuthenticatedLayout>
     );
 }
-
-
 
 
 

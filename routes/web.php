@@ -7,6 +7,7 @@ use App\Http\Controllers\BookingRuleController;
 use App\Http\Controllers\CrmAutomationController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerPortalController;
+use App\Http\Controllers\DataTransferController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseEntryController;
 use App\Http\Controllers\FeedbackController;
@@ -62,6 +63,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
         Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
         Route::put('/customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
+        Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])->name('customers.destroy');
         Route::post('/customers/{customer}/portal-token', [CustomerController::class, 'issuePortalToken'])->name('customers.portal-token.store');
 
         Route::get('/attendance', [AttendanceLogController::class, 'index'])->name('attendance.index');
@@ -79,6 +81,10 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::middleware('role:owner,manager')->group(function () {
+        Route::get('/data-transfer/{entity}/export', [DataTransferController::class, 'export'])->name('data-transfer.export');
+        Route::get('/data-transfer/{entity}/template', [DataTransferController::class, 'template'])->name('data-transfer.template');
+        Route::post('/data-transfer/{entity}/import', [DataTransferController::class, 'import'])->name('data-transfer.import');
+
         Route::get('/services', [SalonServiceController::class, 'index'])->name('services.index');
         Route::post('/services', [SalonServiceController::class, 'store'])->name('services.store');
         Route::put('/services/{service}', [SalonServiceController::class, 'update'])->name('services.update');

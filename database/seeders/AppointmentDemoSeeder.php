@@ -19,7 +19,10 @@ class AppointmentDemoSeeder extends Seeder
     {
         $ownerId = User::query()->where('email', 'owner@saloon.local')->value('id');
 
-        $services = $this->seedServices();
+        $services = SalonService::query()
+            ->whereIn('name', ['Luxury Haircut', 'Bridal Makeup', 'Hydrating Facial', 'Nail Art Premium'])
+            ->get()
+            ->keyBy('name');
         $staff = StaffProfile::query()
             ->with('user:id,name,email')
             ->whereHas('user', fn ($query) => $query->where('email', 'like', 'staff%@vina.local'))
@@ -84,27 +87,4 @@ class AppointmentDemoSeeder extends Seeder
             );
         }
     }
-
-    /**
-     * @return \Illuminate\Support\Collection<string, \App\Models\SalonService>
-     */
-    private function seedServices()
-    {
-        $baseServices = [
-            ['name' => 'Luxury Haircut', 'category' => 'Hair', 'duration_minutes' => 60, 'buffer_minutes' => 10, 'price' => 45.00, 'is_active' => true],
-            ['name' => 'Bridal Makeup', 'category' => 'Makeup', 'duration_minutes' => 90, 'buffer_minutes' => 15, 'price' => 130.00, 'is_active' => true],
-            ['name' => 'Hydrating Facial', 'category' => 'Skin', 'duration_minutes' => 75, 'buffer_minutes' => 10, 'price' => 70.00, 'is_active' => true],
-            ['name' => 'Nail Art Premium', 'category' => 'Nails', 'duration_minutes' => 50, 'buffer_minutes' => 10, 'price' => 55.00, 'is_active' => true],
-        ];
-
-        $services = collect();
-
-        foreach ($baseServices as $data) {
-            $service = SalonService::updateOrCreate(['name' => $data['name']], $data);
-            $services->put($service->name, $service);
-        }
-
-        return $services;
-    }
 }
-

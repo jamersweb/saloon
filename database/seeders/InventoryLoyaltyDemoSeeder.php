@@ -6,8 +6,6 @@ use App\Models\Customer;
 use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
 use App\Models\CustomerTag;
-use App\Models\InventoryItem;
-use App\Models\InventoryTransaction;
 use App\Models\LoyaltyReward;
 use App\Models\LoyaltyTier;
 use App\Models\Supplier;
@@ -25,28 +23,7 @@ class InventoryLoyaltyDemoSeeder extends Seeder
                 ->get()
                 ->keyBy('name');
 
-            $inventoryItems = [
-                ['sku' => 'INV-SHA-001', 'name' => 'Argan Repair Shampoo', 'category' => 'Shampoo', 'unit' => 'bottle', 'cost_price' => 7.5, 'selling_price' => 16.0, 'stock_quantity' => 28, 'reorder_level' => 8, 'is_active' => true],
-                ['sku' => 'INV-CON-001', 'name' => 'Keratin Conditioner', 'category' => 'Conditioner', 'unit' => 'bottle', 'cost_price' => 8.2, 'selling_price' => 18.0, 'stock_quantity' => 21, 'reorder_level' => 8, 'is_active' => true],
-                ['sku' => 'INV-COL-001', 'name' => 'Permanent Hair Color - Brown', 'category' => 'Color', 'unit' => 'tube', 'cost_price' => 4.8, 'selling_price' => 12.0, 'stock_quantity' => 45, 'reorder_level' => 15, 'is_active' => true],
-                ['sku' => 'INV-TOO-001', 'name' => 'Disposable Nitrile Gloves', 'category' => 'Consumables', 'unit' => 'box', 'cost_price' => 5.4, 'selling_price' => 11.0, 'stock_quantity' => 11, 'reorder_level' => 10, 'is_active' => true],
-                ['sku' => 'INV-SER-001', 'name' => 'Hair Serum', 'category' => 'Treatment', 'unit' => 'bottle', 'cost_price' => 9.1, 'selling_price' => 22.0, 'stock_quantity' => 17, 'reorder_level' => 6, 'is_active' => true],
-            ];
-
             $ownerId = User::query()->where('email', 'owner@saloon.local')->value('id');
-
-            foreach ($inventoryItems as $itemData) {
-                $item = InventoryItem::updateOrCreate(['sku' => $itemData['sku']], $itemData);
-
-                InventoryTransaction::firstOrCreate(
-                    ['inventory_item_id' => $item->id, 'type' => 'in', 'reference' => 'SEED-OPENING-STOCK'],
-                    [
-                        'quantity' => (int) $itemData['stock_quantity'],
-                        'notes' => 'Demo opening stock',
-                        'performed_by' => $ownerId,
-                    ]
-                );
-            }
 
             foreach ([
                 ['name' => 'Glow Distributors', 'contact_person' => 'Noah Patel', 'phone' => '5557001001', 'email' => 'orders@glowdist.example', 'is_active' => true],

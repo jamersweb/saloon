@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+
 export default function GiftCardsSection({
     fieldError,
     canManage,
@@ -12,7 +14,10 @@ export default function GiftCardsSection({
     appointmentsForRedeem,
     nfcBridgeLoadingTarget,
     readUidFromBridge,
+    importCsv,
+    exportCsv,
 }) {
+    const importFileRef = useRef(null);
     const selectedConsumeGiftCard = giftCards.find((c) => String(c.id) === String(consumeGiftCardForm.data.gift_card_id));
     const giftConsumeAppointments = (appointmentsForRedeem || []).filter((a) => {
         if (!selectedConsumeGiftCard?.assigned_customer_id) {
@@ -23,6 +28,20 @@ export default function GiftCardsSection({
 
     return (
         <div className="space-y-6">
+            <section className="ta-card p-4">
+                <div className="flex items-center gap-2">
+                    <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        importCsv?.('gift_cards', file, () => {
+                            if (importFileRef.current) importFileRef.current.value = '';
+                        });
+                    }} />
+                    <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => importFileRef.current?.click()}>Import CSV</button>
+                    <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => window.location.href = route('data-transfer.template', { entity: 'gift_cards' })}>Template CSV</button>
+                    <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => exportCsv?.('gift_cards')}>Export CSV</button>
+                </div>
+            </section>
+
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Issue gift card</h3>
                 <form onSubmit={(e) => { e.preventDefault(); giftCardForm.post(route('loyalty.gift-cards.store'), { onSuccess: () => giftCardForm.reset('assigned_customer_id', 'initial_value', 'nfc_uid', 'notes') }); }} className="grid gap-3 md:grid-cols-6">

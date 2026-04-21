@@ -153,7 +153,20 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
                                 </div>
                                 <div className="md:col-span-2"><textarea className="ta-input min-h-[90px]" value={editForm.data.allergies || ''} onChange={(e) => editForm.setData('allergies', e.target.value)} placeholder="Allergies / sensitivities" />{fieldError(editForm, 'allergies')}</div>
                                 <div className="md:col-span-2"><textarea className="ta-input min-h-[90px]" value={editForm.data.notes || ''} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
-                                <button className="ta-btn-primary md:col-span-2" disabled={editForm.processing}>Save Profile</button>
+                                <div className="md:col-span-2 flex gap-2">
+                                    <button className="ta-btn-primary" disabled={editForm.processing}>Save Profile</button>
+                                    <button
+                                        type="button"
+                                        className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700"
+                                        onClick={() => {
+                                            if (!selectedCustomer?.id) return;
+                                            if (!window.confirm('Delete this customer? This will hide them from customer lists.')) return;
+                                            router.delete(route('customers.destroy', selectedCustomer.id));
+                                        }}
+                                    >
+                                        Delete Customer
+                                    </button>
+                                </div>
                             </form>
 
                             <div className="mt-6 grid gap-4 lg:grid-cols-2">

@@ -2,7 +2,7 @@ import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
@@ -12,6 +12,7 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
     const [uiError, setUiError] = useState('');
     const [staffConfirm, setStaffConfirm] = useState(null);
     const [staffConfirmBusy, setStaffConfirmBusy] = useState(false);
+    const importFileRef = useRef(null);
     const safeRoles = Array.isArray(roles) ? roles : [];
     const safeStaffProfiles = Array.isArray(staffProfiles) ? staffProfiles : [];
 
@@ -73,6 +74,19 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
         editForm.clearErrors();
     };
 
+    const handleUsersImport = (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        router.post(route('data-transfer.import', { entity: 'users' }), { csv_file: file }, {
+            forceFormData: true,
+            preserveScroll: true,
+            onFinish: () => {
+                if (importFileRef.current) importFileRef.current.value = '';
+            },
+        });
+    };
+
     return (
         <AuthenticatedLayout header="Staff">
             <Head title="Staff" />
@@ -117,15 +131,27 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
                 <section className="ta-card overflow-hidden">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
                         <h3 className="text-sm font-semibold text-slate-700">{showDeleted ? 'Removed staff' : 'Team List'}</h3>
-                        {(showDeleted || trashedCount > 0) ? (
-                            <button
-                                type="button"
-                                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                                onClick={() => router.get(route('staff.index'), showDeleted ? {} : { show_deleted: 1 }, { preserveState: true, replace: true })}
-                            >
-                                {showDeleted ? 'Back to active team' : `Removed staff (${trashedCount})`}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleUsersImport} />
+                            <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => importFileRef.current?.click()}>
+                                Import CSV
                             </button>
-                        ) : null}
+                            <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => { window.location.href = route('data-transfer.template', { entity: 'users' }); }}>
+                                Template CSV
+                            </button>
+                            <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => { window.location.href = route('data-transfer.export', { entity: 'users' }); }}>
+                                Export CSV
+                            </button>
+                            {(showDeleted || trashedCount > 0) ? (
+                                <button
+                                    type="button"
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                    onClick={() => router.get(route('staff.index'), showDeleted ? {} : { show_deleted: 1 }, { preserveState: true, replace: true })}
+                                >
+                                    {showDeleted ? 'Back to active team' : `Removed staff (${trashedCount})`}
+                                </button>
+                            ) : null}
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
@@ -259,8 +285,6 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
         </AuthenticatedLayout>
     );
 }
-
-
 
 
 
