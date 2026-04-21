@@ -345,6 +345,26 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Gift card issued.');
     }
 
+    public function assignGiftCard(Request $request): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'gift_card_id' => ['required', 'exists:gift_cards,id'],
+            'assigned_customer_id' => ['required', 'exists:customers,id'],
+        ]);
+
+        $giftCard = GiftCard::findOrFail((int) $data['gift_card_id']);
+        $giftCard->assigned_customer_id = (int) $data['assigned_customer_id'];
+        $giftCard->save();
+
+        Audit::log($request->user()?->id, 'gift_card.assigned', 'GiftCard', $giftCard->id, [
+            'assigned_customer_id' => $giftCard->assigned_customer_id,
+        ]);
+
+        return back()->with('status', 'Gift card assigned to customer.');
+    }
+
     public function consumeGiftCard(Request $request, GiftCard $giftCard, GiftCardService $giftCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');

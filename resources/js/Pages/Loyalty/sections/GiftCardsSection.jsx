@@ -4,6 +4,7 @@ export default function GiftCardsSection({
     fieldError,
     canManage,
     giftCardForm,
+    assignGiftCardForm,
     consumeGiftCardForm,
     giftNfcLookupForm,
     giftNfcLookupResult,
@@ -51,6 +52,37 @@ export default function GiftCardsSection({
                     <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('gift_issue')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'gift_issue' ? 'Reading...' : 'Read UID'}</button>
                     <div><label className="ta-field-label">Notes</label><input className="ta-input" value={giftCardForm.data.notes} onChange={(e) => giftCardForm.setData('notes', e.target.value)} />{fieldError(giftCardForm, 'notes')}</div>
                     <button className="ta-btn-primary" disabled={giftCardForm.processing || !canManage}>Issue gift card</button>
+                </form>
+            </section>
+
+            <section className="ta-card p-5">
+                <h3 className="mb-4 text-sm font-semibold text-slate-700">Assign existing gift card to customer</h3>
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        assignGiftCardForm.post(route('loyalty.gift-cards.assign'), {
+                            onSuccess: () => assignGiftCardForm.reset('gift_card_id', 'assigned_customer_id'),
+                        });
+                    }}
+                    className="grid gap-3 md:grid-cols-3"
+                >
+                    <div>
+                        <label className="ta-field-label">Gift card</label>
+                        <select className="ta-input" value={assignGiftCardForm.data.gift_card_id} onChange={(e) => assignGiftCardForm.setData('gift_card_id', e.target.value)} required>
+                            <option value="">Select gift card</option>
+                            {giftCards.map((card) => <option key={card.id} value={card.id}>{card.code} ({card.remaining_value})</option>)}
+                        </select>
+                        {fieldError(assignGiftCardForm, 'gift_card_id')}
+                    </div>
+                    <div>
+                        <label className="ta-field-label">Customer</label>
+                        <select className="ta-input" value={assignGiftCardForm.data.assigned_customer_id} onChange={(e) => assignGiftCardForm.setData('assigned_customer_id', e.target.value)} required>
+                            <option value="">Select customer</option>
+                            {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                        </select>
+                        {fieldError(assignGiftCardForm, 'assigned_customer_id')}
+                    </div>
+                    <button className="ta-btn-primary" disabled={assignGiftCardForm.processing || !canManage}>Assign gift card</button>
                 </form>
             </section>
 
