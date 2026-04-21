@@ -2,7 +2,7 @@ import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
@@ -13,6 +13,11 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
     const [adjustingId, setAdjustingId] = useState(null);
     const [deactivateItemId, setDeactivateItemId] = useState(null);
     const [deactivateBusy, setDeactivateBusy] = useState(false);
+    const [searchText, setSearchText] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('');
+    const [stockFilter, setStockFilter] = useState('all');
+    const [minPrice, setMinPrice] = useState('');
+    const [maxPrice, setMaxPrice] = useState('');
     const importFileRef = useRef(null);
 
     const createForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
@@ -66,6 +71,45 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                 if (importFileRef.current) importFileRef.current.value = '';
             },
         });
+    };
+
+    const categories = useMemo(
+        () => Array.from(new Set((items || []).map((item) => String(item.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+        [items],
+    );
+
+    const filteredItems = useMemo(() => {
+        const q = searchText.trim().toLowerCase();
+        const min = minPrice === '' ? null : Number(minPrice);
+        const max = maxPrice === '' ? null : Number(maxPrice);
+
+        return (items || []).filter((item) => {
+            if (q) {
+                const haystack = `${item.sku || ''} ${item.name || ''} ${item.category || ''}`.toLowerCase();
+                if (!haystack.includes(q)) return false;
+            }
+
+            if (categoryFilter && String(item.category || '').trim() !== categoryFilter) return false;
+
+            if (stockFilter === 'low' && Number(item.stock_quantity) > Number(item.reorder_level)) return false;
+            if (stockFilter === 'in_stock' && Number(item.stock_quantity) <= Number(item.reorder_level)) return false;
+            if (stockFilter === 'active' && !item.is_active) return false;
+            if (stockFilter === 'inactive' && item.is_active) return false;
+
+            const price = Number(item.selling_price || 0);
+            if (min !== null && !Number.isNaN(min) && price < min) return false;
+            if (max !== null && !Number.isNaN(max) && price > max) return false;
+
+            return true;
+        });
+    }, [items, searchText, categoryFilter, stockFilter, minPrice, maxPrice]);
+
+    const clearFilters = () => {
+        setSearchText('');
+        setCategoryFilter('');
+        setStockFilter('all');
+        setMinPrice('');
+        setMaxPrice('');
     };
 
     return (
@@ -124,11 +168,46 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                             <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.export', { entity: 'inventory' }); }}>Export CSV</button>
                         </div>
                     </div>
+                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-6">
+                        <div className="md:col-span-2">
+                            <label className="ta-field-label">Search</label>
+                            <input className="ta-input" placeholder="SKU, item name, category" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Category</label>
+                            <select className="ta-input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                                <option value="">All categories</option>
+                                {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Stock</label>
+                            <select className="ta-input" value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
+                                <option value="all">All items</option>
+                                <option value="low">Low stock</option>
+                                <option value="in_stock">In stock</option>
+                                <option value="active">Active only</option>
+                                <option value="inactive">Inactive only</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Min price</label>
+                            <input className="ta-input" type="number" min="0" step="0.01" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Max price</label>
+                            <input className="ta-input" type="number" min="0" step="0.01" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} />
+                        </div>
+                        <div className="md:col-span-6 flex items-center justify-between">
+                            <p className="text-xs text-slate-500">Showing {filteredItems.length} of {(items || []).length} items</p>
+                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                        </div>
+                    </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Stock</th><th className="px-5 py-3">Reorder</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
                             <tbody>
-                                {items.map((item) => (
+                                {filteredItems.map((item) => (
                                     <tr key={item.id} className="border-t border-slate-100">
                                         <td className="px-5 py-3 font-medium text-slate-700">{item.sku}</td>
                                         <td className="px-5 py-3 text-slate-600">{item.name}</td>
@@ -140,6 +219,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                                         <td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEdit(item)}>Edit</button><button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 disabled:opacity-50" disabled={!canManage} onClick={() => startAdjust(item)}>Adjust</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => setDeactivateItemId(item.id)}>Delete</button></div></td>
                                     </tr>
                                 ))}
+                                {filteredItems.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="8">No items match the selected filters.</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -224,7 +304,6 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
         </AuthenticatedLayout>
     );
 }
-
 
 
 
