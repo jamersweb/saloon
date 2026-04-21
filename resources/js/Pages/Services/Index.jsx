@@ -2,11 +2,12 @@ import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
 export default function ServicesIndex({ services }) {
+    const ROWS_PER_PAGE = 10;
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
     const [deactivateId, setDeactivateId] = useState(null);
@@ -18,6 +19,7 @@ export default function ServicesIndex({ services }) {
     const [maxPrice, setMaxPrice] = useState('');
     const [minDuration, setMinDuration] = useState('');
     const [maxDuration, setMaxDuration] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
 
     const createForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', price: '', is_active: true });
     const editForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', price: '', is_active: true });
@@ -73,6 +75,22 @@ export default function ServicesIndex({ services }) {
             return true;
         });
     }, [services, searchText, categoryFilter, statusFilter, minPrice, maxPrice, minDuration, maxDuration]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredServices.length / ROWS_PER_PAGE));
+    const pagedServices = useMemo(
+        () => filteredServices.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE),
+        [filteredServices, currentPage],
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchText, categoryFilter, statusFilter, minPrice, maxPrice, minDuration, maxDuration]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
 
     const clearFilters = () => {
         setSearchText('');
@@ -149,10 +167,17 @@ export default function ServicesIndex({ services }) {
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Name</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Duration</th><th className="px-5 py-3">Buffer</th><th className="px-5 py-3">Repeat</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
-                            <tbody>{filteredServices.map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{s.name}</td><td className="px-5 py-3 text-slate-600">{s.category || '-'}</td><td className="px-5 py-3 text-slate-600">{s.duration_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.buffer_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.repeat_after_days ? `${s.repeat_after_days}d` : '-'}</td><td className="px-5 py-3 text-slate-600">{s.price}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(s)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => setDeactivateId(s.id)}>Delete</button></div></td></tr>)}
+                            <tbody>{pagedServices.map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{s.name}</td><td className="px-5 py-3 text-slate-600">{s.category || '-'}</td><td className="px-5 py-3 text-slate-600">{s.duration_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.buffer_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.repeat_after_days ? `${s.repeat_after_days}d` : '-'}</td><td className="px-5 py-3 text-slate-600">{s.price}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(s)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => setDeactivateId(s.id)}>Delete</button></div></td></tr>)}
                             {filteredServices.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="8">No services match the selected filters.</td></tr>}
                             </tbody>
                         </table>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
+                        <span>Page {currentPage} of {totalPages}</span>
+                        <div className="flex gap-2">
+                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage <= 1} onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}>Previous</button>
+                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}>Next</button>
+                        </div>
                     </div>
                 </section>
 
@@ -194,7 +219,6 @@ export default function ServicesIndex({ services }) {
         </AuthenticatedLayout>
     );
 }
-
 
 
 

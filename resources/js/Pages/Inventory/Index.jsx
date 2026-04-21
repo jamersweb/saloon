@@ -2,11 +2,12 @@ import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
 export default function InventoryIndex({ items, recentTransactions, openAlerts }) {
+    const ROWS_PER_PAGE = 10;
     const { flash, auth } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_inventory);
     const [editingId, setEditingId] = useState(null);
@@ -18,6 +19,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
     const [stockFilter, setStockFilter] = useState('all');
     const [minPrice, setMinPrice] = useState('');
     const [maxPrice, setMaxPrice] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
     const importFileRef = useRef(null);
 
     const createForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
@@ -103,6 +105,22 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
             return true;
         });
     }, [items, searchText, categoryFilter, stockFilter, minPrice, maxPrice]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredItems.length / ROWS_PER_PAGE));
+    const pagedItems = useMemo(
+        () => filteredItems.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE),
+        [filteredItems, currentPage],
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchText, categoryFilter, stockFilter, minPrice, maxPrice]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
 
     const clearFilters = () => {
         setSearchText('');
@@ -207,7 +225,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Stock</th><th className="px-5 py-3">Reorder</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
                             <tbody>
-                                {filteredItems.map((item) => (
+                                {pagedItems.map((item) => (
                                     <tr key={item.id} className="border-t border-slate-100">
                                         <td className="px-5 py-3 font-medium text-slate-700">{item.sku}</td>
                                         <td className="px-5 py-3 text-slate-600">{item.name}</td>
@@ -222,6 +240,13 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                                 {filteredItems.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="8">No items match the selected filters.</td></tr>}
                             </tbody>
                         </table>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
+                        <span>Page {currentPage} of {totalPages}</span>
+                        <div className="flex gap-2">
+                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage <= 1} onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}>Previous</button>
+                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}>Next</button>
+                        </div>
                     </div>
                 </section>
 
@@ -304,7 +329,6 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
         </AuthenticatedLayout>
     );
 }
-
 
 
 
