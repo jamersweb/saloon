@@ -12,6 +12,7 @@ class CatalogImportSeeder extends Seeder
 {
     private const DEFAULT_XLSX_PATH = 'C:/Users/Hp/OneDrive/Desktop/tut/CRM.xlsx';
     private const DEFAULT_LAKME_JSON_PATH = 'database/data/lakme_pricelist_2026.json';
+    private const DEFAULT_CRM_SNAPSHOT_JSON_PATH = 'database/data/crm_catalog_snapshot.json';
 
     private const DEMO_SERVICE_NAMES = [
         'Luxury Haircut',
@@ -34,17 +35,44 @@ class CatalogImportSeeder extends Seeder
         $path = env('CATALOG_IMPORT_XLSX', self::DEFAULT_XLSX_PATH);
 
         if (! is_file($path)) {
-            $this->command?->warn("Catalog import skipped: file not found at {$path}");
+            $snapshotPath = base_path(self::DEFAULT_CRM_SNAPSHOT_JSON_PATH);
+            if (! is_file($snapshotPath)) {
+                $this->command?->warn("Catalog import skipped: file not found at {$path}");
+                return;
+            }
+
+            $snapshotSheets = $this->readCrmSnapshotJson($snapshotPath);
+            if ($snapshotSheets === []) {
+                $this->command?->warn("Catalog import skipped: unable to read CRM snapshot at {$snapshotPath}");
+                return;
+            }
+
+            $this->importFromSheets($snapshotSheets);
             return;
         }
 
         $sheets = $this->readXlsx($path);
 
         if ($sheets === []) {
+            $snapshotPath = base_path(self::DEFAULT_CRM_SNAPSHOT_JSON_PATH);
+            $snapshotSheets = is_file($snapshotPath) ? $this->readCrmSnapshotJson($snapshotPath) : [];
+            if ($snapshotSheets !== []) {
+                $this->importFromSheets($snapshotSheets);
+                return;
+            }
+
             $this->command?->warn("Catalog import skipped: unable to read {$path}");
             return;
         }
 
+        $this->importFromSheets($sheets);
+    }
+
+    /**
+     * @param array<string, array<int, array<string, string>>> $sheets
+     */
+    private function importFromSheets(array $sheets): void
+    {
         $lakmeData = $this->readLakmeJson(base_path(self::DEFAULT_LAKME_JSON_PATH));
         $services = $this->extractServices($sheets['Sheet1'] ?? []);
         $products = $this->extractProducts($sheets['Sheet2'] ?? [], $lakmeData);
@@ -70,6 +98,25 @@ class CatalogImportSeeder extends Seeder
         }
 
         $this->command?->info("Catalog imported: {$importedServices} services, {$importedProducts} products.");
+    }
+
+    /**
+     * @return array<string, array<int, array<string, string>>>
+     */
+    private function readCrmSnapshotJson(string $path): array
+    {
+        $raw = @file_get_contents($path);
+        if ($raw === false) {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $sheets = $decoded['sheets'] ?? null;
+        return is_array($sheets) ? $sheets : [];
     }
 
     private function removeOldDemoSeedData(): void

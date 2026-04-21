@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\CustomerMembershipCard;
 use App\Models\GiftCard;
 use App\Models\InventoryItem;
+use App\Models\Appointment;
+use App\Models\Customer;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -14,7 +16,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DataTransferController extends Controller
 {
-    private const ALLOWED_ENTITIES = ['users', 'inventory', 'membership_cards', 'gift_cards'];
+    private const ALLOWED_ENTITIES = ['users', 'customers', 'appointments', 'inventory', 'membership_cards', 'gift_cards'];
 
     public function export(Request $request, string $entity): StreamedResponse
     {
@@ -99,6 +101,8 @@ class DataTransferController extends Controller
                 try {
                     $ok = match ($entity) {
                         'users' => $this->importUserRow($row),
+                        'customers' => $this->importCustomerRow($row),
+                        'appointments' => $this->importAppointmentRow($row),
                         'inventory' => $this->importInventoryRow($row),
                         'membership_cards' => $this->importMembershipCardRow($row),
                         'gift_cards' => $this->importGiftCardRow($row),
@@ -136,6 +140,8 @@ class DataTransferController extends Controller
     {
         return match ($entity) {
             'users' => ['name', 'email', 'role_name', 'password'],
+            'customers' => ['name', 'phone', 'email', 'birthday', 'allergies', 'notes', 'acquisition_source', 'is_active'],
+            'appointments' => ['customer_id', 'service_id', 'staff_profile_id', 'status', 'scheduled_start', 'scheduled_end', 'customer_name', 'customer_phone', 'customer_email', 'notes'],
             'inventory' => ['sku', 'name', 'category', 'unit', 'cost_price', 'selling_price', 'stock_quantity', 'reorder_level', 'is_active'],
             'membership_cards' => ['customer_id', 'membership_card_type_id', 'card_number', 'nfc_uid', 'status', 'issued_at', 'activated_at', 'expires_at', 'assigned_by', 'notes'],
             'gift_cards' => ['code', 'nfc_uid', 'assigned_customer_id', 'initial_value', 'remaining_value', 'expires_at', 'status', 'issued_by', 'notes'],
@@ -158,6 +164,36 @@ class DataTransferController extends Controller
                     'email' => $user->email,
                     'role_name' => $user->role?->name,
                     'password' => '',
+                ])
+                ->all(),
+            'customers' => Customer::query()
+                ->orderBy('id')
+                ->get()
+                ->map(fn (Customer $customer) => [
+                    'name' => $customer->name,
+                    'phone' => $customer->phone,
+                    'email' => $customer->email,
+                    'birthday' => $customer->birthday?->format('Y-m-d'),
+                    'allergies' => $customer->allergies,
+                    'notes' => $customer->notes,
+                    'acquisition_source' => $customer->acquisition_source,
+                    'is_active' => $customer->is_active ? 1 : 0,
+                ])
+                ->all(),
+            'appointments' => Appointment::query()
+                ->orderBy('id')
+                ->get()
+                ->map(fn (Appointment $appointment) => [
+                    'customer_id' => $appointment->customer_id,
+                    'service_id' => $appointment->service_id,
+                    'staff_profile_id' => $appointment->staff_profile_id,
+                    'status' => $appointment->status,
+                    'scheduled_start' => $appointment->scheduled_start?->toDateTimeString(),
+                    'scheduled_end' => $appointment->scheduled_end?->toDateTimeString(),
+                    'customer_name' => $appointment->customer_name,
+                    'customer_phone' => $appointment->customer_phone,
+                    'customer_email' => $appointment->customer_email,
+                    'notes' => $appointment->notes,
                 ])
                 ->all(),
             'inventory' => InventoryItem::query()
@@ -307,6 +343,67 @@ class DataTransferController extends Controller
                 'stock_quantity' => (int) ($row['stock_quantity'] ?? 0),
                 'reorder_level' => (int) ($row['reorder_level'] ?? 0),
                 'is_active' => $this->toBool($row['is_active'] ?? '1'),
+            ]
+        );
+
+        return true;
+    }
+
+    /**
+     * @param array<string, string> $row
+     */
+    private function importCustomerRow(array $row): bool
+    {
+        $name = trim((string) ($row['name'] ?? ''));
+        $phone = trim((string) ($row['phone'] ?? ''));
+        if ($name === '' || $phone === '') {
+            return false;
+        }
+
+        Customer::query()->updateOrCreate(
+            ['phone' => $phone],
+            [
+                'customer_code' => Customer::query()->where('phone', $phone)->value('customer_code') ?: ('CUST-' . now()->format('Ymd') . '-' . random_int(1000, 9999)),
+                'name' => $name,
+                'email' => $this->nullable($row['email'] ?? null),
+                'birthday' => $this->nullable($row['birthday'] ?? null),
+                'allergies' => $this->nullable($row['allergies'] ?? null),
+                'notes' => $this->nullable($row['notes'] ?? null),
+                'acquisition_source' => $this->nullable($row['acquisition_source'] ?? null),
+                'is_active' => $this->toBool($row['is_active'] ?? '1'),
+            ]
+        );
+
+        return true;
+    }
+
+    /**
+     * @param array<string, string> $row
+     */
+    private function importAppointmentRow(array $row): bool
+    {
+        $customerId = (int) ($row['customer_id'] ?? 0);
+        $serviceId = (int) ($row['service_id'] ?? 0);
+        $start = $this->nullable($row['scheduled_start'] ?? null);
+        if ($customerId <= 0 || $serviceId <= 0 || $start === null) {
+            return false;
+        }
+
+        Appointment::query()->updateOrCreate(
+            [
+                'customer_id' => $customerId,
+                'service_id' => $serviceId,
+                'scheduled_start' => $start,
+            ],
+            [
+                'staff_profile_id' => $this->toNullableInt($row['staff_profile_id'] ?? null),
+                'status' => $this->nullable($row['status'] ?? null) ?? Appointment::STATUS_CONFIRMED,
+                'scheduled_end' => $this->nullable($row['scheduled_end'] ?? null),
+                'customer_name' => $this->nullable($row['customer_name'] ?? null),
+                'customer_phone' => $this->nullable($row['customer_phone'] ?? null),
+                'customer_email' => $this->nullable($row['customer_email'] ?? null),
+                'notes' => $this->nullable($row['notes'] ?? null),
+                'source' => 'import',
             ]
         );
 

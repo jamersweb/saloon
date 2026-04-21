@@ -124,6 +124,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [editEndManuallySet, setEditEndManuallySet] = useState(true);
     const [deleteAppointmentId, setDeleteAppointmentId] = useState(null);
     const [deleteAppointmentBusy, setDeleteAppointmentBusy] = useState(false);
+    const importFileRef = useRef(null);
     const [checkoutFlow, setCheckoutFlow] = useState('draft');
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
 
@@ -374,6 +375,17 @@ export default function AppointmentsIndex({ appointments, services, customers = 
 
     const changeFilter = (value) => router.get(route('appointments.index'), { status: value || undefined }, { preserveState: true, replace: true });
     const transition = (id, nextStatus) => router.patch(route('appointments.transition', id), { status: nextStatus });
+    const handleAppointmentsImport = (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        router.post(route('data-transfer.import', { entity: 'appointments' }), { csv_file: file }, {
+            forceFormData: true,
+            preserveScroll: true,
+            onFinish: () => {
+                if (importFileRef.current) importFileRef.current.value = '';
+            },
+        });
+    };
 
     const updateProductRow = (index, field, value) => {
         completeForm.setData('products', completeForm.data.products.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
@@ -393,6 +405,14 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         <AuthenticatedLayout header="Appointments">
             <Head title="Appointments" />
             <div className="space-y-6">
+                <section className="ta-card p-3">
+                    <div className="flex items-center gap-2">
+                        <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleAppointmentsImport} />
+                        <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => importFileRef.current?.click()}>Import CSV</button>
+                        <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.template', { entity: 'appointments' }); }}>Template CSV</button>
+                        <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.export', { entity: 'appointments' }); }}>Export CSV</button>
+                    </div>
+                </section>
                 {flash?.created_tax_invoice_id ? (
                     <div className="ta-card flex flex-wrap items-center justify-between gap-3 border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
                         <span>Tax invoice is ready for this visit — open it to adjust lines, issue the receipt, or record payment.</span>

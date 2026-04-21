@@ -1,6 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : 'N/A';
@@ -9,6 +9,7 @@ const formatCurrency = (value) => value === null || value === undefined ? 'N/A' 
 
 export default function CustomersIndex({ customers, selectedCustomer, history, filters, acquisitionSources }) {
     const { flash } = usePage().props;
+    const importFileRef = useRef(null);
 
     const createForm = useForm({ name: '', phone: '', email: '', birthday: '', allergies: '', notes: '', acquisition_source: '' });
     const editForm = useForm({
@@ -36,6 +37,17 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
 
     const search = (q) => router.get(route('customers.index'), { q }, { preserveState: true, replace: true });
     const openCustomer = (id) => router.get(route('customers.index'), { q: filters?.q || '', customer_id: id }, { preserveState: true });
+    const handleCustomersImport = (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        router.post(route('data-transfer.import', { entity: 'customers' }), { csv_file: file }, {
+            forceFormData: true,
+            preserveScroll: true,
+            onFinish: () => {
+                if (importFileRef.current) importFileRef.current.value = '';
+            },
+        });
+    };
 
     return (
         <AuthenticatedLayout header="Customer CRM">
@@ -44,6 +56,12 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
             <div className="space-y-6 lg:grid lg:grid-cols-3 lg:gap-6 lg:space-y-0">
                 <section className="ta-card p-5">
                     {flash?.status && <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
+                    <div className="mb-4 flex items-center gap-2">
+                        <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleCustomersImport} />
+                        <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => importFileRef.current?.click()}>Import CSV</button>
+                        <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.template', { entity: 'customers' }); }}>Template CSV</button>
+                        <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.export', { entity: 'customers' }); }}>Export CSV</button>
+                    </div>
 
                     <input className="ta-input mb-4" defaultValue={filters?.q || ''} placeholder="Search name / phone / code" onChange={(e) => search(e.target.value)} />
 
