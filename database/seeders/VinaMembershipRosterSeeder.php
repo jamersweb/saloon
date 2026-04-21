@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Models\Customer;
 use App\Models\CustomerMembershipCard;
 use App\Models\MembershipCardType;
-use App\Services\MembershipCardService;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 
@@ -29,8 +28,6 @@ class VinaMembershipRosterSeeder extends Seeder
             return;
         }
 
-        $service = app(MembershipCardService::class);
-
         foreach ($this->rosterRows() as $index => $row) {
             $seq = $index + 1;
             $digits = $this->cardDigitsForSequence($seq);
@@ -48,11 +45,10 @@ class VinaMembershipRosterSeeder extends Seeder
                 ],
             );
 
-            if (CustomerMembershipCard::query()->where('card_number', $digits)->exists()) {
-                continue;
-            }
-
             $issuedAt = Carbon::parse($row['membership_start']);
+            $expiresAt = $type->validity_days
+                ? $issuedAt->copy()->addDays((int) $type->validity_days)
+                : null;
 
             $cardNotes = trim(sprintf(
                 'Membership ref: %s | Package: %s | Initial purchase: %s',
@@ -61,10 +57,20 @@ class VinaMembershipRosterSeeder extends Seeder
                 $row['purchase_amount'],
             ));
 
-            $service->assignCard($customer, $type, null, [
+            CustomerMembershipCard::query()
+                ->where('customer_id', $customer->id)
+                ->where('status', 'active')
+                ->where('card_number', '!=', $digits)
+                ->update(['status' => 'inactive']);
+
+            CustomerMembershipCard::query()->updateOrCreate([
                 'card_number' => $digits,
+            ], [
+                'customer_id' => $customer->id,
+                'membership_card_type_id' => $type->id,
                 'issued_at' => $issuedAt,
                 'activated_at' => $issuedAt,
+                'expires_at' => $expiresAt,
                 'status' => 'active',
                 'notes' => $cardNotes,
             ]);
