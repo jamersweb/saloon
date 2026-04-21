@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 export default function MembershipCardsSection({
     fieldError,
@@ -25,9 +25,13 @@ export default function MembershipCardsSection({
     importCsv,
     exportCsv,
 }) {
+    const ROWS_PER_PAGE = 10;
     const importFileRef = useRef(null);
     const [membershipCardTypeFilter, setMembershipCardTypeFilter] = useState('');
     const [selectedMembershipCardId, setSelectedMembershipCardId] = useState(null);
+    const [cardTypesPage, setCardTypesPage] = useState(1);
+    const [nfcRegistryPage, setNfcRegistryPage] = useState(1);
+    const [membershipCustomersPage, setMembershipCustomersPage] = useState(1);
 
     const pointsByCustomerId = useMemo(() => {
         const map = {};
@@ -44,6 +48,45 @@ export default function MembershipCardsSection({
         }
         return rows.filter((card) => String(card.membership_card_type_id) === String(membershipCardTypeFilter));
     }, [membershipCards, membershipCardTypeFilter]);
+
+    const cardTypesTotalPages = Math.max(1, Math.ceil((cardTypes || []).length / ROWS_PER_PAGE));
+    const nfcRegistryTotalPages = Math.max(1, Math.ceil((membershipCards || []).length / ROWS_PER_PAGE));
+    const membershipCustomersTotalPages = Math.max(1, Math.ceil(membershipCustomers.length / ROWS_PER_PAGE));
+
+    const cardTypesPageRows = useMemo(
+        () => (cardTypes || []).slice((cardTypesPage - 1) * ROWS_PER_PAGE, cardTypesPage * ROWS_PER_PAGE),
+        [cardTypes, cardTypesPage],
+    );
+    const nfcRegistryPageRows = useMemo(
+        () => (membershipCards || []).slice((nfcRegistryPage - 1) * ROWS_PER_PAGE, nfcRegistryPage * ROWS_PER_PAGE),
+        [membershipCards, nfcRegistryPage],
+    );
+    const membershipCustomersPageRows = useMemo(
+        () => membershipCustomers.slice((membershipCustomersPage - 1) * ROWS_PER_PAGE, membershipCustomersPage * ROWS_PER_PAGE),
+        [membershipCustomers, membershipCustomersPage],
+    );
+
+    useEffect(() => {
+        setMembershipCustomersPage(1);
+    }, [membershipCardTypeFilter]);
+
+    useEffect(() => {
+        if (cardTypesPage > cardTypesTotalPages) {
+            setCardTypesPage(cardTypesTotalPages);
+        }
+    }, [cardTypesPage, cardTypesTotalPages]);
+
+    useEffect(() => {
+        if (nfcRegistryPage > nfcRegistryTotalPages) {
+            setNfcRegistryPage(nfcRegistryTotalPages);
+        }
+    }, [nfcRegistryPage, nfcRegistryTotalPages]);
+
+    useEffect(() => {
+        if (membershipCustomersPage > membershipCustomersTotalPages) {
+            setMembershipCustomersPage(membershipCustomersTotalPages);
+        }
+    }, [membershipCustomersPage, membershipCustomersTotalPages]);
 
     const selectedMembershipCard = useMemo(
         () => (membershipCards || []).find((card) => String(card.id) === String(selectedMembershipCardId)) || null,
@@ -94,6 +137,16 @@ export default function MembershipCardsSection({
         window.open(url, '_blank', 'noopener,noreferrer');
     };
 
+    const renderPager = (page, totalPages, setPage) => (
+        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
+            <span>Page {page} of {totalPages}</span>
+            <div className="flex gap-2">
+                <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Previous</button>
+                <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={page >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>Next</button>
+            </div>
+        </div>
+    );
+
     return (
         <div className="space-y-6">
             <section className="ta-card p-4">
@@ -132,9 +185,10 @@ export default function MembershipCardsSection({
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Name</th><th className="px-5 py-3">Kind</th><th className="px-5 py-3">Min points</th><th className="px-5 py-3">Validity</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
-                        <tbody>{cardTypes.map((cardType) => <tr key={cardType.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{cardType.name}</td><td className="px-5 py-3 text-slate-600">{cardType.kind}</td><td className="px-5 py-3 text-slate-600">{cardType.min_points}</td><td className="px-5 py-3 text-slate-600">{cardType.validity_days ? `${cardType.validity_days} days` : 'No expiry'}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${cardType.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{cardType.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700" onClick={() => startEditCardType(cardType)}>Edit</button></td></tr>)}</tbody>
+                        <tbody>{cardTypesPageRows.map((cardType) => <tr key={cardType.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{cardType.name}</td><td className="px-5 py-3 text-slate-600">{cardType.kind}</td><td className="px-5 py-3 text-slate-600">{cardType.min_points}</td><td className="px-5 py-3 text-slate-600">{cardType.validity_days ? `${cardType.validity_days} days` : 'No expiry'}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${cardType.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{cardType.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700" onClick={() => startEditCardType(cardType)}>Edit</button></td></tr>)}</tbody>
                     </table>
                 </div>
+                {renderPager(cardTypesPage, cardTypesTotalPages, setCardTypesPage)}
             </section>
 
             {editingCardTypeId && (
@@ -227,9 +281,10 @@ export default function MembershipCardsSection({
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Card</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">NFC UID</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
-                        <tbody>{membershipCards.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.customer_id == null ? <span className="text-amber-700">Inventory (unassigned)</span> : card.customer_name}<div className="text-xs text-slate-500">{card.customer_id == null ? '—' : card.customer_phone || 'No phone'}</div></td><td className="px-5 py-3 text-slate-600">{card.card_number || '—'}</td><td className="px-5 py-3 text-slate-600">{card.card_type_name}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex gap-2"><button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => copyNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Copy NFC URL</button><button type="button" className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => openNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Open NFC URL</button></div></td></tr>)}</tbody>
+                        <tbody>{nfcRegistryPageRows.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.customer_id == null ? <span className="text-amber-700">Inventory (unassigned)</span> : card.customer_name}<div className="text-xs text-slate-500">{card.customer_id == null ? '—' : card.customer_phone || 'No phone'}</div></td><td className="px-5 py-3 text-slate-600">{card.card_number || '—'}</td><td className="px-5 py-3 text-slate-600">{card.card_type_name}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex gap-2"><button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => copyNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Copy NFC URL</button><button type="button" className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => openNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Open NFC URL</button></div></td></tr>)}</tbody>
                     </table>
                 </div>
+                {renderPager(nfcRegistryPage, nfcRegistryTotalPages, setNfcRegistryPage)}
             </section>
 
             <section className="ta-card overflow-hidden">
@@ -247,7 +302,7 @@ export default function MembershipCardsSection({
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Membership ID</th><th className="px-5 py-3">Member Full Name</th><th className="px-5 py-3">Card Number</th><th className="px-5 py-3">Membership Start</th><th className="px-5 py-3">Card Type</th><th className="px-5 py-3">Points Balance</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Notes</th></tr></thead>
                         <tbody>
                             {membershipCustomers.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="10">No membership customers found for this filter.</td></tr>}
-                            {membershipCustomers.map((card) => (
+                            {membershipCustomersPageRows.map((card) => (
                                 <tr
                                     key={card.id}
                                     className={`cursor-pointer border-t border-slate-100 ${String(selectedMembershipCardId) === String(card.id) ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
@@ -268,6 +323,7 @@ export default function MembershipCardsSection({
                         </tbody>
                     </table>
                 </div>
+                {renderPager(membershipCustomersPage, membershipCustomersTotalPages, setMembershipCustomersPage)}
             </section>
 
             {selectedMembershipCard && (
@@ -308,3 +364,4 @@ export default function MembershipCardsSection({
         </div>
     );
 }
+
