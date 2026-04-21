@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 export default function MembershipCardsSection({
     fieldError,
@@ -18,11 +18,57 @@ export default function MembershipCardsSection({
     assignCardForm,
     nfcLookupForm,
     nfcBindForm,
+    recentLedgers,
+    recentRedemptions,
+    appointmentsForRedeem,
     readUidFromBridge,
     importCsv,
     exportCsv,
 }) {
     const importFileRef = useRef(null);
+    const [membershipCardTypeFilter, setMembershipCardTypeFilter] = useState('');
+    const [selectedMembershipCardId, setSelectedMembershipCardId] = useState(null);
+
+    const pointsByCustomerId = useMemo(() => {
+        const map = {};
+        (customers || []).forEach((customer) => {
+            map[String(customer.id)] = customer.points || 0;
+        });
+        return map;
+    }, [customers]);
+
+    const membershipCustomers = useMemo(() => {
+        const rows = (membershipCards || []).filter((card) => card.customer_id != null);
+        if (!membershipCardTypeFilter) {
+            return rows;
+        }
+        return rows.filter((card) => String(card.membership_card_type_id) === String(membershipCardTypeFilter));
+    }, [membershipCards, membershipCardTypeFilter]);
+
+    const selectedMembershipCard = useMemo(
+        () => (membershipCards || []).find((card) => String(card.id) === String(selectedMembershipCardId)) || null,
+        [membershipCards, selectedMembershipCardId],
+    );
+
+    const selectedCustomerId = selectedMembershipCard?.customer_id ? String(selectedMembershipCard.customer_id) : null;
+    const selectedUsageHistory = useMemo(() => {
+        if (!selectedCustomerId) return [];
+        return (appointmentsForRedeem || [])
+            .filter((appointment) => String(appointment.customer_id) === selectedCustomerId)
+            .slice(0, 10);
+    }, [appointmentsForRedeem, selectedCustomerId]);
+    const selectedPointsHistory = useMemo(() => {
+        if (!selectedCustomerId) return [];
+        return (recentLedgers || [])
+            .filter((entry) => String(entry.customer_id) === selectedCustomerId)
+            .slice(0, 10);
+    }, [recentLedgers, selectedCustomerId]);
+    const selectedRewardsHistory = useMemo(() => {
+        if (!selectedCustomerId) return [];
+        return (recentRedemptions || [])
+            .filter((entry) => String(entry.customer_id) === selectedCustomerId)
+            .slice(0, 10);
+    }, [recentRedemptions, selectedCustomerId]);
 
     const copyNfcPortalUrl = async (nfcUid) => {
         if (!nfcUid) {
@@ -197,6 +243,80 @@ export default function MembershipCardsSection({
                     </table>
                 </div>
             </section>
+
+            <section className="ta-card overflow-hidden">
+                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                    <h3 className="text-sm font-semibold text-slate-700">Membership Customers</h3>
+                    <div className="w-64 max-w-full">
+                        <select className="ta-input" value={membershipCardTypeFilter} onChange={(e) => setMembershipCardTypeFilter(e.target.value)}>
+                            <option value="">All card types</option>
+                            {cardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}
+                        </select>
+                    </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Membership ID</th><th className="px-5 py-3">Member Full Name</th><th className="px-5 py-3">Card Number</th><th className="px-5 py-3">Membership Start</th><th className="px-5 py-3">Card Type</th><th className="px-5 py-3">Points Balance</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Notes</th></tr></thead>
+                        <tbody>
+                            {membershipCustomers.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="10">No membership customers found for this filter.</td></tr>}
+                            {membershipCustomers.map((card) => (
+                                <tr
+                                    key={card.id}
+                                    className={`cursor-pointer border-t border-slate-100 ${String(selectedMembershipCardId) === String(card.id) ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
+                                    onClick={() => setSelectedMembershipCardId(card.id)}
+                                >
+                                    <td className="px-5 py-3 text-slate-700">{card.id}</td>
+                                    <td className="px-5 py-3 text-slate-700">{card.customer_name}</td>
+                                    <td className="px-5 py-3 text-slate-600">{card.card_number || '-'}</td>
+                                    <td className="px-5 py-3 text-slate-600">{card.activated_at ? new Date(card.activated_at).toLocaleDateString() : (card.issued_at ? new Date(card.issued_at).toLocaleDateString() : '-')}</td>
+                                    <td className="px-5 py-3 text-slate-600">{card.card_type_name || '-'}</td>
+                                    <td className="px-5 py-3 text-slate-600">{pointsByCustomerId[String(card.customer_id)] ?? 0}</td>
+                                    <td className="px-5 py-3 text-slate-600">{card.status}</td>
+                                    <td className="px-5 py-3 text-slate-600">{card.customer_phone || '-'}</td>
+                                    <td className="px-5 py-3 text-slate-600">{card.customer_email || '-'}</td>
+                                    <td className="px-5 py-3 text-slate-600">{card.notes || '-'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            {selectedMembershipCard && (
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Card & Customer Details</h3>
+                    <div className="mb-4 grid gap-3 md:grid-cols-4">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"><div className="text-xs text-slate-500">Member</div><div className="font-medium text-slate-800">{selectedMembershipCard.customer_name}</div></div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"><div className="text-xs text-slate-500">Card</div><div className="font-medium text-slate-800">{selectedMembershipCard.card_number || '-'}</div></div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"><div className="text-xs text-slate-500">Card Type</div><div className="font-medium text-slate-800">{selectedMembershipCard.card_type_name || '-'}</div></div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"><div className="text-xs text-slate-500">Points Balance</div><div className="font-medium text-slate-800">{pointsByCustomerId[String(selectedMembershipCard.customer_id)] ?? 0}</div></div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <div className="rounded-lg border border-slate-200">
+                            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Usage History</div>
+                            <div className="max-h-64 overflow-auto p-3 text-sm">
+                                {selectedUsageHistory.length === 0 && <div className="text-slate-500">No usage history found.</div>}
+                                {selectedUsageHistory.map((row) => <div key={row.id} className="mb-2 rounded border border-slate-100 p-2 text-slate-700">{row.label}</div>)}
+                            </div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200">
+                            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Rewards History</div>
+                            <div className="max-h-64 overflow-auto p-3 text-sm">
+                                {selectedRewardsHistory.length === 0 && <div className="text-slate-500">No rewards history found.</div>}
+                                {selectedRewardsHistory.map((row) => <div key={row.id} className="mb-2 rounded border border-slate-100 p-2 text-slate-700">{row.reward_name} ({row.points_spent} pts)</div>)}
+                            </div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200">
+                            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Points Activity</div>
+                            <div className="max-h-64 overflow-auto p-3 text-sm">
+                                {selectedPointsHistory.length === 0 && <div className="text-slate-500">No points activity found.</div>}
+                                {selectedPointsHistory.map((row) => <div key={row.id} className="mb-2 rounded border border-slate-100 p-2 text-slate-700">{row.reason}: {row.points_change > 0 ? `+${row.points_change}` : row.points_change} (balance {row.balance_after})</div>)}
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            )}
         </div>
     );
 }

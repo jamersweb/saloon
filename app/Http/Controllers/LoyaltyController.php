@@ -81,7 +81,7 @@ class LoyaltyController extends Controller
             'cardTypes' => $cardTypes,
             'packages' => ServicePackage::query()->orderBy('name')->get(),
             'membershipCards' => CustomerMembershipCard::query()
-                ->with(['customer:id,name,phone', 'type:id,name'])
+                ->with(['customer:id,name,phone,email', 'type:id,name'])
                 ->latest()
                 ->limit(200)
                 ->get()
@@ -90,10 +90,16 @@ class LoyaltyController extends Controller
                     'customer_id' => $card->customer_id,
                     'customer_name' => $card->customer?->name,
                     'customer_phone' => $card->customer?->phone,
+                    'customer_email' => $card->customer?->email,
+                    'membership_card_type_id' => $card->membership_card_type_id,
                     'card_type_name' => $card->type?->name,
                     'card_number' => $card->card_number,
                     'nfc_uid' => $card->nfc_uid,
                     'status' => $card->status,
+                    'issued_at' => $card->issued_at,
+                    'activated_at' => $card->activated_at,
+                    'expires_at' => $card->expires_at,
+                    'notes' => $card->notes,
                 ]),
             'nfcLookupResult' => $request->session()->get('nfc_lookup'),
             'giftNfcLookupResult' => $request->session()->get('gift_nfc_lookup'),
@@ -141,6 +147,7 @@ class LoyaltyController extends Controller
                 ->get()
                 ->map(fn (CustomerLoyaltyLedger $entry) => [
                     'id' => $entry->id,
+                    'customer_id' => $entry->customer_id,
                     'customer_name' => $entry->customer?->name,
                     'points_change' => $entry->points_change,
                     'balance_after' => $entry->balance_after,
@@ -166,6 +173,7 @@ class LoyaltyController extends Controller
                 ->get()
                 ->map(fn (LoyaltyRedemption $redemption) => [
                     'id' => $redemption->id,
+                    'customer_id' => $redemption->customer_id,
                     'customer_name' => $redemption->customer?->name,
                     'reward_name' => $redemption->reward?->name,
                     'points_spent' => $redemption->points_spent,

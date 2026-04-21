@@ -298,6 +298,9 @@ export default function LoyaltyIndex({
                         assignCardForm={assignCardForm}
                         nfcLookupForm={nfcLookupForm}
                         nfcBindForm={nfcBindForm}
+                        recentLedgers={recentLedgers}
+                        recentRedemptions={recentRedemptions}
+                        appointmentsForRedeem={appointmentsForRedeem}
                         readUidFromBridge={readUidFromBridge}
                         importCsv={importCsv}
                         exportCsv={exportCsv}
