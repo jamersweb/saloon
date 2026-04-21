@@ -137,7 +137,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                                         <td className="px-5 py-3 text-slate-600">{item.reorder_level}</td>
                                         <td className="px-5 py-3 text-slate-600">{item.selling_price}</td>
                                         <td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{item.is_active ? 'Active' : 'Inactive'}</span></td>
-                                        <td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEdit(item)}>Edit</button><button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 disabled:opacity-50" disabled={!canManage} onClick={() => startAdjust(item)}>Adjust</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => setDeactivateItemId(item.id)}>Deactivate</button></div></td>
+                                        <td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEdit(item)}>Edit</button><button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 disabled:opacity-50" disabled={!canManage} onClick={() => startAdjust(item)}>Adjust</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => setDeactivateItemId(item.id)}>Delete</button></div></td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -183,9 +183,9 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
 
                 <ConfirmActionModal
                     show={Boolean(deactivateItemId)}
-                    title="Deactivate this inventory item?"
-                    message="It will be hidden from selection lists. Stock history is preserved."
-                    confirmText="Deactivate"
+                    title="Delete this inventory item?"
+                    message="The item will be hidden from selection lists. Stock history is preserved."
+                    confirmText="Delete"
                     onClose={() => !deactivateBusy && setDeactivateItemId(null)}
                     processing={deactivateBusy}
                     onConfirm={() => {
@@ -224,7 +224,6 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
         </AuthenticatedLayout>
     );
 }
-
 
 
 

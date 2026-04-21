@@ -67,11 +67,26 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
 
                     <div className="mb-5 max-h-72 overflow-auto rounded-xl border border-slate-200">
                         {customers.map((c) => (
-                            <button key={c.id} className={`block w-full border-b border-slate-100 p-3 text-left text-sm ${selectedCustomer?.id === c.id ? 'bg-indigo-50' : 'hover:bg-slate-50'}`} onClick={() => openCustomer(c.id)} type="button">
-                                <div className="font-semibold text-slate-700">{c.name}</div>
-                                <div className="text-xs text-slate-500">{c.phone} {c.customer_code ? `| ${c.customer_code}` : ''}</div>
-                                <div className="mt-1 text-xs text-slate-400">Points: {c.points} | Card: {c.current_card || 'None'}</div>
-                            </button>
+                            <div key={c.id} className={`border-b border-slate-100 p-3 ${selectedCustomer?.id === c.id ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
+                                <button className="block w-full text-left text-sm" onClick={() => openCustomer(c.id)} type="button">
+                                    <div className="font-semibold text-slate-700">{c.name}</div>
+                                    <div className="text-xs text-slate-500">{c.phone} {c.customer_code ? `| ${c.customer_code}` : ''}</div>
+                                    <div className="mt-1 text-xs text-slate-400">Points: {c.points} | Card: {c.current_card || 'None'}</div>
+                                </button>
+                                <div className="mt-2">
+                                    <button
+                                        type="button"
+                                        className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!window.confirm(`Delete customer "${c.name}"? This will hide them from customer lists.`)) return;
+                                            router.delete(route('customers.destroy', c.id));
+                                        }}
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
                         ))}
                     </div>
 
