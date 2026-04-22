@@ -18,7 +18,6 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -472,9 +471,7 @@ class CrmAutomationController extends Controller
 
     private function resolveRuleCustomerIds(CustomerSegmentRule $rule)
     {
-        $customerCreatedAtExpr = Schema::hasColumn('customers', 'created_at')
-            ? 'customers.created_at'
-            : "'1970-01-01 00:00:00'";
+        $customerCreatedAtExpr = "'1970-01-01 00:00:00'";
 
         return match ($rule->criteria) {
             'inactivity_days' => Customer::query()
