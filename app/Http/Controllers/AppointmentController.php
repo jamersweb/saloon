@@ -83,7 +83,7 @@ class AppointmentController extends Controller
 
         return Inertia::render('Appointments/Index', [
             'appointments' => $appointments,
-            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes', 'buffer_minutes']),
+            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'category', 'price', 'duration_minutes', 'buffer_minutes']),
             'customers' => Customer::query()
                 ->where('is_active', true)
                 ->orderBy('name')
@@ -102,7 +102,7 @@ class AppointmentController extends Controller
             'inventoryItems' => InventoryItem::query()
                 ->where('is_active', true)
                 ->orderBy('name')
-                ->get(['id', 'name', 'sku', 'unit']),
+                ->get(['id', 'name', 'sku', 'unit', 'selling_price']),
             'statusFilter' => $status,
             'bookingRules' => $rules,
             'defaultStart' => $rules->nextDefaultAppointmentStart(),
@@ -134,12 +134,14 @@ class AppointmentController extends Controller
             if ($salonError = $availabilityService->validateSalonHours($plan['start'], $plan['end'])) {
                 return back()->withErrors(['scheduled_start' => $salonError])->withInput();
             }
-            if (! empty($data['staff_profile_id'])) {
-                $staffAvailabilityError = $availabilityService->validateStaffAvailability((int) $data['staff_profile_id'], $plan['start'], $plan['end']);
-                if ($staffAvailabilityError) {
-                    return back()->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
-                }
-            }
+        }
+
+        if (! empty($data['staff_profile_id']) || count($servicePlans) > 1) {
+            $servicePlans = $this->attachStaffAssignments(
+                $servicePlans,
+                ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null,
+                $availabilityService
+            );
         }
 
         $customer = $this->resolveCustomer(
@@ -154,6 +156,7 @@ class AppointmentController extends Controller
                 $created[] = Appointment::create([
                     ...$data,
                     'service_id' => $plan['service']->id,
+                    'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                     'customer_id' => $customer->id,
                     'booked_by' => $request->user()?->id,
                     'scheduled_start' => $plan['start'],
@@ -196,13 +199,15 @@ class AppointmentController extends Controller
             if ($salonError = $availabilityService->validateSalonHours($plan['start'], $plan['end'])) {
                 return back()->withErrors(['scheduled_start' => $salonError])->withInput();
             }
-            if (! empty($data['staff_profile_id'])) {
-                $ignoreAppointmentId = $idx === 0 ? $appointment->id : null;
-                $staffAvailabilityError = $availabilityService->validateStaffAvailability((int) $data['staff_profile_id'], $plan['start'], $plan['end'], $ignoreAppointmentId);
-                if ($staffAvailabilityError) {
-                    return back()->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
-                }
-            }
+        }
+
+        if (! empty($data['staff_profile_id']) || count($servicePlans) > 1) {
+            $servicePlans = $this->attachStaffAssignments(
+                $servicePlans,
+                ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null,
+                $availabilityService,
+                $appointment->id
+            );
         }
 
         $customer = $this->resolveCustomer(
@@ -216,6 +221,7 @@ class AppointmentController extends Controller
             $appointment->update([
                 ...$data,
                 'service_id' => $first['service']->id,
+                'staff_profile_id' => $first['staff_profile_id'] ?? null,
                 'customer_id' => $customer->id,
                 'scheduled_start' => $first['start'],
                 'scheduled_end' => $first['end'],
@@ -227,6 +233,7 @@ class AppointmentController extends Controller
                     Appointment::create([
                         ...$data,
                         'service_id' => $plan['service']->id,
+                        'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                         'customer_id' => $customer->id,
                         'booked_by' => $appointment->booked_by ?? request()->user()?->id,
                         'scheduled_start' => $plan['start'],
@@ -656,6 +663,98 @@ class AppointmentController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @param array<int, array{service: SalonService, start: Carbon, end: Carbon}> $servicePlans
+     * @return array<int, array{service: SalonService, start: Carbon, end: Carbon, staff_profile_id: int|null}>
+     */
+    private function attachStaffAssignments(array $servicePlans, ?int $selectedStaffId, BookingAvailabilityService $availabilityService, ?int $firstPlanIgnoreAppointmentId = null): array
+    {
+        $plansWithStaff = [];
+
+        foreach ($servicePlans as $index => $plan) {
+            $ignoreAppointmentId = $index === 0 ? $firstPlanIgnoreAppointmentId : null;
+
+            if ($selectedStaffId !== null) {
+                $availabilityError = $availabilityService->validateStaffAvailability($selectedStaffId, $plan['start'], $plan['end'], $ignoreAppointmentId);
+                if ($availabilityError) {
+                    throw ValidationException::withMessages(['staff_profile_id' => $availabilityError]);
+                }
+
+                $plan['staff_profile_id'] = $selectedStaffId;
+                $plansWithStaff[] = $plan;
+                continue;
+            }
+
+            $autoAssignedStaffId = $this->findAvailableStaffByServiceCategory(
+                $plan['service'],
+                $plan['start'],
+                $plan['end'],
+                $availabilityService,
+                $ignoreAppointmentId
+            );
+
+            if ($autoAssignedStaffId === null) {
+                throw ValidationException::withMessages([
+                    'staff_profile_id' => 'No available staff found for '.$plan['service']->name.' at the selected time.',
+                ]);
+            }
+
+            $plan['staff_profile_id'] = $autoAssignedStaffId;
+            $plansWithStaff[] = $plan;
+        }
+
+        return $plansWithStaff;
+    }
+
+    private function findAvailableStaffByServiceCategory(SalonService $service, Carbon $start, Carbon $end, BookingAvailabilityService $availabilityService, ?int $ignoreAppointmentId = null): ?int
+    {
+        $staffProfiles = StaffProfile::query()
+            ->where('is_active', true)
+            ->orderBy('employee_code')
+            ->get(['id', 'skills']);
+
+        $normalizedCategory = $this->normalizeStaffSkill((string) ($service->category ?? ''));
+
+        $matchingStaff = $staffProfiles
+            ->filter(function (StaffProfile $staff) use ($normalizedCategory): bool {
+                if ($normalizedCategory === '') {
+                    return false;
+                }
+
+                $skills = is_array($staff->skills) ? $staff->skills : [];
+                foreach ($skills as $skill) {
+                    $normalizedSkill = $this->normalizeStaffSkill((string) $skill);
+                    if ($normalizedSkill === '') {
+                        continue;
+                    }
+                    if ($normalizedSkill === $normalizedCategory || str_contains($normalizedSkill, $normalizedCategory) || str_contains($normalizedCategory, $normalizedSkill)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })
+            ->values();
+
+        $candidateStaff = $matchingStaff->isNotEmpty() ? $matchingStaff : $staffProfiles;
+
+        foreach ($candidateStaff as $staff) {
+            $availabilityError = $availabilityService->validateStaffAvailability((int) $staff->id, $start, $end, $ignoreAppointmentId);
+            if (! $availabilityError) {
+                return (int) $staff->id;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeStaffSkill(string $value): string
+    {
+        $normalized = strtolower(trim($value));
+
+        return preg_replace('/[^a-z0-9]+/', '', $normalized) ?? '';
     }
 
     private function resolveCustomer(string $name, string $phone, ?string $email): Customer

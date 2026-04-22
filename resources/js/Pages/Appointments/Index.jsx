@@ -38,6 +38,7 @@ const toDateTimeLocal = (value) => {
     return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 };
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : 'N/A';
+const formatMoney = (value) => Number(value || 0).toFixed(2);
 const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
 const salonClockBoundary = (bookingRules, key, fallback) => {
@@ -413,6 +414,27 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editEndSalonBounds = salonSelectableBoundsForYmd(editEndYmd, bookingRules, slotIntervalMinutes);
     const editingAppt = appointments.find((a) => String(a.id) === String(editingId));
     const editStartDefault = editingAppt ? toDateTimeLocal(editingAppt.scheduled_start) : (editForm.data.scheduled_start || '');
+    const completingAppt = appointments.find((a) => String(a.id) === String(completeServiceId));
+    const completingService = services.find((s) => String(s.id) === String(completingAppt?.service_id));
+    const completingServiceAmount = Number(completingService?.price || 0);
+    const selectedProductLines = (completeForm.data.products || [])
+        .map((row) => {
+            const item = inventoryItems.find((inv) => String(inv.id) === String(row.inventory_item_id));
+            const quantity = Math.max(1, Number(row.quantity || 1));
+            const unitPrice = Number(item?.selling_price || 0);
+            const lineTotal = quantity * unitPrice;
+
+            return {
+                inventory_item_id: row.inventory_item_id,
+                label: item ? `${item.name}${item.sku ? ` (${item.sku})` : ''}` : 'Unknown item',
+                quantity,
+                unitPrice,
+                lineTotal,
+            };
+        })
+        .filter((line) => String(line.inventory_item_id || '') !== '');
+    const selectedProductsAmount = selectedProductLines.reduce((sum, line) => sum + line.lineTotal, 0);
+    const previewTotalAmount = completingServiceAmount + selectedProductsAmount;
 
     return (
         <AuthenticatedLayout header="Appointments">
@@ -875,6 +897,26 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 {fieldError(completeForm, 'checkout_gift_card_id')}
                                             </div>
                                         ) : null}
+                                        <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                                            <div className="flex items-center justify-between">
+                                                <span>Service ({completingService?.name || 'Selected service'})</span>
+                                                <span className="font-medium">{formatMoney(completingServiceAmount)}</span>
+                                            </div>
+                                            {selectedProductLines.length > 0 ? (
+                                                selectedProductLines.map((line, idx) => (
+                                                    <div key={`${line.inventory_item_id}-${idx}`} className="mt-1 flex items-center justify-between text-xs text-slate-600">
+                                                        <span>{line.label} x {line.quantity}</span>
+                                                        <span>{formatMoney(line.lineTotal)}</span>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="mt-1 text-xs text-slate-500">No extra products selected.</div>
+                                            )}
+                                            <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
+                                                <span>Estimated total</span>
+                                                <span>{formatMoney(previewTotalAmount)}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 ) : null}
                                 {fieldError(completeForm, 'finish_and_pay')}
@@ -891,8 +933,19 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         <label className="ta-field-label">Inventory Item</label>
                                         <select className="ta-input" value={product.inventory_item_id} onChange={(e) => updateProductRow(index, 'inventory_item_id', e.target.value)}>
                                             <option value="">Select product</option>
-                                            {inventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.sku})</option>)}
+                                            {inventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.sku}) - {formatMoney(item.selling_price)}</option>)}
                                         </select>
+                                        {product.inventory_item_id ? (() => {
+                                            const selected = inventoryItems.find((inv) => String(inv.id) === String(product.inventory_item_id));
+                                            const quantity = Math.max(1, Number(product.quantity || 1));
+                                            const unitPrice = Number(selected?.selling_price || 0);
+
+                                            return (
+                                                <p className="mt-1 text-xs text-slate-500">
+                                                    Unit: {formatMoney(unitPrice)} | Line: {formatMoney(unitPrice * quantity)}
+                                                </p>
+                                            );
+                                        })() : null}
                                         {fieldError(completeForm, `products.${index}.inventory_item_id`)}
                                     </div>
                                     <div>
