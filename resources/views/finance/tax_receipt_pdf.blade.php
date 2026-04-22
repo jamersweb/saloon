@@ -50,6 +50,10 @@
             color: #444;
             font-size: 8.5px;
         }
+        .receipt-meta {
+            font-size: 10px;
+            line-height: 1.35;
+        }
         .title {
             font-size: 12px;
             font-weight: bold;
@@ -156,15 +160,15 @@
 
     <div class="center title" style="margin-top:5px;">Tax Receipt / <span class="ar">إيصال ضريبي</span></div>
 
-    <div class="muted" style="margin-top:5px;">Customer / <span class="ar">العميل</span>: <strong>{{ $invoice->customer_display_name }}</strong></div>
+    <div class="muted receipt-meta" style="margin-top:5px;">Customer / <span class="ar">العميل</span>: <strong>{{ $invoice->customer_display_name }}</strong></div>
     @if($settings->tax_registration_number)
         <div class="muted">TRN: {{ $settings->tax_registration_number }}</div>
     @endif
-    <div class="muted">Invoice / <span class="ar">رقم الفاتورة</span>: <strong>{{ $invoice->invoice_number }}</strong></div>
+    <div class="muted receipt-meta">Invoice / <span class="ar">رقم الفاتورة</span>: <strong>{{ $invoice->invoice_number }}</strong></div>
     @if($invoice->cashier_name)
-        <div class="muted">Cashier: {{ $invoice->cashier_name }}</div>
+        <div class="muted receipt-meta">Cashier: {{ $invoice->cashier_name }}</div>
     @endif
-    <div class="muted">Date / <span class="ar">التاريخ</span>: {{ $invoice->issued_at?->format('Y-m-d H:i:s') }}</div>
+    <div class="muted receipt-meta">Date / <span class="ar">التاريخ</span>: {{ $invoice->issued_at?->format('Y-m-d H:i:s') }}</div>
 
     <table class="items">
         <colgroup>
