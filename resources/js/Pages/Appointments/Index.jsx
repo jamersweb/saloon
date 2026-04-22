@@ -914,6 +914,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                             </div>
                                         </div>
                                         {checkoutFlow === 'pay' ? (
+                                            <>
                                         <div>
                                             <label className="ta-field-label">Payment method</label>
                                             <select
@@ -967,6 +968,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 {fieldError(completeForm, 'checkout_gift_card_id')}
                                             </div>
                                         ) : null}
+                                            </>
                                         ) : null}
                                     </div>
                                 ) : null}
