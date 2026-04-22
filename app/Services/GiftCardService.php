@@ -13,6 +13,13 @@ use Illuminate\Validation\ValidationException;
 
 class GiftCardService
 {
+    /** @var array<string, string> */
+    private const GIFT_CARD_SERIES_STARTS = [
+        '300.00' => '3602567010010010',
+        '500.00' => '3602568010020010',
+        '1000.00' => '3602569010030010',
+    ];
+
     public function issue(?Customer $customer, float $value, ?int $issuedBy = null, ?string $notes = null, ?string $nfcUid = null): GiftCard
     {
         $normalizedNfc = $this->normalizeNfcUid($nfcUid);
@@ -20,16 +27,18 @@ class GiftCardService
             $this->assertNfcUidAvailableForGiftCard($normalizedNfc);
         }
 
-        return GiftCard::create([
-            'code' => 'GIFT-'.Str::upper(Str::random(10)),
-            'nfc_uid' => $normalizedNfc,
-            'assigned_customer_id' => $customer?->id,
-            'initial_value' => $value,
-            'remaining_value' => $value,
-            'status' => 'active',
-            'issued_by' => $issuedBy,
-            'notes' => $notes,
-        ]);
+        return DB::transaction(function () use ($customer, $value, $issuedBy, $notes, $normalizedNfc): GiftCard {
+            return GiftCard::create([
+                'code' => $this->nextGiftCardCodeForValue($value),
+                'nfc_uid' => $normalizedNfc,
+                'assigned_customer_id' => $customer?->id,
+                'initial_value' => $value,
+                'remaining_value' => $value,
+                'status' => 'active',
+                'issued_by' => $issuedBy,
+                'notes' => $notes,
+            ]);
+        });
     }
 
     public function findByNfcUid(string $nfcUid): ?GiftCard
@@ -107,6 +116,58 @@ class GiftCardService
         $normalized = strtoupper(trim($nfcUid));
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    private function nextGiftCardCodeForValue(float $value): string
+    {
+        $seriesStart = $this->seriesStartForGiftValue($value);
+
+        // Unsupported denominations keep backward-compatible random code generation.
+        if ($seriesStart === null) {
+            return 'GIFT-'.Str::upper(Str::random(10));
+        }
+
+        $prefix = substr($seriesStart, 0, 12);
+        $nextNumber = (int) $seriesStart;
+
+        $existingNumbers = GiftCard::query()
+            ->where('initial_value', number_format(round($value, 2), 2, '.', ''))
+            ->pluck('code');
+
+        foreach ($existingNumbers as $existingCode) {
+            $digits = preg_replace('/\D+/', '', (string) $existingCode) ?? '';
+            if (strlen($digits) !== 16 || ! str_starts_with($digits, $prefix)) {
+                continue;
+            }
+
+            $numeric = (int) $digits;
+            if ($numeric >= $nextNumber) {
+                $nextNumber = $numeric + 1;
+            }
+        }
+
+        while (GiftCard::query()
+            ->whereIn('code', [$this->formatCardNumber((string) $nextNumber), (string) $nextNumber])
+            ->exists()) {
+            $nextNumber++;
+        }
+
+        return $this->formatCardNumber((string) $nextNumber);
+    }
+
+    private function seriesStartForGiftValue(float $value): ?string
+    {
+        $key = number_format(round($value, 2), 2, '.', '');
+
+        return self::GIFT_CARD_SERIES_STARTS[$key] ?? null;
+    }
+
+    private function formatCardNumber(string $digits): string
+    {
+        $digits = preg_replace('/\D+/', '', $digits) ?? '';
+        $padded = str_pad($digits, 16, '0', STR_PAD_LEFT);
+
+        return trim(chunk_split($padded, 4, ' '));
     }
 
     public function consume(GiftCard $giftCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null, ?int $appointmentId = null): GiftCardTransaction

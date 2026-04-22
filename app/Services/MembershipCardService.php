@@ -18,6 +18,10 @@ class MembershipCardService
 
     private static bool $ensuredSequenceColumnWidth = false;
 
+    private const QUEEN_SERIES_START = '1602569010000001';
+    private const TITANIUM_SERIES_START = '4602567010000001';
+    private const GOLD_SERIES_START = '2602567810000001';
+
     private function ensureSequenceColumnSupportsIssuedCardNumbers(): void
     {
         if (self::$ensuredSequenceColumnWidth) {
@@ -208,12 +212,73 @@ class MembershipCardService
                 ]);
             }
 
-            $this->alignSequenceAfterExplicitIssue($type, $trimmed);
+            if ($this->seriesStartForType($type) === null) {
+                $this->alignSequenceAfterExplicitIssue($type, $trimmed);
+            }
 
             return $trimmed;
         }
 
+        $seriesStart = $this->seriesStartForType($type);
+        if ($seriesStart !== null) {
+            return $this->allocateNextSeriesCardNumber($seriesStart);
+        }
+
         return $this->allocateNextSequentialCardNumber($type);
+    }
+
+    private function seriesStartForType(MembershipCardType $type): ?string
+    {
+        $slug = strtolower((string) ($type->slug ?? ''));
+        $name = strtolower((string) ($type->name ?? ''));
+
+        if (str_contains($slug, 'queen') || str_contains($name, 'queen') || str_contains($slug, 'virtual') || str_contains($name, 'virtual')) {
+            // Virtual cards share the Queen card range.
+            return self::QUEEN_SERIES_START;
+        }
+
+        if (str_contains($slug, 'titanium') || str_contains($name, 'titanium')) {
+            return self::TITANIUM_SERIES_START;
+        }
+
+        if (str_contains($slug, 'gold') || str_contains($name, 'gold')) {
+            return self::GOLD_SERIES_START;
+        }
+
+        return null;
+    }
+
+    private function allocateNextSeriesCardNumber(string $seriesStart): string
+    {
+        $prefix = substr($seriesStart, 0, 12);
+        $nextNumber = (int) $seriesStart;
+
+        $existingNumbers = CustomerMembershipCard::query()
+            ->whereNotNull('card_number')
+            ->pluck('card_number');
+
+        foreach ($existingNumbers as $cardNumber) {
+            $digits = preg_replace('/\D+/', '', (string) $cardNumber) ?? '';
+            if (strlen($digits) !== 16 || ! str_starts_with($digits, $prefix)) {
+                continue;
+            }
+
+            $numeric = (int) $digits;
+            if ($numeric >= $nextNumber) {
+                $nextNumber = $numeric + 1;
+            }
+        }
+
+        while (CustomerMembershipCard::query()
+            ->whereIn('card_number', [
+                (string) $nextNumber,
+                trim(chunk_split((string) $nextNumber, 4, ' ')),
+            ])
+            ->exists()) {
+            $nextNumber++;
+        }
+
+        return (string) $nextNumber;
     }
 
     private function alignSequenceAfterExplicitIssue(MembershipCardType $type, string $trimmedDigits): void

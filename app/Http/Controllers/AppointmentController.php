@@ -305,7 +305,18 @@ class AppointmentController extends Controller
 
         $request->merge([
             'products' => collect($request->input('products', []))
-                ->filter(fn ($product) => filled($product['inventory_item_id'] ?? null) || filled($product['quantity'] ?? null) || filled($product['notes'] ?? null))
+                ->filter(function ($product) {
+                    $inventoryId = $product['inventory_item_id'] ?? null;
+                    $notes = $product['notes'] ?? null;
+                    $quantityRaw = $product['quantity'] ?? null;
+                    $quantity = filled($quantityRaw) ? (int) $quantityRaw : null;
+
+                    // Keep rows only when they have meaningful product input.
+                    // A default blank row with quantity=1 should remain optional.
+                    return filled($inventoryId)
+                        || filled($notes)
+                        || ($quantity !== null && $quantity !== 1);
+                })
                 ->values()
                 ->all(),
         ]);

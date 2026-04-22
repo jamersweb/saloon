@@ -151,7 +151,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         checkout_gift_card_id: '',
         checkout_paid_at: new Date().toISOString().slice(0, 16),
         after_photo: null,
-        products: [{ inventory_item_id: '', quantity: 1, notes: '' }],
+        products: [],
     });
 
     useEffect(() => {
@@ -374,7 +374,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                     quantity: usage.quantity,
                     notes: usage.notes || '',
                 }))
-                : [{ inventory_item_id: '', quantity: 1, notes: '' }],
+                : [],
         });
         completeForm.clearErrors();
     };

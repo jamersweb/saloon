@@ -11,7 +11,12 @@ class TaxInvoiceDraftFromAppointmentService
 {
     public function create(Appointment $appointment, ?int $createdById, ?string $cashierName): TaxInvoice
     {
-        $appointment->loadMissing(['service:id,name,price', 'customer:id,name']);
+        $appointment->loadMissing([
+            'service:id,name,price',
+            'customer:id,name',
+            'productUsages:id,appointment_id,inventory_item_id,quantity,notes',
+            'productUsages.item:id,name,sku,selling_price,cost_price',
+        ]);
 
         $service = $appointment->service;
         if (! $service) {
@@ -51,6 +56,34 @@ class TaxInvoiceDraftFromAppointmentService
             'line_tax' => $computed['line_tax'],
             'line_total' => $computed['line_total'],
         ]);
+
+        foreach ($appointment->productUsages as $usage) {
+            $item = $usage->item;
+            if (! $item) {
+                continue;
+            }
+
+            $quantity = max(1, (int) $usage->quantity);
+            $unitPrice = (float) ($item->selling_price ?? $item->cost_price ?? 0);
+            $productComputed = TaxInvoiceLineCalculator::compute($quantity, $unitPrice, $vatRate);
+
+            $description = $item->name;
+            if (! empty($item->sku)) {
+                $description .= ' ('.$item->sku.')';
+            }
+
+            TaxInvoiceItem::query()->create([
+                'tax_invoice_id' => $invoice->id,
+                'salon_service_id' => null,
+                'description' => $description,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'line_subtotal' => $productComputed['line_subtotal'],
+                'tax_rate_percent' => $productComputed['tax_rate_percent'],
+                'line_tax' => $productComputed['line_tax'],
+                'line_total' => $productComputed['line_total'],
+            ]);
+        }
 
         $invoice->load('items');
         $invoice->update([
