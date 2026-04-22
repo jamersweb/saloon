@@ -18,6 +18,7 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -471,6 +472,10 @@ class CrmAutomationController extends Controller
 
     private function resolveRuleCustomerIds(CustomerSegmentRule $rule)
     {
+        $customerCreatedAtExpr = Schema::hasColumn('customers', 'created_at')
+            ? 'customers.created_at'
+            : "'1970-01-01 00:00:00'";
+
         return match ($rule->criteria) {
             'inactivity_days' => Customer::query()
                 ->leftJoin('appointments', function ($join): void {
@@ -479,7 +484,7 @@ class CrmAutomationController extends Controller
                 })
                 ->select('customers.id')
                 ->groupBy('customers.id')
-                ->havingRaw('COALESCE(MAX(appointments.scheduled_start), customers.created_at) <= ?', [now()->subDays((int) $rule->threshold_value)->toDateTimeString()])
+                ->havingRaw("COALESCE(MAX(appointments.scheduled_start), {$customerCreatedAtExpr}) <= ?", [now()->subDays((int) $rule->threshold_value)->toDateTimeString()])
                 ->pluck('customers.id'),
             'min_spend' => Customer::query()
                 ->join('appointments', 'customers.id', '=', 'appointments.customer_id')

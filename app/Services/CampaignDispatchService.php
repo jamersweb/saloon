@@ -7,6 +7,7 @@ use App\Models\Campaign;
 use App\Models\Customer;
 use App\Models\CustomerDueService;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema;
 
 class CampaignDispatchService
 {
@@ -56,6 +57,10 @@ class CampaignDispatchService
 
     private function resolveAudience(Campaign $campaign): Builder
     {
+        $customerCreatedAtExpr = Schema::hasColumn('customers', 'created_at')
+            ? 'customers.created_at'
+            : "'1970-01-01 00:00:00'";
+
         return match ($campaign->audience_type) {
             'tag' => Customer::query()
                 ->where('is_active', true)
@@ -74,7 +79,7 @@ class CampaignDispatchService
                 })
                 ->select('customers.*')
                 ->groupBy('customers.id')
-                ->havingRaw('COALESCE(MAX(appointments.scheduled_start), customers.created_at) <= ?', [now()->subDays((int) ($campaign->inactivity_days ?? 30))->toDateTimeString()]),
+                ->havingRaw("COALESCE(MAX(appointments.scheduled_start), {$customerCreatedAtExpr}) <= ?", [now()->subDays((int) ($campaign->inactivity_days ?? 30))->toDateTimeString()]),
             default => Customer::query()->where('is_active', true),
         };
     }
