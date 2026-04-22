@@ -111,9 +111,11 @@ const clampStaffStartDatetimeLocal = (value, bookingRules, slotIntervalMinutes =
 
 export default function AppointmentsIndex({ appointments, services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
     const { flash, auth } = usePage().props;
+    const roleName = String(auth?.user?.role?.name || '').toLowerCase();
     const canManageFinance = Boolean(auth?.permissions?.can_manage_finance);
     const canCollectPayments = Boolean(auth?.permissions?.can_collect_payments);
     const canCheckout = canManageFinance || canCollectPayments;
+    const canFinishAndPayNow = roleName === 'manager' || roleName === 'reception';
     const [editingId, setEditingId] = useState(null);
     const [startServiceId, setStartServiceId] = useState(null);
     const [completeServiceId, setCompleteServiceId] = useState(null);
@@ -138,8 +140,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [editStartYmd, setEditStartYmd] = useState(() => localYmd(new Date()));
     const [editStartMountKey, setEditStartMountKey] = useState(0);
 
-    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], staff_profile_id: '', scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
-    const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], staff_profile_id: '', scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
     const startForm = useForm({ intake_notes: '', service_notes: '', before_photo: null });
     const completeForm = useForm({
         service_report: '',
@@ -215,6 +217,9 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         const startVal = createStartRef.current?.value || createForm.data.scheduled_start || '';
         createForm.setData((prev) => ({
             ...prev,
+            staff_assignments: Object.fromEntries(
+                Object.entries(prev.staff_assignments || {}).filter(([serviceId]) => nextIds.includes(String(serviceId))),
+            ),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
             scheduled_end: !createEndManuallySet || !prev.scheduled_end
@@ -267,6 +272,9 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         const startVal = editStartRef.current?.value || editForm.data.scheduled_start || '';
         editForm.setData((prev) => ({
             ...prev,
+            staff_assignments: Object.fromEntries(
+                Object.entries(prev.staff_assignments || {}).filter(([serviceId]) => nextIds.includes(String(serviceId))),
+            ),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
             scheduled_end: !editEndManuallySet || !prev.scheduled_end
@@ -335,6 +343,9 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             service_id: appt.service_id || '',
             service_ids: appt.service_id ? [String(appt.service_id)] : [],
             staff_profile_id: appt.staff_profile_id || '',
+            staff_assignments: appt.service_id && appt.staff_profile_id
+                ? { [String(appt.service_id)]: String(appt.staff_profile_id) }
+                : {},
             scheduled_start: startStr,
             scheduled_end: toDateTimeLocal(appt.scheduled_end),
             status: appt.status || 'confirmed',
@@ -592,7 +603,43 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(createForm, 'service_id')}
                             {fieldError(createForm, 'service_ids')}
                         </div>
-                        <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(createForm, 'staff_profile_id')}</div>
+                        <div>
+                            <label className="ta-field-label">Default Staff Profile</label>
+                            <select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}>
+                                <option value="">Auto / Unassigned</option>
+                                {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                            <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
+                            {fieldError(createForm, 'staff_profile_id')}
+                        </div>
+                        {createSelectedServices.length > 0 ? (
+                            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Per Service</p>
+                                <div className="grid gap-2 md:grid-cols-2">
+                                    {createSelectedServices.map((serviceId) => {
+                                        const service = services.find((s) => String(s.id) === String(serviceId));
+                                        const assignmentKey = String(serviceId);
+                                        return (
+                                            <div key={`create-staff-${serviceId}`}>
+                                                <label className="ta-field-label">{service?.name || `Service #${serviceId}`}</label>
+                                                <select
+                                                    className="ta-input"
+                                                    value={createForm.data.staff_assignments?.[assignmentKey] || ''}
+                                                    onChange={(e) => createForm.setData('staff_assignments', {
+                                                        ...(createForm.data.staff_assignments || {}),
+                                                        [assignmentKey]: e.target.value,
+                                                    })}
+                                                >
+                                                    <option value="">Use default / auto</option>
+                                                    {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                </select>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {fieldError(createForm, 'staff_assignments')}
+                            </div>
+                        ) : null}
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
                             <p className="mb-1 text-xs text-slate-500">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. For today, the earliest start is the next available time after now (including minimum advance).</p>
@@ -771,7 +818,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             completeForm.transform((data) => ({
                                 ...data,
                                 create_tax_invoice_draft: canCheckout && checkoutFlow !== 'skip',
-                                finish_and_pay: canCheckout && checkoutFlow === 'pay',
+                                finish_and_pay: canCheckout && canFinishAndPayNow && checkoutFlow === 'pay',
                             }));
                             completeForm.post(route('appointments.service-complete', completeServiceId), {
                                 forceFormData: true,
@@ -827,13 +874,15 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                             <span className="mt-0.5 block text-xs text-slate-500">Default — opens the receipt screen so you can issue the tax invoice and record payment when the client is ready.</span>
                                         </span>
                                     </label>
-                                    <label className="flex cursor-pointer items-start gap-2">
-                                        <input type="radio" className="mt-1" name="checkout_flow" checked={checkoutFlow === 'pay'} onChange={() => setCheckoutFlow('pay')} />
-                                        <span>
-                                            <span className="font-medium">Finish &amp; pay now</span>
-                                            <span className="mt-0.5 block text-xs text-slate-500">Completes the visit, creates the draft, issues the tax receipt number, and records one full payment in a single step.</span>
-                                        </span>
-                                    </label>
+                                    {canFinishAndPayNow ? (
+                                        <label className="flex cursor-pointer items-start gap-2">
+                                            <input type="radio" className="mt-1" name="checkout_flow" checked={checkoutFlow === 'pay'} onChange={() => setCheckoutFlow('pay')} />
+                                            <span>
+                                                <span className="font-medium">Finish &amp; pay now</span>
+                                                <span className="mt-0.5 block text-xs text-slate-500">Completes the visit, creates the draft, issues the tax receipt number, and records one full payment in a single step.</span>
+                                            </span>
+                                        </label>
+                                    ) : null}
                                     <label className="flex cursor-pointer items-start gap-2">
                                         <input type="radio" className="mt-1" name="checkout_flow" checked={checkoutFlow === 'skip'} onChange={() => setCheckoutFlow('skip')} />
                                         <span>
@@ -842,8 +891,29 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         </span>
                                     </label>
                                 </div>
-                                {checkoutFlow === 'pay' ? (
+                                {checkoutFlow !== 'skip' ? (
                                     <div className="grid gap-3 border-t border-slate-200 pt-3 md:grid-cols-2">
+                                        <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                                            <div className="flex items-center justify-between">
+                                                <span>Service ({completingService?.name || 'Selected service'})</span>
+                                                <span className="font-medium">{formatMoney(completingServiceAmount)}</span>
+                                            </div>
+                                            {selectedProductLines.length > 0 ? (
+                                                selectedProductLines.map((line, idx) => (
+                                                    <div key={`${line.inventory_item_id}-${idx}`} className="mt-1 flex items-center justify-between text-xs text-slate-600">
+                                                        <span>{line.label} x {line.quantity}</span>
+                                                        <span>{formatMoney(line.lineTotal)}</span>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="mt-1 text-xs text-slate-500">No extra products selected.</div>
+                                            )}
+                                            <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
+                                                <span>Estimated total</span>
+                                                <span>{formatMoney(previewTotalAmount)}</span>
+                                            </div>
+                                        </div>
+                                        {checkoutFlow === 'pay' ? (
                                         <div>
                                             <label className="ta-field-label">Payment method</label>
                                             <select
@@ -897,26 +967,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 {fieldError(completeForm, 'checkout_gift_card_id')}
                                             </div>
                                         ) : null}
-                                        <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
-                                            <div className="flex items-center justify-between">
-                                                <span>Service ({completingService?.name || 'Selected service'})</span>
-                                                <span className="font-medium">{formatMoney(completingServiceAmount)}</span>
-                                            </div>
-                                            {selectedProductLines.length > 0 ? (
-                                                selectedProductLines.map((line, idx) => (
-                                                    <div key={`${line.inventory_item_id}-${idx}`} className="mt-1 flex items-center justify-between text-xs text-slate-600">
-                                                        <span>{line.label} x {line.quantity}</span>
-                                                        <span>{formatMoney(line.lineTotal)}</span>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="mt-1 text-xs text-slate-500">No extra products selected.</div>
-                                            )}
-                                            <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
-                                                <span>Estimated total</span>
-                                                <span>{formatMoney(previewTotalAmount)}</span>
-                                            </div>
-                                        </div>
+                                        ) : null}
                                     </div>
                                 ) : null}
                                 {fieldError(completeForm, 'finish_and_pay')}
@@ -1068,7 +1119,43 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(editForm, 'service_id')}
                             {fieldError(editForm, 'service_ids')}
                         </div>
-                        <div><label className="ta-field-label">Staff Profile</label><select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}><option value="">Unassigned Staff</option>{staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>{fieldError(editForm, 'staff_profile_id')}</div>
+                        <div>
+                            <label className="ta-field-label">Default Staff Profile</label>
+                            <select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}>
+                                <option value="">Auto / Unassigned</option>
+                                {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                            <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
+                            {fieldError(editForm, 'staff_profile_id')}
+                        </div>
+                        {editSelectedServices.length > 0 ? (
+                            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Per Service</p>
+                                <div className="grid gap-2 md:grid-cols-2">
+                                    {editSelectedServices.map((serviceId) => {
+                                        const service = services.find((s) => String(s.id) === String(serviceId));
+                                        const assignmentKey = String(serviceId);
+                                        return (
+                                            <div key={`edit-staff-${serviceId}`}>
+                                                <label className="ta-field-label">{service?.name || `Service #${serviceId}`}</label>
+                                                <select
+                                                    className="ta-input"
+                                                    value={editForm.data.staff_assignments?.[assignmentKey] || ''}
+                                                    onChange={(e) => editForm.setData('staff_assignments', {
+                                                        ...(editForm.data.staff_assignments || {}),
+                                                        [assignmentKey]: e.target.value,
+                                                    })}
+                                                >
+                                                    <option value="">Use default / auto</option>
+                                                    {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                </select>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {fieldError(editForm, 'staff_assignments')}
+                            </div>
+                        ) : null}
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>

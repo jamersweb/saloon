@@ -119,6 +119,7 @@ class AppointmentController extends Controller
         if ($serviceIds === []) {
             return back()->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
         }
+        $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
 
         $start = Carbon::parse($data['scheduled_start']);
         $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null);
@@ -140,7 +141,9 @@ class AppointmentController extends Controller
             $servicePlans = $this->attachStaffAssignments(
                 $servicePlans,
                 ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null,
-                $availabilityService
+                $availabilityService,
+                null,
+                $staffAssignments
             );
         }
 
@@ -188,6 +191,7 @@ class AppointmentController extends Controller
         if ($serviceIds === []) {
             return back()->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
         }
+        $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
 
         $start = Carbon::parse($data['scheduled_start']);
         $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null);
@@ -206,7 +210,8 @@ class AppointmentController extends Controller
                 $servicePlans,
                 ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null,
                 $availabilityService,
-                $appointment->id
+                $appointment->id,
+                $staffAssignments
             );
         }
 
@@ -352,6 +357,13 @@ class AppointmentController extends Controller
         $user = $request->user();
         $canInvoice = $user && ($user->hasPermission('can_manage_finance') || $user->hasPermission('can_collect_payments'));
         $finishAndPay = $request->boolean('finish_and_pay');
+        $canFinishAndPayRole = $user && $user->hasRole('manager', 'reception');
+
+        if ($finishAndPay && ! $canFinishAndPayRole) {
+            return back()->withErrors([
+                'finish_and_pay' => 'Finish & pay is only available for manager and reception roles.',
+            ])->withInput();
+        }
 
         if ($finishAndPay && ! $canInvoice) {
             return back()->withErrors([
@@ -579,6 +591,8 @@ class AppointmentController extends Controller
             'service_ids' => ['nullable', 'array', 'min:1'],
             'service_ids.*' => ['integer', 'exists:salon_services,id'],
             'staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
+            'staff_assignments' => ['nullable', 'array'],
+            'staff_assignments.*' => ['nullable', 'exists:staff_profiles,id'],
             'source' => ['nullable', Rule::in(['public', 'admin'])],
             'status' => ['nullable', Rule::in([
                 Appointment::STATUS_PENDING,
@@ -667,22 +681,25 @@ class AppointmentController extends Controller
 
     /**
      * @param array<int, array{service: SalonService, start: Carbon, end: Carbon}> $servicePlans
+     * @param array<int, int> $perServiceStaffMap
      * @return array<int, array{service: SalonService, start: Carbon, end: Carbon, staff_profile_id: int|null}>
      */
-    private function attachStaffAssignments(array $servicePlans, ?int $selectedStaffId, BookingAvailabilityService $availabilityService, ?int $firstPlanIgnoreAppointmentId = null): array
+    private function attachStaffAssignments(array $servicePlans, ?int $selectedStaffId, BookingAvailabilityService $availabilityService, ?int $firstPlanIgnoreAppointmentId = null, array $perServiceStaffMap = []): array
     {
         $plansWithStaff = [];
 
         foreach ($servicePlans as $index => $plan) {
             $ignoreAppointmentId = $index === 0 ? $firstPlanIgnoreAppointmentId : null;
+            $serviceSpecificStaffId = $perServiceStaffMap[(int) $plan['service']->id] ?? null;
 
-            if ($selectedStaffId !== null) {
-                $availabilityError = $availabilityService->validateStaffAvailability($selectedStaffId, $plan['start'], $plan['end'], $ignoreAppointmentId);
+            if ($serviceSpecificStaffId !== null || $selectedStaffId !== null) {
+                $resolvedStaffId = $serviceSpecificStaffId ?? $selectedStaffId;
+                $availabilityError = $availabilityService->validateStaffAvailability((int) $resolvedStaffId, $plan['start'], $plan['end'], $ignoreAppointmentId);
                 if ($availabilityError) {
                     throw ValidationException::withMessages(['staff_profile_id' => $availabilityError]);
                 }
 
-                $plan['staff_profile_id'] = $selectedStaffId;
+                $plan['staff_profile_id'] = (int) $resolvedStaffId;
                 $plansWithStaff[] = $plan;
                 continue;
             }
@@ -748,6 +765,37 @@ class AppointmentController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @param array<int, int> $serviceIds
+     * @return array<int, int>
+     */
+    private function resolveStaffAssignmentsFromPayload(array $data, array $serviceIds): array
+    {
+        $raw = $data['staff_assignments'] ?? [];
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $allowedServiceIds = array_fill_keys($serviceIds, true);
+        $map = [];
+
+        foreach ($raw as $serviceId => $staffProfileId) {
+            $sid = (int) $serviceId;
+            if (! isset($allowedServiceIds[$sid])) {
+                continue;
+            }
+
+            if ($staffProfileId === null || $staffProfileId === '') {
+                continue;
+            }
+
+            $map[$sid] = (int) $staffProfileId;
+        }
+
+        return $map;
     }
 
     private function normalizeStaffSkill(string $value): string
