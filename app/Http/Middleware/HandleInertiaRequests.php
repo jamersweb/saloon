@@ -73,6 +73,7 @@ class HandleInertiaRequests extends Middleware
                 'created_tax_invoice_id' => fn () => $request->session()->get('created_tax_invoice_id'),
                 'created_purchase_order_id' => fn () => $request->session()->get('created_purchase_order_id'),
             ],
+            'app_timezone' => config('app.timezone'),
         ];
     }
 }

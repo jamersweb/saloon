@@ -36,8 +36,28 @@ export default function AuthenticatedLayout({ header, headerActions = null, chil
     const page = usePage();
     const { auth } = page.props;
     const user = auth.user;
+    const appTimezone = page.props?.app_timezone || 'Asia/Dubai';
     const permissions = auth.permissions || {};
     const isStaff = user?.role?.name === 'staff';
+    const [now, setNow] = useState(new Date());
+
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(new Date()), 1000);
+
+        return () => window.clearInterval(timer);
+    }, []);
+
+    const currentTimeLabel = useMemo(
+        () =>
+            new Intl.DateTimeFormat('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZone: appTimezone,
+            }).format(now),
+        [now, appTimezone],
+    );
 
     const canManage = useMemo(
         () =>
@@ -221,6 +241,10 @@ export default function AuthenticatedLayout({ header, headerActions = null, chil
                         </div>
                         <div className="flex items-center gap-3">
                             {headerActions}
+                            <div className="hidden rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-right sm:block">
+                                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Current Time</p>
+                                <p className="text-xs font-semibold text-slate-700">{currentTimeLabel}</p>
+                            </div>
                             <Dropdown>
                                 <Dropdown.Trigger>
                                     <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
