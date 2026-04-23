@@ -14,6 +14,21 @@ const toTimeInputValue = (value) => {
     return s;
 };
 
+const localYmd = (d = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const formatYmdForDisplay = (value) => {
+    if (!value) return '-';
+    const ymd = String(value).slice(0, 10);
+    const parts = ymd.split('-');
+    if (parts.length !== 3) return ymd;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
+
 export default function SchedulesIndex({ staffProfiles, schedules, defaultShiftStart = '09:00', defaultShiftEnd = '22:00', salonHoursLabel }) {
     const ROWS_PER_PAGE = 10;
     const { flash } = usePage().props;
@@ -27,7 +42,7 @@ export default function SchedulesIndex({ staffProfiles, schedules, defaultShiftS
     const [dateToFilter, setDateToFilter] = useState('');
     const [dayOffFilter, setDayOffFilter] = useState('all');
     const [currentPage, setCurrentPage] = useState(1);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localYmd();
 
     const postFillGaps = (horizon) => {
         setFillBusy(horizon);
@@ -183,7 +198,7 @@ export default function SchedulesIndex({ staffProfiles, schedules, defaultShiftS
                             <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
                         </div>
                     </div>
-                    <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Staff</th><th className="px-5 py-3">Shift</th><th className="px-5 py-3">Break</th><th className="px-5 py-3">Day Off</th><th className="px-5 py-3">Actions</th></tr></thead><tbody>{pagedSchedules.map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{s.schedule_date?.slice(0, 10)}</td><td className="px-5 py-3 font-medium text-slate-700">{s.staff_name}</td><td className="px-5 py-3 text-slate-600">{s.start_time || '-'} - {s.end_time || '-'}</td><td className="px-5 py-3 text-slate-600">{s.break_start || '-'} - {s.break_end || '-'}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_day_off ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{s.is_day_off ? 'Yes' : 'No'}</span></td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-300 bg-white px-2.5 py-1 text-xs font-semibold text-indigo-800 shadow-sm hover:bg-indigo-50" onClick={() => startEdit(s)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-100" onClick={() => setDeleteScheduleId(s.id)}>Delete</button></div></td></tr>)}{filteredSchedules.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="6">No schedule rows match the selected filters.</td></tr>}</tbody></table></div>
+                    <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Staff</th><th className="px-5 py-3">Shift</th><th className="px-5 py-3">Break</th><th className="px-5 py-3">Day Off</th><th className="px-5 py-3">Actions</th></tr></thead><tbody>{pagedSchedules.map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{formatYmdForDisplay(s.schedule_date)}</td><td className="px-5 py-3 font-medium text-slate-700">{s.staff_name}</td><td className="px-5 py-3 text-slate-600">{s.start_time || '-'} - {s.end_time || '-'}</td><td className="px-5 py-3 text-slate-600">{s.break_start || '-'} - {s.break_end || '-'}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_day_off ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{s.is_day_off ? 'Yes' : 'No'}</span></td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-300 bg-white px-2.5 py-1 text-xs font-semibold text-indigo-800 shadow-sm hover:bg-indigo-50" onClick={() => startEdit(s)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-100" onClick={() => setDeleteScheduleId(s.id)}>Delete</button></div></td></tr>)}{filteredSchedules.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="6">No schedule rows match the selected filters.</td></tr>}</tbody></table></div>
                     <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
                         <span>Page {currentPage} of {totalPages}</span>
                         <div className="flex gap-2">
@@ -230,7 +245,6 @@ export default function SchedulesIndex({ staffProfiles, schedules, defaultShiftS
         </AuthenticatedLayout>
     );
 }
-
 
 
 

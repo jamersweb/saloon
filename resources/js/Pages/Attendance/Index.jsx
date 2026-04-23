@@ -1,14 +1,28 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, usePage } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
 
-export default function AttendanceIndex({ logs, staffProfiles }) {
+export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTimezone }) {
     const { errors, auth } = usePage().props;
     const isStaff = auth?.user?.role?.name === 'staff';
     const myProfileName = staffProfiles?.[0]?.name || 'My profile';
     const clockInForm = useForm({ staff_profile_id: '', clock_in_latitude: '', clock_in_longitude: '' });
     const clockOutForm = useForm({ staff_profile_id: '' });
+    const [now, setNow] = useState(new Date());
 
-    const todayLog = logs?.[0];
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(new Date()), 1000);
+
+        return () => window.clearInterval(timer);
+    }, []);
+
+    const currentTime = new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZone: appTimezone || 'UTC',
+    }).format(now);
 
     const requestLocation = () => new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
@@ -54,10 +68,14 @@ export default function AttendanceIndex({ logs, staffProfiles }) {
             <div className="space-y-6">
                 {Object.keys(errors).length > 0 && <div className="ta-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{Object.values(errors)[0]}</div>}
 
-                <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
                     <div className="ta-card p-4">
                         <p className="text-xs uppercase text-slate-500">Today</p>
                         <p className="mt-2 text-lg font-semibold text-slate-800">{todayLog?.attendance_date?.slice(0, 10) || 'No record yet'}</p>
+                    </div>
+                    <div className="ta-card p-4">
+                        <p className="text-xs uppercase text-slate-500">Current Time</p>
+                        <p className="mt-2 text-lg font-semibold text-slate-800">{currentTime}</p>
                     </div>
                     <div className="ta-card p-4">
                         <p className="text-xs uppercase text-slate-500">Clock In</p>
@@ -85,7 +103,17 @@ export default function AttendanceIndex({ logs, staffProfiles }) {
                         <button className="ta-btn-primary w-full" disabled={clockInForm.processing}>Clock In</button>
                     </form>
 
-                    <form onSubmit={(e) => { e.preventDefault(); clockOutForm.post(route('attendance.clock-out')); }} className="ta-card space-y-3 p-5">
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            clockOutForm.post(route('attendance.clock-out'), {
+                                data: {
+                                    ...clockOutForm.data,
+                                },
+                            });
+                        }}
+                        className="ta-card space-y-3 p-5"
+                    >
                         <h3 className="text-sm font-semibold text-slate-700">Clock Out</h3>
                         <label className="ta-field-label">Staff Profile</label>
                         {isStaff ? (

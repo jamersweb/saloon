@@ -55,7 +55,7 @@ class StaffScheduleController extends Controller
 
         $data = $request->validate([
             'staff_profile_id' => ['required', 'exists:staff_profiles,id'],
-            'schedule_date' => ['required', 'date'],
+            'schedule_date' => ['required', 'date_format:Y-m-d'],
             'start_time' => ['nullable', 'date_format:H:i'],
             'end_time' => ['nullable', 'date_format:H:i'],
             'break_start' => ['nullable', 'date_format:H:i'],

@@ -19,6 +19,7 @@ class AttendanceLogController extends Controller
         $user = $request->user();
         $isStaff = $user?->hasRole('staff');
         $staffProfileId = $user?->staffProfile?->id;
+        $today = now()->toDateString();
 
         $logsQuery = AttendanceLog::query()
             ->with('staffProfile.user')
@@ -35,7 +36,24 @@ class AttendanceLogController extends Controller
             $staffProfilesQuery->whereKey($staffProfileId ?: 0);
         }
 
+        $todayLog = null;
+
+        if ($staffProfileId) {
+            $todayLog = AttendanceLog::query()
+                ->where('staff_profile_id', $staffProfileId)
+                ->where('attendance_date', $today)
+                ->latest('id')
+                ->first();
+        }
+
         return Inertia::render('Attendance/Index', [
+            'todayLog' => $todayLog ? [
+                'id' => $todayLog->id,
+                'attendance_date' => $todayLog->attendance_date,
+                'clock_in' => $todayLog->clock_in,
+                'clock_out' => $todayLog->clock_out,
+            ] : null,
+            'appTimezone' => config('app.timezone'),
             'logs' => $logsQuery->get()->map(fn (AttendanceLog $log) => [
                 'id' => $log->id,
                 'attendance_date' => $log->attendance_date,
