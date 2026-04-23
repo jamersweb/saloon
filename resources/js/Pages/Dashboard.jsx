@@ -1,6 +1,6 @@
 ﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const periodButtons = [
     { key: 'today', label: 'Today' },
@@ -35,8 +35,7 @@ export default function Dashboard({
     staffToCustomerFeedback,
     customerToStaffReviews,
 }) {
-    const { flash, auth, app_timezone: appTimezoneProp } = usePage().props;
-    const appTimezone = appTimezoneProp || 'Asia/Dubai';
+    const { flash, auth } = usePage().props;
     const canDailyBackup = Boolean(auth?.permissions?.can_run_daily_backup);
     const roleName = auth?.user?.role?.name;
     const isStaff = roleName === 'staff';
@@ -45,7 +44,6 @@ export default function Dashboard({
     const [nfcBridgeStatus, setNfcBridgeStatus] = useState('');
     const [nfcBridgeOnline, setNfcBridgeOnline] = useState(null);
     const [nfcBridgeChecking, setNfcBridgeChecking] = useState(false);
-    const [now, setNow] = useState(new Date());
 
     const staffToCustomerForm = useForm({ customer_id: '', comment: '' });
     const customerToStaffForm = useForm({ staff_profile_id: '', rating: '5', comment: '' });
@@ -80,42 +78,18 @@ export default function Dashboard({
         checkNfcBridge();
     }, []);
 
-    useEffect(() => {
-        const timer = window.setInterval(() => setNow(new Date()), 1000);
-
-        return () => window.clearInterval(timer);
-    }, []);
-
-    const dashboardCurrentTime = useMemo(
-        () =>
-            new Intl.DateTimeFormat('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true,
-                timeZone: appTimezone,
-            }).format(now),
-        [now, appTimezone],
-    );
-
     return (
         <AuthenticatedLayout
             header={isStaff ? 'My Workspace' : 'Vina Operations Dashboard'}
             headerActions={
-                <>
-                    <button
-                        type="button"
-                        onClick={checkNfcBridge}
-                        disabled={nfcBridgeChecking}
-                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                        {nfcBridgeChecking ? 'Connecting...' : 'Connect NFC'}
-                    </button>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right">
-                        <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Current Time</p>
-                        <p className="text-base font-semibold text-slate-700">{dashboardCurrentTime}</p>
-                    </div>
-                </>
+                <button
+                    type="button"
+                    onClick={checkNfcBridge}
+                    disabled={nfcBridgeChecking}
+                    className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    {nfcBridgeChecking ? 'Connecting...' : 'Connect NFC'}
+                </button>
             }
         >
             <Head title="Dashboard" />
