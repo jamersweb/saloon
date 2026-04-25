@@ -83,6 +83,15 @@ const toDateTimeLocal = (value) => {
     return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 };
 
+const formatMoney = (value) => {
+    const amount = Number(value || 0);
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+    }).format(amount);
+};
+
 /** Snap minutes to booking slot interval (matches server BookingAvailabilityService). */
 const normalizeToInterval = (value, intervalMinutes) => {
     if (!value) return '';
@@ -100,7 +109,7 @@ const normalizeToInterval = (value, intervalMinutes) => {
 export default function Booking({ services, staffProfiles, bookingRules, defaultStart }) {
     const { errors } = usePage().props;
     const [serviceSearch, setServiceSearch] = useState('');
-    const { data, setData, post, processing } = useForm({
+    const { data, setData, clearErrors, post, processing } = useForm({
         customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], staff_profile_id: '', scheduled_start: defaultStart || '', notes: '',
     });
 
@@ -118,6 +127,7 @@ export default function Booking({ services, staffProfiles, bookingRules, default
     );
 
     const setSelectedServices = (ids) => {
+        clearErrors('service_id', 'service_ids');
         setData({
             ...data,
             service_ids: ids,
@@ -172,7 +182,7 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                                         onClick={() => setSelectedServices([...selectedServiceIds, String(s.id)])}
                                     >
                                         <span>{s.name}</span>
-                                        <span className="text-slate-500">{s.duration_minutes} min</span>
+                                        <span className="text-slate-500">{s.duration_minutes} min • {formatMoney(s.price)}</span>
                                     </button>
                                 ))}
                                 {filteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
@@ -188,7 +198,7 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                                             className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700"
                                             onClick={() => setSelectedServices(selectedServiceIds.filter((x) => x !== id))}
                                         >
-                                            {service.name} x
+                                            {service.name} • {formatMoney(service.price)} x
                                         </button>
                                     );
                                 })}

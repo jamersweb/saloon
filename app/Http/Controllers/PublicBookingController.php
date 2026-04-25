@@ -26,7 +26,7 @@ class PublicBookingController extends Controller
         $rules = BookingRule::current();
 
         return Inertia::render('Public/Booking', [
-            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes']),
+            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes', 'price']),
             'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'name' => $staff->user?->name,
@@ -41,7 +41,7 @@ class PublicBookingController extends Controller
         $rules = BookingRule::current();
 
         return view('public.embed-booking', [
-            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes']),
+            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes', 'price']),
             'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get(),
             'bookingRules' => $rules,
             'defaultStart' => $rules->nextDefaultAppointmentStart(),

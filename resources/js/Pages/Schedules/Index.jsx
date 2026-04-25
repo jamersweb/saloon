@@ -29,7 +29,7 @@ const formatYmdForDisplay = (value) => {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
 };
 
-export default function SchedulesIndex({ staffProfiles, schedules, defaultShiftStart = '09:00', defaultShiftEnd = '22:00', salonHoursLabel }) {
+export default function SchedulesIndex({ staffProfiles, schedules, bookingRules, defaultShiftStart = '09:00', defaultShiftEnd = '22:00', salonHoursLabel }) {
     const ROWS_PER_PAGE = 10;
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
@@ -58,6 +58,16 @@ export default function SchedulesIndex({ staffProfiles, schedules, defaultShiftS
 
     const createForm = useForm({ staff_profile_id: '', schedule_date: today, start_time: defaultShiftStart, end_time: defaultShiftEnd, break_start: '', break_end: '', is_day_off: false, notes: '' });
     const editForm = useForm({ start_time: '', end_time: '', break_start: '', break_end: '', is_day_off: false, notes: '' });
+    const bookingRulesForm = useForm({
+        slot_interval_minutes: bookingRules?.slot_interval_minutes ?? 30,
+        opening_time: bookingRules?.opening_time ?? defaultShiftStart,
+        closing_time: bookingRules?.closing_time ?? defaultShiftEnd,
+        min_advance_minutes: bookingRules?.min_advance_minutes ?? 30,
+        max_advance_days: bookingRules?.max_advance_days ?? 60,
+        public_requires_approval: Boolean(bookingRules?.public_requires_approval ?? true),
+        allow_customer_cancellation: Boolean(bookingRules?.allow_customer_cancellation ?? true),
+        cancellation_cutoff_hours: bookingRules?.cancellation_cutoff_hours ?? 12,
+    });
 
     const startEdit = (schedule) => {
         setEditingId(schedule.id);
@@ -127,6 +137,34 @@ export default function SchedulesIndex({ staffProfiles, schedules, defaultShiftS
             <Head title="Schedules" />
             <div className="space-y-6">
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Booking Rules</h3>
+                    <p className="mb-3 text-xs text-slate-500">
+                        Public booking, appointment scheduling, and the salon hours text all read from these values. If you want the booking form to show 10:00 to 22:00, update it here.
+                    </p>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            bookingRulesForm.patch(route('booking-rules.update'), { preserveScroll: true });
+                        }}
+                        className="grid gap-3 md:grid-cols-4"
+                    >
+                        <div><label className="ta-field-label">Opening Time</label><input className="ta-input" type="time" value={bookingRulesForm.data.opening_time} onChange={(e) => bookingRulesForm.setData('opening_time', e.target.value)} required />{fieldError(bookingRulesForm, 'opening_time')}</div>
+                        <div><label className="ta-field-label">Closing Time</label><input className="ta-input" type="time" value={bookingRulesForm.data.closing_time} onChange={(e) => bookingRulesForm.setData('closing_time', e.target.value)} required />{fieldError(bookingRulesForm, 'closing_time')}</div>
+                        <div><label className="ta-field-label">Slot Interval (min)</label><input className="ta-input" type="number" min="5" max="120" value={bookingRulesForm.data.slot_interval_minutes} onChange={(e) => bookingRulesForm.setData('slot_interval_minutes', e.target.value)} required />{fieldError(bookingRulesForm, 'slot_interval_minutes')}</div>
+                        <div><label className="ta-field-label">Min Advance (min)</label><input className="ta-input" type="number" min="0" max="10080" value={bookingRulesForm.data.min_advance_minutes} onChange={(e) => bookingRulesForm.setData('min_advance_minutes', e.target.value)} required />{fieldError(bookingRulesForm, 'min_advance_minutes')}</div>
+                        <div><label className="ta-field-label">Max Advance (days)</label><input className="ta-input" type="number" min="1" max="365" value={bookingRulesForm.data.max_advance_days} onChange={(e) => bookingRulesForm.setData('max_advance_days', e.target.value)} required />{fieldError(bookingRulesForm, 'max_advance_days')}</div>
+                        <div><label className="ta-field-label">Cancellation Cutoff (hours)</label><input className="ta-input" type="number" min="0" max="168" value={bookingRulesForm.data.cancellation_cutoff_hours} onChange={(e) => bookingRulesForm.setData('cancellation_cutoff_hours', e.target.value)} required />{fieldError(bookingRulesForm, 'cancellation_cutoff_hours')}</div>
+                        <div className="md:col-span-2 flex flex-wrap items-center gap-4 pt-6">
+                            <label className="text-sm text-slate-600"><input type="checkbox" checked={bookingRulesForm.data.public_requires_approval} onChange={(e) => bookingRulesForm.setData('public_requires_approval', e.target.checked)} className="mr-2" />Public bookings require approval</label>
+                            <label className="text-sm text-slate-600"><input type="checkbox" checked={bookingRulesForm.data.allow_customer_cancellation} onChange={(e) => bookingRulesForm.setData('allow_customer_cancellation', e.target.checked)} className="mr-2" />Allow customer cancellation</label>
+                        </div>
+                        <div className="md:col-span-4">
+                            <button className="ta-btn-primary" disabled={bookingRulesForm.processing}>Save Booking Rules</button>
+                        </div>
+                    </form>
+                </section>
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create or Assign Shift</h3>
@@ -245,7 +283,6 @@ export default function SchedulesIndex({ staffProfiles, schedules, defaultShiftS
         </AuthenticatedLayout>
     );
 }
-
 
 
 

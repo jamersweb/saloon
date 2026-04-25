@@ -159,7 +159,7 @@
                 <select id="service_ids" name="service_ids[]" multiple required size="6">
                     @foreach ($services as $service)
                         <option value="{{ $service->id }}" @selected(in_array((string) $service->id, array_map('strval', old('service_ids', [])), true))>
-                            {{ $service->name }} ({{ $service->duration_minutes }} min)
+                            {{ $service->name }} ({{ $service->duration_minutes }} min) - {{ number_format((float) $service->price, 2) }}
                         </option>
                     @endforeach
                 </select>

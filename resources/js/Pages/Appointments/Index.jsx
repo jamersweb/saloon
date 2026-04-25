@@ -214,6 +214,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     };
 
     const handleCreateServiceChange = (nextIds) => {
+        createForm.clearErrors('service_id', 'service_ids');
         const startVal = createStartRef.current?.value || createForm.data.scheduled_start || '';
         createForm.setData((prev) => ({
             ...prev,
@@ -269,6 +270,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     };
 
     const handleEditServiceChange = (nextIds) => {
+        editForm.clearErrors('service_id', 'service_ids');
         const startVal = editStartRef.current?.value || editForm.data.scheduled_start || '';
         editForm.setData((prev) => ({
             ...prev,
@@ -584,7 +586,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
                                         onClick={() => handleCreateServiceChange([...createSelectedServices, String(s.id)])}
                                     >
-                                        {s.name} ({s.duration_minutes}m)
+                                        {s.name} ({s.duration_minutes}m) - {formatMoney(s.price)}
                                     </button>
                                 ))}
                                 {createFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
@@ -1102,7 +1104,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
                                         onClick={() => handleEditServiceChange([...editSelectedServices, String(s.id)])}
                                     >
-                                        {s.name} ({s.duration_minutes}m)
+                                        {s.name} ({s.duration_minutes}m) - {formatMoney(s.price)}
                                     </button>
                                 ))}
                                 {editFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}

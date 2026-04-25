@@ -25,6 +25,16 @@ class StaffScheduleController extends Controller
         $rules = BookingRule::current();
 
         return Inertia::render('Schedules/Index', [
+            'bookingRules' => [
+                'slot_interval_minutes' => (int) $rules->slot_interval_minutes,
+                'opening_time' => $rules->defaultShiftStart(),
+                'closing_time' => $rules->defaultShiftEnd(),
+                'min_advance_minutes' => (int) $rules->min_advance_minutes,
+                'max_advance_days' => (int) $rules->max_advance_days,
+                'public_requires_approval' => (bool) $rules->public_requires_approval,
+                'allow_customer_cancellation' => (bool) $rules->allow_customer_cancellation,
+                'cancellation_cutoff_hours' => (int) $rules->cancellation_cutoff_hours,
+            ],
             'defaultShiftStart' => $rules->defaultShiftStart(),
             'defaultShiftEnd' => $rules->defaultShiftEnd(),
             'salonHoursLabel' => $rules->defaultShiftStart().'–'.$rules->defaultShiftEnd(),
