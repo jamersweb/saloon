@@ -79,8 +79,8 @@ class AttendanceLogController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
         $data = $request->validate([
-            'clock_in_latitude' => ['required', 'numeric', 'between:-90,90'],
-            'clock_in_longitude' => ['required', 'numeric', 'between:-180,180'],
+            'clock_in_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'clock_in_longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'notes' => ['nullable', 'string'],
         ]);
 
@@ -113,8 +113,8 @@ class AttendanceLogController extends Controller
             [
                 'scheduled_start' => $schedule?->start_time,
                 'clock_in' => $clockInTime,
-                'clock_in_latitude' => (float) $data['clock_in_latitude'],
-                'clock_in_longitude' => (float) $data['clock_in_longitude'],
+                'clock_in_latitude' => array_key_exists('clock_in_latitude', $data) && $data['clock_in_latitude'] !== null && $data['clock_in_latitude'] !== '' ? (float) $data['clock_in_latitude'] : null,
+                'clock_in_longitude' => array_key_exists('clock_in_longitude', $data) && $data['clock_in_longitude'] !== null && $data['clock_in_longitude'] !== '' ? (float) $data['clock_in_longitude'] : null,
                 'late_minutes' => $lateMinutes,
                 'notes' => $data['notes'] ?? null,
             ],

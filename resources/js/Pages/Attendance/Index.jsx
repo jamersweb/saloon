@@ -24,15 +24,15 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
         timeZone: appTimezone || 'UTC',
     }).format(now);
 
-    const requestLocation = () => new Promise((resolve, reject) => {
+    const requestLocation = () => new Promise((resolve) => {
         if (!navigator.geolocation) {
-            reject(new Error('GPS is not supported in this browser.'));
+            resolve(null);
             return;
         }
 
         navigator.geolocation.getCurrentPosition(
             (position) => resolve(position),
-            () => reject(new Error('Location permission denied or unavailable.')),
+            () => resolve(null),
             {
                 enableHighAccuracy: true,
                 timeout: 10000,
@@ -43,23 +43,19 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
 
     const submitClockIn = async (e) => {
         e.preventDefault();
-
-        try {
-            const position = await requestLocation();
-            const latitude = String(position.coords.latitude);
-            const longitude = String(position.coords.longitude);
-            clockInForm.setData('clock_in_latitude', latitude);
-            clockInForm.setData('clock_in_longitude', longitude);
-            clockInForm.post(route('attendance.clock-in'), {
-                data: {
-                    ...clockInForm.data,
-                    clock_in_latitude: latitude,
-                    clock_in_longitude: longitude,
-                },
-            });
-        } catch (error) {
-            clockInForm.setError('clock_in_latitude', error.message || 'Unable to capture location.');
-        }
+        clockInForm.clearErrors('clock_in_latitude', 'clock_in_longitude');
+        const position = await requestLocation();
+        const latitude = position ? String(position.coords.latitude) : '';
+        const longitude = position ? String(position.coords.longitude) : '';
+        clockInForm.setData('clock_in_latitude', latitude);
+        clockInForm.setData('clock_in_longitude', longitude);
+        clockInForm.post(route('attendance.clock-in'), {
+            data: {
+                ...clockInForm.data,
+                clock_in_latitude: latitude,
+                clock_in_longitude: longitude,
+            },
+        });
     };
 
     return (
@@ -99,6 +95,7 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
                                 {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         )}
+                        <p className="text-xs text-slate-500">Location is optional. If browser permission is blocked, clock in will still work.</p>
                         {clockInForm.errors.clock_in_latitude && <p className="text-xs text-red-600">{clockInForm.errors.clock_in_latitude}</p>}
                         <button className="ta-btn-primary w-full" disabled={clockInForm.processing}>Clock In</button>
                     </form>
