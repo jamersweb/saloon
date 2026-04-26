@@ -280,4 +280,54 @@ class BookingRulesTest extends TestCase
             'scheduled_start' => $shiftDate->copy()->setTime(15, 0)->toDateTimeString(),
         ])->assertSessionHasNoErrors();
     }
+
+    public function test_completed_appointment_does_not_block_staff_availability(): void
+    {
+        Role::create(['name' => 'staff', 'label' => 'Staff']);
+
+        $staffUser = User::factory()->create();
+        $staffProfile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'STF-FREE-01',
+            'is_active' => true,
+        ]);
+
+        $start = now()->addDays(2)->setTime(10, 0);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staffProfile->id,
+            'schedule_date' => $start->toDateString(),
+            'start_time' => '09:00:00',
+            'end_time' => '17:00:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Root Color',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 150,
+            'is_active' => true,
+        ]);
+
+        Appointment::create([
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => $start->copy(),
+            'scheduled_end' => $start->copy()->addHour(),
+            'customer_name' => 'Finished Customer',
+            'customer_phone' => '5551212121',
+        ]);
+
+        $this->post(route('public.booking.store'), [
+            'customer_name' => 'New Customer',
+            'customer_phone' => '5553434343',
+            'customer_email' => 'new@example.com',
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'scheduled_start' => $start->toDateTimeString(),
+        ])->assertSessionHasNoErrors();
+    }
 }

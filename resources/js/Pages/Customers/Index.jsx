@@ -5,10 +5,10 @@ import { useEffect, useRef } from 'react';
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : 'N/A';
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : 'N/A';
-const formatCurrency = (value) => value === null || value === undefined ? 'N/A' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value));
+const formatCurrency = (value, currencyCode = 'AED') => value === null || value === undefined ? 'N/A' : new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(value));
 
 export default function CustomersIndex({ customers, selectedCustomer, history, filters, acquisitionSources }) {
-    const { flash } = usePage().props;
+    const { flash, app_currency_code: currencyCode = 'AED' } = usePage().props;
     const importFileRef = useRef(null);
 
     const createForm = useForm({ name: '', phone: '', email: '', birthday: '', allergies: '', notes: '', acquisition_source: '' });
@@ -210,7 +210,7 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
                                         {(selectedCustomer.active_packages || []).map((pkg, index) => (
                                             <div key={`${pkg.name}-${index}`} className="px-4 py-3 text-sm">
                                                 <div className="font-medium text-slate-700">{pkg.name || 'Unnamed package'}</div>
-                                                <div className="mt-1 text-slate-500">Sessions: {pkg.remaining_sessions ?? 'N/A'} | Value: {formatCurrency(pkg.remaining_value)}</div>
+                                                <div className="mt-1 text-slate-500">Sessions: {pkg.remaining_sessions ?? 'N/A'} | Value: {formatCurrency(pkg.remaining_value, currencyCode)}</div>
                                                 <div className="mt-1 text-xs text-slate-400">Expires: {formatDate(pkg.expires_at)}</div>
                                             </div>
                                         ))}

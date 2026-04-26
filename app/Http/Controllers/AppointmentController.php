@@ -8,6 +8,7 @@ use App\Models\AppointmentProductUsage;
 use App\Models\AppointmentServiceLog;
 use App\Models\BookingRule;
 use App\Models\Customer;
+use App\Models\CustomerPackage;
 use App\Models\GiftCard;
 use App\Models\InventoryItem;
 use App\Models\InvoicePayment;
@@ -17,6 +18,7 @@ use App\Models\TaxInvoice;
 use App\Services\BookingAvailabilityService;
 use App\Services\DueServiceManager;
 use App\Services\LoyaltyService;
+use App\Services\PackageBalanceService;
 use App\Services\TaxInvoiceDraftFromAppointmentService;
 use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoicePaymentService;
@@ -45,6 +47,7 @@ class AppointmentController extends Controller
                 'serviceExecution.staffProfile.user',
                 'photos',
                 'productUsages.item',
+                'customerPackage.package',
                 'taxInvoices.payments',
             ])
             ->when($status === 'upcoming', function ($query): void {
@@ -85,16 +88,15 @@ class AppointmentController extends Controller
             'appointments' => $appointments,
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'category', 'price', 'duration_minutes', 'buffer_minutes']),
             'customers' => Customer::query()
+                ->with([
+                    'packages.package.salonServices',
+                    'packages.usages',
+                ])
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->limit(750)
-                ->get(['id', 'name', 'phone', 'email'])
-                ->map(fn (Customer $customer) => [
-                    'id' => $customer->id,
-                    'name' => $customer->name,
-                    'phone' => (string) ($customer->phone ?? ''),
-                    'email' => (string) ($customer->email ?? ''),
-                ]),
+                ->get()
+                ->map(fn (Customer $customer) => $this->serializeCustomerForAppointments($customer)),
             'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'name' => $staff->user?->name,
@@ -152,15 +154,18 @@ class AppointmentController extends Controller
             $data['customer_phone'],
             $data['customer_email'] ?? null,
         );
+        $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer->id);
 
         $created = [];
-        DB::transaction(function () use ($request, $data, $customer, $servicePlans, &$created): void {
+        DB::transaction(function () use ($request, $data, $customer, $servicePlans, $packageSelection, &$created): void {
             foreach ($servicePlans as $plan) {
+                $isPackageCovered = in_array((int) $plan['service']->id, $packageSelection['covered_service_ids'], true);
                 $created[] = Appointment::create([
                     ...$data,
                     'service_id' => $plan['service']->id,
                     'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                     'customer_id' => $customer->id,
+                    'customer_package_id' => $isPackageCovered ? $packageSelection['customer_package']?->id : null,
                     'booked_by' => $request->user()?->id,
                     'scheduled_start' => $plan['start'],
                     'scheduled_end' => $plan['end'],
@@ -220,14 +225,17 @@ class AppointmentController extends Controller
             $data['customer_phone'],
             $data['customer_email'] ?? null,
         );
+        $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer->id, $appointment->id);
 
-        DB::transaction(function () use ($appointment, $data, $customer, $servicePlans): void {
+        DB::transaction(function () use ($appointment, $data, $customer, $servicePlans, $packageSelection): void {
             $first = $servicePlans[0];
+            $firstCovered = in_array((int) $first['service']->id, $packageSelection['covered_service_ids'], true);
             $appointment->update([
                 ...$data,
                 'service_id' => $first['service']->id,
                 'staff_profile_id' => $first['staff_profile_id'] ?? null,
                 'customer_id' => $customer->id,
+                'customer_package_id' => $firstCovered ? $packageSelection['customer_package']?->id : null,
                 'scheduled_start' => $first['start'],
                 'scheduled_end' => $first['end'],
             ]);
@@ -235,11 +243,13 @@ class AppointmentController extends Controller
             if (count($servicePlans) > 1) {
                 for ($i = 1; $i < count($servicePlans); $i++) {
                     $plan = $servicePlans[$i];
+                    $covered = in_array((int) $plan['service']->id, $packageSelection['covered_service_ids'], true);
                     Appointment::create([
                         ...$data,
                         'service_id' => $plan['service']->id,
                         'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                         'customer_id' => $customer->id,
+                        'customer_package_id' => $covered ? $packageSelection['customer_package']?->id : null,
                         'booked_by' => $appointment->booked_by ?? request()->user()?->id,
                         'scheduled_start' => $plan['start'],
                         'scheduled_end' => $plan['end'],
@@ -307,7 +317,7 @@ class AppointmentController extends Controller
         return back()->with('status', 'Service started.');
     }
 
-    public function completeService(Request $request, Appointment $appointment, LoyaltyService $loyaltyService, DueServiceManager $dueServiceManager): RedirectResponse
+    public function completeService(Request $request, Appointment $appointment, LoyaltyService $loyaltyService, DueServiceManager $dueServiceManager, PackageBalanceService $packageBalanceService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -373,7 +383,7 @@ class AppointmentController extends Controller
 
         $createdTaxInvoiceId = null;
 
-        DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager, &$createdTaxInvoiceId, $canInvoice, $finishAndPay, $user): void {
+        DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager, $packageBalanceService, &$createdTaxInvoiceId, $canInvoice, $finishAndPay, $user): void {
             $appointment->update([
                 'status' => Appointment::STATUS_COMPLETED,
                 'exclude_loyalty_earn' => (bool) ($data['exclude_loyalty_earn'] ?? false),
@@ -427,6 +437,51 @@ class AppointmentController extends Controller
             $appointment->refresh();
             $loyaltyService->earnFromCompletedAppointment($appointment, $request->user()?->id);
             $dueServiceManager->syncForAppointment($appointment);
+
+            if ($appointment->customer_package_id && ! $appointment->package_session_applied) {
+                $customerPackage = CustomerPackage::query()
+                    ->with(['package.salonServices', 'usages'])
+                    ->find($appointment->customer_package_id);
+
+                if (! $customerPackage) {
+                    throw ValidationException::withMessages([
+                        'service' => 'The linked package could not be found for this appointment.',
+                    ]);
+                }
+
+                $packageService = collect($customerPackage->package?->salonServices ?? [])
+                    ->firstWhere('id', $appointment->service_id);
+
+                if (! $packageService) {
+                    throw ValidationException::withMessages([
+                        'service' => 'This appointment service is not included in the selected package.',
+                    ]);
+                }
+
+                $includedSessions = (int) ($packageService->pivot?->included_sessions ?? 1);
+                $alreadyUsedForService = (int) $customerPackage->usages
+                    ->where('salon_service_id', $appointment->service_id)
+                    ->count();
+
+                if ($alreadyUsedForService >= $includedSessions) {
+                    throw ValidationException::withMessages([
+                        'service' => 'No remaining package sessions are available for this service.',
+                    ]);
+                }
+
+                $packageBalanceService->consume(
+                    $customerPackage,
+                    1,
+                    0,
+                    $request->user()?->id,
+                    'Applied to appointment #'.$appointment->id,
+                    $appointment->id,
+                    $appointment->service_id,
+                );
+
+                $appointment->update(['package_session_applied' => true]);
+                $appointment->refresh();
+            }
 
             $createDraft = $canInvoice && (
                 $finishAndPay
@@ -590,6 +645,9 @@ class AppointmentController extends Controller
             'service_id' => ['nullable', 'exists:salon_services,id'],
             'service_ids' => ['nullable', 'array', 'min:1'],
             'service_ids.*' => ['integer', 'exists:salon_services,id'],
+            'customer_package_id' => ['nullable', 'exists:customer_packages,id'],
+            'package_service_ids' => ['nullable', 'array'],
+            'package_service_ids.*' => ['integer', 'exists:salon_services,id'],
             'staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'staff_assignments' => ['nullable', 'array'],
             'staff_assignments.*' => ['nullable', 'exists:staff_profiles,id'],
@@ -632,6 +690,95 @@ class AppointmentController extends Controller
         }
 
         return $ids;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @param array<int, int> $serviceIds
+     * @return array{customer_package: CustomerPackage|null, covered_service_ids: list<int>}
+     */
+    private function resolvePackageSelection(array $data, array $serviceIds, ?int $customerId = null, ?int $ignoreAppointmentId = null): array
+    {
+        $customerPackageId = isset($data['customer_package_id']) && $data['customer_package_id'] !== ''
+            ? (int) $data['customer_package_id']
+            : null;
+
+        if (! $customerPackageId) {
+            return ['customer_package' => null, 'covered_service_ids' => []];
+        }
+
+        $customerPackage = CustomerPackage::query()
+            ->with(['package.salonServices', 'usages'])
+            ->findOrFail($customerPackageId);
+
+        if ($customerId && (int) $customerPackage->customer_id !== (int) $customerId) {
+            throw ValidationException::withMessages([
+                'customer_package_id' => 'Selected package does not belong to this customer.',
+            ]);
+        }
+
+        if ($customerPackage->status !== 'active') {
+            throw ValidationException::withMessages([
+                'customer_package_id' => 'Selected package is not active.',
+            ]);
+        }
+
+        if ($customerPackage->expires_at && $customerPackage->expires_at->isPast()) {
+            throw ValidationException::withMessages([
+                'customer_package_id' => 'Selected package is expired.',
+            ]);
+        }
+
+        $requestedCovered = collect($data['package_service_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($requestedCovered === []) {
+            return ['customer_package' => $customerPackage, 'covered_service_ids' => []];
+        }
+
+        $allowedByPackage = collect($customerPackage->package?->salonServices ?? [])
+            ->mapWithKeys(fn ($service) => [(int) $service->id => (int) ($service->pivot?->included_sessions ?? 1)]);
+
+        $reservedCounts = Appointment::query()
+            ->where('customer_package_id', $customerPackage->id)
+            ->when($ignoreAppointmentId, fn ($query) => $query->where('id', '!=', $ignoreAppointmentId))
+            ->whereNotIn('status', [Appointment::STATUS_CANCELLED, Appointment::STATUS_NO_SHOW])
+            ->selectRaw('service_id, count(*) as used_count')
+            ->groupBy('service_id')
+            ->pluck('used_count', 'service_id');
+
+        $coveredServiceIds = [];
+        foreach ($requestedCovered as $serviceId) {
+            if (! in_array($serviceId, $serviceIds, true)) {
+                continue;
+            }
+
+            $included = (int) ($allowedByPackage[$serviceId] ?? 0);
+            if ($included < 1) {
+                throw ValidationException::withMessages([
+                    'package_service_ids' => 'One or more selected services are not included in the chosen package.',
+                ]);
+            }
+
+            $used = (int) ($reservedCounts[$serviceId] ?? 0);
+            if ($used >= $included) {
+                throw ValidationException::withMessages([
+                    'package_service_ids' => 'The selected package has no remaining sessions for one or more selected services.',
+                ]);
+            }
+
+            $coveredServiceIds[] = $serviceId;
+            $reservedCounts[$serviceId] = $used + 1;
+        }
+
+        return [
+            'customer_package' => $customerPackage,
+            'covered_service_ids' => array_values(array_unique($coveredServiceIds)),
+        ];
     }
 
     /**
@@ -828,6 +975,50 @@ class AppointmentController extends Controller
         return $customer;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeCustomerForAppointments(Customer $customer): array
+    {
+        $activePackages = $customer->packages
+            ->where('status', 'active')
+            ->filter(fn (CustomerPackage $package) => ! $package->expires_at || $package->expires_at->isFuture())
+            ->map(function (CustomerPackage $customerPackage) {
+                $services = collect($customerPackage->package?->salonServices ?? [])
+                    ->map(function ($service) use ($customerPackage) {
+                        $included = (int) ($service->pivot?->included_sessions ?? 1);
+                        $used = (int) $customerPackage->usages->where('salon_service_id', $service->id)->count();
+
+                        return [
+                            'id' => $service->id,
+                            'name' => $service->name,
+                            'included_sessions' => $included,
+                            'used_sessions' => $used,
+                            'remaining_sessions' => max(0, $included - $used),
+                        ];
+                    })
+                    ->values();
+
+                return [
+                    'id' => $customerPackage->id,
+                    'package_name' => $customerPackage->package?->name,
+                    'remaining_sessions' => $customerPackage->remaining_sessions,
+                    'remaining_value' => $customerPackage->remaining_value,
+                    'expires_at' => $customerPackage->expires_at,
+                    'services' => $services,
+                ];
+            })
+            ->values();
+
+        return [
+            'id' => $customer->id,
+            'name' => $customer->name,
+            'phone' => (string) ($customer->phone ?? ''),
+            'email' => (string) ($customer->email ?? ''),
+            'active_packages' => $activePackages,
+        ];
+    }
+
     private function serializeAppointment(Appointment $appointment, Request $request): array
     {
         $checkout = $appointment->checkoutSummary();
@@ -840,6 +1031,8 @@ class AppointmentController extends Controller
         return [
             'id' => $appointment->id,
             'customer_id' => $appointment->customer_id,
+            'customer_package_id' => $appointment->customer_package_id,
+            'package_session_applied' => (bool) $appointment->package_session_applied,
             'service_id' => $appointment->service_id,
             'staff_profile_id' => $appointment->staff_profile_id,
             'scheduled_start' => $appointment->scheduled_start,
@@ -849,6 +1042,7 @@ class AppointmentController extends Controller
             'customer_email' => $appointment->customer_email,
             'notes' => $appointment->notes,
             'service_name' => $appointment->service?->name,
+            'package_name' => $appointment->customerPackage?->package?->name,
             'staff_name' => $appointment->staffProfile?->user?->name,
             'status' => $appointment->status,
             'next_statuses' => $appointment->nextStatuses(),

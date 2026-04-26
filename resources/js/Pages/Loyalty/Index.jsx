@@ -31,10 +31,12 @@ export default function LoyaltyIndex({
     settings,
 }) {
     const { flash, auth } = usePage().props;
+    const { app_currency_code: currencyCode = 'AED' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_loyalty);
     const [editingTierId, setEditingTierId] = useState(null);
     const [editingCardTypeId, setEditingCardTypeId] = useState(null);
     const [editingRewardId, setEditingRewardId] = useState(null);
+    const [editingPackageId, setEditingPackageId] = useState(null);
     const [nfcBridgeStatus, setNfcBridgeStatus] = useState('');
     const [nfcBridgeLoadingTarget, setNfcBridgeLoadingTarget] = useState(null);
     const [nfcBridgeOnline, setNfcBridgeOnline] = useState(null);
@@ -51,7 +53,30 @@ export default function LoyaltyIndex({
     const linkInventoryForm = useForm({ customer_id: '', customer_membership_card_id: '', status: 'active', notes: '' });
     const nfcLookupForm = useForm({ nfc_uid: '' });
     const nfcBindForm = useForm({ customer_membership_card_id: '', nfc_uid: '', replace_existing: false });
-    const packageForm = useForm({ name: '', description: '', usage_limit: '', initial_value: '', validity_days: '', is_active: true });
+    const packageForm = useForm({
+        name: '',
+        description: '',
+        price: '',
+        usage_limit: '',
+        initial_value: '',
+        validity_days: '',
+        services_per_visit_limit: '',
+        salon_service_ids: [],
+        service_quantities: {},
+        is_active: true,
+    });
+    const editPackageForm = useForm({
+        name: '',
+        description: '',
+        price: '',
+        usage_limit: '',
+        initial_value: '',
+        validity_days: '',
+        services_per_visit_limit: '',
+        salon_service_ids: [],
+        service_quantities: {},
+        is_active: true,
+    });
     const assignPackageForm = useForm({ customer_id: '', service_package_id: '', notes: '' });
     const consumePackageForm = useForm({ customer_package_id: '', sessions_used: 0, value_used: 0, notes: '' });
     const giftCardForm = useForm({ assigned_customer_id: '', initial_value: '', nfc_uid: '', notes: '' });
@@ -138,6 +163,23 @@ export default function LoyaltyIndex({
             is_transferable: Boolean(cardType.is_transferable),
         });
         editCardTypeForm.clearErrors();
+    };
+
+    const startEditPackage = (pkg) => {
+        setEditingPackageId(pkg.id);
+        editPackageForm.setData({
+            name: pkg.name,
+            description: pkg.description || '',
+            price: pkg.price ?? '',
+            usage_limit: pkg.usage_limit ?? '',
+            initial_value: pkg.initial_value ?? '',
+            validity_days: pkg.validity_days ?? '',
+            services_per_visit_limit: pkg.services_per_visit_limit ?? '',
+            salon_service_ids: pkg.salon_service_ids || [],
+            service_quantities: pkg.service_quantities || {},
+            is_active: Boolean(pkg.is_active),
+        });
+        editPackageForm.clearErrors();
     };
 
     const setNfcUidForTarget = (target, uid) => {
@@ -310,12 +352,18 @@ export default function LoyaltyIndex({
                     <PackagesSection
                         fieldError={fieldError}
                         canManage={canManage}
+                        currencyCode={currencyCode}
                         packageForm={packageForm}
+                        editPackageForm={editPackageForm}
+                        editingPackageId={editingPackageId}
+                        setEditingPackageId={setEditingPackageId}
+                        startEditPackage={startEditPackage}
                         assignPackageForm={assignPackageForm}
                         consumePackageForm={consumePackageForm}
                         customers={customers}
                         packages={packages}
                         customerPackages={customerPackages}
+                        salonServices={salonServices}
                     />
                 )}
 

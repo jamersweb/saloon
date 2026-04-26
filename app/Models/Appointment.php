@@ -36,6 +36,7 @@ class Appointment extends Model
 
     protected $fillable = [
         'customer_id',
+        'customer_package_id',
         'service_id',
         'staff_profile_id',
         'booked_by',
@@ -51,6 +52,7 @@ class Appointment extends Model
         'cancellation_reason',
         'notes',
         'exclude_loyalty_earn',
+        'package_session_applied',
     ];
 
     protected function casts(): array
@@ -61,12 +63,18 @@ class Appointment extends Model
             'arrival_time' => 'datetime',
             'service_start_time' => 'datetime',
             'exclude_loyalty_earn' => 'boolean',
+            'package_session_applied' => 'boolean',
         ];
     }
 
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function customerPackage(): BelongsTo
+    {
+        return $this->belongsTo(CustomerPackage::class);
     }
 
     public function service(): BelongsTo

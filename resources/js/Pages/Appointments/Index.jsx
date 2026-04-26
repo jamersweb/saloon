@@ -38,8 +38,20 @@ const toDateTimeLocal = (value) => {
     return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 };
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : 'N/A';
-const formatMoney = (value) => Number(value || 0).toFixed(2);
+const formatHourLabel = (hour) => {
+    const suffix = hour >= 12 ? 'PM' : 'AM';
+    const normalized = hour % 12 || 12;
+    return `${normalized}:00 ${suffix}`;
+};
+const formatMoney = (value, currencyCode = 'AED') =>
+    new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2 }).format(Number(value || 0));
 const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const sameLocalDate = (a, ymd) => {
+    if (!a || !ymd) return false;
+    const date = new Date(a);
+    if (Number.isNaN(date.getTime())) return false;
+    return localYmd(date) === ymd;
+};
 
 const salonClockBoundary = (bookingRules, key, fallback) => {
     const raw = String(bookingRules?.[key] || fallback);
@@ -83,6 +95,29 @@ const salonSelectableBoundsForYmd = (dateYmd, bookingRules, slotIntervalMinutes)
     return { min, max };
 };
 
+const adminStartBoundsForYmd = (dateYmd, bookingRules) => {
+    const open = salonClockBoundary(bookingRules, 'opening_time', '09:00');
+    const today = new Date();
+    const todayYmd = localYmd(today);
+    const maxAdvanceDays = Math.max(1, Number(bookingRules?.max_advance_days || 60));
+    const horizon = new Date(today);
+    horizon.setDate(horizon.getDate() + maxAdvanceDays);
+    horizon.setHours(23, 59, 0, 0);
+
+    let min = `${dateYmd}T${pad2(open.h)}:${pad2(open.m)}`;
+    if (dateYmd === todayYmd) {
+        const walkInNow = new Date();
+        walkInNow.setSeconds(0, 0);
+        const nowLocal = toDateTimeLocal(walkInNow);
+        if (dateTimeLocalCompare(nowLocal, min) > 0) min = nowLocal;
+    }
+
+    return {
+        min,
+        max: toDateTimeLocal(horizon),
+    };
+};
+
 /** Full salon window for one calendar day (used for ends and suggested end). */
 const clampDateTimeLocalToSalon = (value, bookingRules, slotIntervalMinutes = 30) => {
     if (!value || !bookingRules) return value;
@@ -100,16 +135,16 @@ const clampStaffStartDatetimeLocal = (value, bookingRules, slotIntervalMinutes =
     if (!value || !bookingRules) return value;
     const [d] = value.split('T');
     if (!d) return value;
-    const { min } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
-    const ceiling = `${d}T23:59`;
+    const { min, max } = adminStartBoundsForYmd(d, bookingRules);
     let v = value;
     if (dateTimeLocalCompare(v, min) < 0) v = min;
-    if (dateTimeLocalCompare(v, ceiling) > 0) v = ceiling;
+    if (dateTimeLocalCompare(v, max) > 0) v = max;
 
     return v;
 };
 
 export default function AppointmentsIndex({ appointments, services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
+    const { app_currency_code: currencyCode = 'AED' } = usePage().props;
     const { flash, auth } = usePage().props;
     const roleName = String(auth?.user?.role?.name || '').toLowerCase();
     const canManageFinance = Boolean(auth?.permissions?.can_manage_finance);
@@ -122,8 +157,10 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [createEndManuallySet, setCreateEndManuallySet] = useState(false);
     const [createCustomerMode, setCreateCustomerMode] = useState('new');
     const [createSelectedCustomerId, setCreateSelectedCustomerId] = useState('');
+    const [createSelectedPackageId, setCreateSelectedPackageId] = useState('');
     const [editCustomerMode, setEditCustomerMode] = useState('new');
     const [editSelectedCustomerId, setEditSelectedCustomerId] = useState('');
+    const [editSelectedPackageId, setEditSelectedPackageId] = useState('');
     const [editEndManuallySet, setEditEndManuallySet] = useState(true);
     const [deleteAppointmentId, setDeleteAppointmentId] = useState(null);
     const [deleteAppointmentBusy, setDeleteAppointmentBusy] = useState(false);
@@ -131,6 +168,9 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [checkoutFlow, setCheckoutFlow] = useState('draft');
     const [createServiceSearch, setCreateServiceSearch] = useState('');
     const [editServiceSearch, setEditServiceSearch] = useState('');
+    const [showBoardView, setShowBoardView] = useState(false);
+    const [boardDate, setBoardDate] = useState(() => localYmd(new Date()));
+    const [boardStaffFilter, setBoardStaffFilter] = useState('all');
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
 
     const createStartRef = useRef(null);
@@ -140,8 +180,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [editStartYmd, setEditStartYmd] = useState(() => localYmd(new Date()));
     const [editStartMountKey, setEditStartMountKey] = useState(0);
 
-    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
-    const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
     const startForm = useForm({ intake_notes: '', service_notes: '', before_photo: null });
     const completeForm = useForm({
         service_report: '',
@@ -221,6 +261,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             staff_assignments: Object.fromEntries(
                 Object.entries(prev.staff_assignments || {}).filter(([serviceId]) => nextIds.includes(String(serviceId))),
             ),
+            package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
             scheduled_end: !createEndManuallySet || !prev.scheduled_end
@@ -277,6 +318,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             staff_assignments: Object.fromEntries(
                 Object.entries(prev.staff_assignments || {}).filter(([serviceId]) => nextIds.includes(String(serviceId))),
             ),
+            package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
             scheduled_end: !editEndManuallySet || !prev.scheduled_end
@@ -321,12 +363,18 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         createForm.setData('customer_name', customer?.name ?? '');
         createForm.setData('customer_phone', customer?.phone ?? '');
         createForm.setData('customer_email', customer?.email ?? '');
+        createForm.setData('customer_package_id', '');
+        createForm.setData('package_service_ids', []);
+        setCreateSelectedPackageId('');
     };
 
     const applyCustomerToEditForm = (customer) => {
         editForm.setData('customer_name', customer?.name ?? '');
         editForm.setData('customer_phone', customer?.phone ?? '');
         editForm.setData('customer_email', customer?.email ?? '');
+        editForm.setData('customer_package_id', '');
+        editForm.setData('package_service_ids', []);
+        setEditSelectedPackageId('');
     };
 
     const startEdit = (appt) => {
@@ -335,6 +383,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         setEditingId(appt.id);
         setEditCustomerMode('new');
         setEditSelectedCustomerId('');
+        setEditSelectedPackageId(appt.customer_package_id ? String(appt.customer_package_id) : '');
         setEditServiceSearch('');
         setEditEndManuallySet(Boolean(appt.scheduled_end));
         setEditStartMountKey((k) => k + 1);
@@ -344,6 +393,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             customer_email: appt.customer_email || '',
             service_id: appt.service_id || '',
             service_ids: appt.service_id ? [String(appt.service_id)] : [],
+            customer_package_id: appt.customer_package_id ? String(appt.customer_package_id) : '',
+            package_service_ids: appt.customer_package_id && appt.service_id ? [String(appt.service_id)] : [],
             staff_profile_id: appt.staff_profile_id || '',
             staff_assignments: appt.service_id && appt.staff_profile_id
                 ? { [String(appt.service_id)]: String(appt.staff_profile_id) }
@@ -409,6 +460,14 @@ export default function AppointmentsIndex({ appointments, services, customers = 
 
     const createSelectedServices = createForm.data.service_ids || [];
     const editSelectedServices = editForm.data.service_ids || [];
+    const createSelectedCustomer = customers.find((c) => String(c.id) === String(createSelectedCustomerId)) || null;
+    const editSelectedCustomer = customers.find((c) => String(c.id) === String(editSelectedCustomerId)) || null;
+    const createAvailablePackages = createSelectedCustomer?.active_packages || [];
+    const editAvailablePackages = editSelectedCustomer?.active_packages || [];
+    const createSelectedPackage = createAvailablePackages.find((pkg) => String(pkg.id) === String(createSelectedPackageId)) || null;
+    const editSelectedPackage = editAvailablePackages.find((pkg) => String(pkg.id) === String(editSelectedPackageId)) || null;
+    const createPackageCoverageMap = Object.fromEntries((createSelectedPackage?.services || []).map((service) => [String(service.id), service]));
+    const editPackageCoverageMap = Object.fromEntries((editSelectedPackage?.services || []).map((service) => [String(service.id), service]));
     const createAvailableServices = services.filter((s) => !createSelectedServices.includes(String(s.id)));
     const editAvailableServices = services.filter((s) => !editSelectedServices.includes(String(s.id)));
     const createFilteredServices = createAvailableServices.filter((s) => s.name.toLowerCase().includes(createServiceSearch.toLowerCase()));
@@ -421,15 +480,15 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const addProductRow = () => completeForm.setData('products', [...completeForm.data.products, { inventory_item_id: '', quantity: 1, notes: '' }]);
     const removeProductRow = (index) => completeForm.setData('products', completeForm.data.products.filter((_, rowIndex) => rowIndex !== index));
 
-    const createSalonBounds = salonSelectableBoundsForYmd(createStartYmd, bookingRules, slotIntervalMinutes);
-    const editSalonBounds = salonSelectableBoundsForYmd(editStartYmd, bookingRules, slotIntervalMinutes);
+    const createSalonBounds = adminStartBoundsForYmd(createStartYmd, bookingRules);
+    const editSalonBounds = adminStartBoundsForYmd(editStartYmd, bookingRules);
     const editEndYmd = (editForm.data.scheduled_end || editForm.data.scheduled_start || '').split('T')[0] || editStartYmd;
     const editEndSalonBounds = salonSelectableBoundsForYmd(editEndYmd, bookingRules, slotIntervalMinutes);
     const editingAppt = appointments.find((a) => String(a.id) === String(editingId));
     const editStartDefault = editingAppt ? toDateTimeLocal(editingAppt.scheduled_start) : (editForm.data.scheduled_start || '');
     const completingAppt = appointments.find((a) => String(a.id) === String(completeServiceId));
     const completingService = services.find((s) => String(s.id) === String(completingAppt?.service_id));
-    const completingServiceAmount = Number(completingService?.price || 0);
+    const completingServiceAmount = completingAppt?.customer_package_id ? 0 : Number(completingService?.price || 0);
     const selectedProductLines = (completeForm.data.products || [])
         .map((row) => {
             const item = inventoryItems.find((inv) => String(inv.id) === String(row.inventory_item_id));
@@ -448,9 +507,51 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         .filter((line) => String(line.inventory_item_id || '') !== '');
     const selectedProductsAmount = selectedProductLines.reduce((sum, line) => sum + line.lineTotal, 0);
     const previewTotalAmount = completingServiceAmount + selectedProductsAmount;
+    const boardOpen = salonClockBoundary(bookingRules, 'opening_time', '09:00');
+    const boardClose = salonClockBoundary(bookingRules, 'closing_time', '22:00');
+    const boardStartMinutes = boardOpen.h * 60 + boardOpen.m;
+    const boardEndMinutes = Math.max(boardStartMinutes + 60, boardClose.h * 60 + boardClose.m);
+    const boardTotalMinutes = Math.max(60, boardEndMinutes - boardStartMinutes);
+    const boardHourMarks = Array.from({ length: Math.ceil(boardTotalMinutes / 60) + 1 }, (_, idx) => boardStartMinutes + (idx * 60));
+    const boardStaffList = boardStaffFilter === 'all'
+        ? staffProfiles
+        : staffProfiles.filter((staff) => String(staff.id) === String(boardStaffFilter));
+    const boardAppointments = appointments.filter((appt) => sameLocalDate(appt.scheduled_start, boardDate));
+    const boardCardsByStaff = boardStaffList.map((staff) => {
+        const cards = boardAppointments
+            .filter((appt) => String(appt.staff_profile_id || '') === String(staff.id))
+            .map((appt) => {
+                const start = new Date(appt.scheduled_start);
+                const end = new Date(appt.scheduled_end || appt.scheduled_start);
+                const startMinutes = start.getHours() * 60 + start.getMinutes();
+                const endMinutes = end.getHours() * 60 + end.getMinutes();
+                const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
+                const height = Math.max(7, (((Math.max(endMinutes, startMinutes + 30)) - startMinutes) / boardTotalMinutes) * 100);
+
+                return {
+                    ...appt,
+                    top,
+                    height,
+                    timeLabel: `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+                };
+            });
+
+        return { staff, cards };
+    });
 
     return (
-        <AuthenticatedLayout header="Appointments">
+        <AuthenticatedLayout
+            header="Appointments"
+            headerActions={(
+                <button
+                    type="button"
+                    onClick={() => setShowBoardView(true)}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                    View Appointment
+                </button>
+            )}
+        >
             <Head title="Appointments" />
             <div className="space-y-6">
                 <section className="ta-card p-3">
@@ -521,6 +622,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                     setCreateEndManuallySet(false);
                                     setCreateCustomerMode('new');
                                     setCreateSelectedCustomerId('');
+                                    setCreateSelectedPackageId('');
                                 },
                             });
                         }}
@@ -536,8 +638,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 <input type="radio" name="create_customer_mode" className="text-indigo-600" checked={createCustomerMode === 'existing'} onChange={() => { setCreateCustomerMode('existing'); setCreateSelectedCustomerId(''); applyCustomerToCreateForm(null); }} />
                                 Existing customer
                             </label>
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                                <input type="radio" name="create_customer_mode" className="text-indigo-600" checked={createCustomerMode === 'package'} onChange={() => { setCreateCustomerMode('package'); setCreateSelectedCustomerId(''); applyCustomerToCreateForm(null); }} />
+                                Package customer
+                            </label>
                         </div>
-                        {createCustomerMode === 'existing' ? (
+                        {createCustomerMode === 'existing' || createCustomerMode === 'package' ? (
                             <div className="md:col-span-4">
                                 <label className="ta-field-label">Select customer</label>
                                 <select
@@ -558,6 +664,39 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                     ))}
                                 </select>
                                 <p className="mt-1 text-xs text-slate-500">Full name, phone, and email fill in automatically. You can still edit them before saving.</p>
+                            </div>
+                        ) : null}
+                        {createCustomerMode === 'package' && createSelectedCustomerId ? (
+                            <div className="md:col-span-4 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+                                <label className="ta-field-label">Select package</label>
+                                <select
+                                    className="ta-input"
+                                    value={createSelectedPackageId}
+                                    onChange={(e) => {
+                                        const id = e.target.value;
+                                        setCreateSelectedPackageId(id);
+                                        createForm.setData('customer_package_id', id);
+                                        createForm.setData('package_service_ids', []);
+                                    }}
+                                >
+                                    <option value="">Choose customer package…</option>
+                                    {createAvailablePackages.map((pkg) => (
+                                        <option key={pkg.id} value={pkg.id}>
+                                            {pkg.package_name}{pkg.expires_at ? ` — expires ${new Date(pkg.expires_at).toLocaleDateString()}` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {createSelectedPackage ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {createSelectedPackage.services.map((service) => (
+                                            <span key={service.id} className={`rounded-full px-2 py-1 text-xs ${service.remaining_sessions > 0 ? 'border border-emerald-200 bg-white text-emerald-800' : 'border border-slate-200 bg-slate-100 text-slate-500'}`}>
+                                                {service.name} {service.remaining_sessions}/{service.included_sessions} left
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
+                                {fieldError(createForm, 'customer_package_id')}
+                                {fieldError(createForm, 'package_service_ids')}
                             </div>
                         ) : null}
                         <div>
@@ -586,7 +725,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
                                         onClick={() => handleCreateServiceChange([...createSelectedServices, String(s.id)])}
                                     >
-                                        {s.name} ({s.duration_minutes}m) - {formatMoney(s.price)}
+                                        {s.name} ({s.duration_minutes}m) - {formatMoney(s.price, currencyCode)}
                                     </button>
                                 ))}
                                 {createFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
@@ -595,10 +734,27 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 {createSelectedServices.map((id) => {
                                     const s = services.find((x) => String(x.id) === String(id));
                                     if (!s) return null;
+                                    const packageCoverage = createPackageCoverageMap[String(id)];
+                                    const isCovered = (createForm.data.package_service_ids || []).includes(String(id));
                                     return (
-                                        <button key={id} type="button" className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => handleCreateServiceChange(createSelectedServices.filter((x) => x !== id))}>
-                                            {s.name} ✕
-                                        </button>
+                                        <div key={id} className="flex items-center gap-2">
+                                            <button type="button" className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => handleCreateServiceChange(createSelectedServices.filter((x) => x !== id))}>
+                                                {s.name} ✕
+                                            </button>
+                                            {createCustomerMode === 'package' && createSelectedPackage && packageCoverage ? (
+                                                <label className="inline-flex items-center gap-1 text-xs text-emerald-700">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isCovered}
+                                                        disabled={packageCoverage.remaining_sessions < 1 && !isCovered}
+                                                        onChange={(e) => createForm.setData('package_service_ids', e.target.checked
+                                                            ? [...new Set([...(createForm.data.package_service_ids || []), String(id)])]
+                                                            : (createForm.data.package_service_ids || []).filter((serviceId) => String(serviceId) !== String(id)))}
+                                                    />
+                                                    Package session ({packageCoverage.remaining_sessions} left)
+                                                </label>
+                                            ) : null}
+                                        </div>
                                     );
                                 })}
                             </div>
@@ -644,7 +800,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         ) : null}
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
-                            <p className="mb-1 text-xs text-slate-500">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. For today, the earliest start is the next available time after now (including minimum advance).</p>
+                            <p className="mb-1 text-xs text-slate-500">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. Walk-ins can start from the current time, and future bookings can be scheduled up to the booking horizon.</p>
                             <input
                                 key={`create-start-${createStartMount}`}
                                 ref={createStartRef}
@@ -653,7 +809,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 defaultValue={createStartDefault}
                                 onInput={(e) => syncCreateStartFromInput(e.currentTarget.value)}
                                 min={createSalonBounds.min}
-                                max={`${createStartYmd}T23:59`}
+                                max={createSalonBounds.max}
                                 required
                             />
                             {fieldError(createForm, 'scheduled_start')}
@@ -897,14 +1053,17 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                     <div className="grid gap-3 border-t border-slate-200 pt-3 md:grid-cols-2">
                                         <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
                                             <div className="flex items-center justify-between">
-                                                <span>Service ({completingService?.name || 'Selected service'})</span>
-                                                <span className="font-medium">{formatMoney(completingServiceAmount)}</span>
+                                                <span>
+                                                    Service ({completingService?.name || 'Selected service'})
+                                                    {completingAppt?.customer_package_id ? ` - ${completingAppt?.package_name || 'Package session'}` : ''}
+                                                </span>
+                                                <span className="font-medium">{formatMoney(completingServiceAmount, currencyCode)}</span>
                                             </div>
                                             {selectedProductLines.length > 0 ? (
                                                 selectedProductLines.map((line, idx) => (
                                                     <div key={`${line.inventory_item_id}-${idx}`} className="mt-1 flex items-center justify-between text-xs text-slate-600">
                                                         <span>{line.label} x {line.quantity}</span>
-                                                        <span>{formatMoney(line.lineTotal)}</span>
+                                                        <span>{formatMoney(line.lineTotal, currencyCode)}</span>
                                                     </div>
                                                 ))
                                             ) : (
@@ -912,7 +1071,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                             )}
                                             <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
                                                 <span>Estimated total</span>
-                                                <span>{formatMoney(previewTotalAmount)}</span>
+                                                <span>{formatMoney(previewTotalAmount, currencyCode)}</span>
                                             </div>
                                         </div>
                                         {checkoutFlow === 'pay' ? (
@@ -988,7 +1147,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         <label className="ta-field-label">Inventory Item</label>
                                         <select className="ta-input" value={product.inventory_item_id} onChange={(e) => updateProductRow(index, 'inventory_item_id', e.target.value)}>
                                             <option value="">Select product</option>
-                                            {inventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.sku}) - {formatMoney(item.selling_price)}</option>)}
+                                            {inventoryItems.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.sku}) - {formatMoney(item.selling_price, currencyCode)}</option>)}
                                         </select>
                                         {product.inventory_item_id ? (() => {
                                             const selected = inventoryItems.find((inv) => String(inv.id) === String(product.inventory_item_id));
@@ -997,7 +1156,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
 
                                             return (
                                                 <p className="mt-1 text-xs text-slate-500">
-                                                    Unit: {formatMoney(unitPrice)} | Line: {formatMoney(unitPrice * quantity)}
+                                                    Unit: {formatMoney(unitPrice, currencyCode)} | Line: {formatMoney(unitPrice * quantity, currencyCode)}
                                                 </p>
                                             );
                                         })() : null}
@@ -1052,6 +1211,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                     setEditingId(null);
                                     setEditCustomerMode('new');
                                     setEditSelectedCustomerId('');
+                                    setEditSelectedPackageId('');
                                 },
                             });
                         }}
@@ -1067,8 +1227,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 <input type="radio" name="edit_customer_mode" className="text-indigo-600" checked={editCustomerMode === 'existing'} onChange={() => { setEditCustomerMode('existing'); setEditSelectedCustomerId(''); }} />
                                 Link to existing customer
                             </label>
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                                <input type="radio" name="edit_customer_mode" className="text-indigo-600" checked={editCustomerMode === 'package'} onChange={() => { setEditCustomerMode('package'); setEditSelectedCustomerId(''); applyCustomerToEditForm(null); }} />
+                                Package customer
+                            </label>
                         </div>
-                        {editCustomerMode === 'existing' ? (
+                        {editCustomerMode === 'existing' || editCustomerMode === 'package' ? (
                             <div className="md:col-span-2">
                                 <label className="ta-field-label">Select customer</label>
                                 <select
@@ -1090,6 +1254,37 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 </select>
                             </div>
                         ) : null}
+                        {editCustomerMode === 'package' && editSelectedCustomerId ? (
+                            <div className="md:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+                                <label className="ta-field-label">Select package</label>
+                                <select
+                                    className="ta-input"
+                                    value={editSelectedPackageId}
+                                    onChange={(e) => {
+                                        const id = e.target.value;
+                                        setEditSelectedPackageId(id);
+                                        editForm.setData('customer_package_id', id);
+                                        editForm.setData('package_service_ids', []);
+                                    }}
+                                >
+                                    <option value="">Choose customer package…</option>
+                                    {editAvailablePackages.map((pkg) => (
+                                        <option key={pkg.id} value={pkg.id}>
+                                            {pkg.package_name}
+                                        </option>
+                                    ))}
+                                </select>
+                                {editSelectedPackage ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {editSelectedPackage.services.map((service) => (
+                                            <span key={service.id} className={`rounded-full px-2 py-1 text-xs ${service.remaining_sessions > 0 ? 'border border-emerald-200 bg-white text-emerald-800' : 'border border-slate-200 bg-slate-100 text-slate-500'}`}>
+                                                {service.name} {service.remaining_sessions}/{service.included_sessions} left
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
                         <div><label className="ta-field-label">{editCustomerMode === 'existing' ? 'Name' : 'Full name'}</label><input className="ta-input" value={editForm.data.customer_name} onChange={(e) => editForm.setData('customer_name', e.target.value)} required />{fieldError(editForm, 'customer_name')}</div>
                         <div><label className="ta-field-label">{editCustomerMode === 'existing' ? 'Phone number' : 'Phone'}</label><input className="ta-input" value={editForm.data.customer_phone} onChange={(e) => editForm.setData('customer_phone', e.target.value)} required />{fieldError(editForm, 'customer_phone')}</div>
                         <div><label className="ta-field-label">Email</label><input className="ta-input" type="email" value={editForm.data.customer_email} onChange={(e) => editForm.setData('customer_email', e.target.value)} />{fieldError(editForm, 'customer_email')}</div>
@@ -1104,7 +1299,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
                                         onClick={() => handleEditServiceChange([...editSelectedServices, String(s.id)])}
                                     >
-                                        {s.name} ({s.duration_minutes}m) - {formatMoney(s.price)}
+                                        {s.name} ({s.duration_minutes}m) - {formatMoney(s.price, currencyCode)}
                                     </button>
                                 ))}
                                 {editFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
@@ -1163,7 +1358,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
-                            <p className="mb-1 text-xs text-slate-500">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. For today, the earliest start is the next available time after now (including minimum advance).</p>
+                            <p className="mb-1 text-xs text-slate-500">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. Walk-ins can start from the current time, and future bookings can be scheduled up to the booking horizon.</p>
                             <input
                                 key={`edit-start-${editStartMountKey}`}
                                 ref={editStartRef}
@@ -1172,7 +1367,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 defaultValue={editStartDefault}
                                 onInput={(e) => syncEditStartFromInput(e.currentTarget.value)}
                                 min={editSalonBounds.min}
-                                max={`${editStartYmd}T23:59`}
+                                max={editSalonBounds.max}
                                 required
                             />
                             {fieldError(editForm, 'scheduled_start')}
@@ -1209,6 +1404,112 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                     });
                 }}
             />
+
+            <Modal show={showBoardView} maxWidth="7xl" onClose={() => setShowBoardView(false)}>
+                <div className="flex h-[90vh] flex-col bg-[#111315] text-white">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-6 py-4">
+                        <div>
+                            <h3 className="text-lg font-semibold">Appointment Board</h3>
+                            <p className="text-sm text-slate-300">Time-based planner by staff. Covered package visits still appear here, but invoice at zero when completed.</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const d = new Date(`${boardDate}T12:00:00`);
+                                    d.setDate(d.getDate() - 1);
+                                    setBoardDate(localYmd(d));
+                                }}
+                                className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5"
+                            >
+                                Prev
+                            </button>
+                            <input
+                                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                                type="date"
+                                value={boardDate}
+                                onChange={(e) => setBoardDate(e.target.value)}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const d = new Date(`${boardDate}T12:00:00`);
+                                    d.setDate(d.getDate() + 1);
+                                    setBoardDate(localYmd(d));
+                                }}
+                                className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5"
+                            >
+                                Next
+                            </button>
+                            <select
+                                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                                value={boardStaffFilter}
+                                onChange={(e) => setBoardStaffFilter(e.target.value)}
+                            >
+                                <option value="all">All team</option>
+                                {staffProfiles.map((staff) => (
+                                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                                ))}
+                            </select>
+                            <button type="button" onClick={() => setShowBoardView(false)} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Close</button>
+                        </div>
+                    </div>
+
+                    <div className="flex min-h-0 flex-1 overflow-auto">
+                        <div className="sticky left-0 z-20 w-24 shrink-0 border-r border-white/10 bg-[#0b0d0f]">
+                            <div className="h-24 border-b border-white/10 px-3 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Time</div>
+                            <div className="relative">
+                                {boardHourMarks.slice(0, -1).map((minutes) => (
+                                    <div key={minutes} className="flex h-20 items-start border-b border-white/5 px-3 pt-2 text-xs text-slate-400">
+                                        {formatHourLabel(Math.floor(minutes / 60))}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex min-w-max flex-1">
+                            {boardCardsByStaff.map(({ staff, cards }) => (
+                                <div key={staff.id} className="w-72 shrink-0 border-r border-white/10">
+                                    <div className="sticky top-0 z-10 flex h-24 flex-col items-center justify-center gap-2 border-b border-white/10 bg-[#171a1d] px-4">
+                                        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-cyan-300/40 bg-slate-800 text-sm font-semibold text-cyan-200">
+                                            {(staff.name || '?').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+                                        </div>
+                                        <div className="text-center text-sm font-medium text-slate-100">{staff.name}</div>
+                                    </div>
+                                    <div className="relative" style={{ height: `${(boardHourMarks.length - 1) * 80}px` }}>
+                                        {boardHourMarks.slice(0, -1).map((minutes) => (
+                                            <div key={`${staff.id}-${minutes}`} className="h-20 border-b border-white/5" />
+                                        ))}
+                                        {cards.map((appt) => (
+                                            <button
+                                                key={appt.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowBoardView(false);
+                                                    if (appt.status === 'confirmed') openStartService(appt);
+                                                    else if (appt.status === 'in_progress' || appt.status === 'completed') openCompleteService(appt);
+                                                    else startEdit(appt);
+                                                }}
+                                                className="absolute left-2 right-2 overflow-hidden rounded-xl border border-white/20 bg-slate-100 p-2 text-left text-slate-900 shadow-lg transition hover:scale-[1.01]"
+                                                style={{ top: `${appt.top}%`, height: `${appt.height}%` }}
+                                            >
+                                                <div className="text-[11px] font-semibold text-slate-600">{appt.timeLabel}</div>
+                                                <div className="mt-1 text-sm font-semibold">{appt.customer_name}</div>
+                                                <div className="text-xs text-slate-700">{appt.service_name}</div>
+                                                {appt.customer_package_id ? <div className="mt-1 text-[11px] font-medium text-emerald-700">Package session</div> : null}
+                                                {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-medium text-amber-700">Needs payment</div> : null}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                            {boardCardsByStaff.length === 0 ? (
+                                <div className="flex flex-1 items-center justify-center text-sm text-slate-400">No staff selected.</div>
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+            </Modal>
         </AuthenticatedLayout>
     );
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\FinanceSetting;
 use App\Support\Permissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -46,6 +47,7 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user()?->loadMissing('role');
+        $financeSettings = FinanceSetting::current();
 
         return [
             ...parent::share($request),
@@ -74,6 +76,7 @@ class HandleInertiaRequests extends Middleware
                 'created_purchase_order_id' => fn () => $request->session()->get('created_purchase_order_id'),
             ],
             'app_timezone' => config('app.timezone'),
+            'app_currency_code' => $financeSettings->currency_code ?: 'AED',
         ];
     }
 }

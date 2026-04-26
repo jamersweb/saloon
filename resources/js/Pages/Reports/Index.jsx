@@ -1,7 +1,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, usePage } from '@inertiajs/react';
 
-const toMoney = (value) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(Number(value || 0));
+const toMoney = (value, currencyCode = 'AED') => new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(value || 0));
 
 function HorizontalBarChart({ rows, labelKey, valueKey, colorClass }) {
     const max = Math.max(...rows.map((row) => Number(row[valueKey] || 0)), 1);
@@ -27,7 +27,7 @@ function HorizontalBarChart({ rows, labelKey, valueKey, colorClass }) {
     );
 }
 
-function RevenueTrendChart({ data }) {
+function RevenueTrendChart({ data, currencyCode }) {
     const width = 560;
     const height = 220;
     const pad = 24;
@@ -56,7 +56,7 @@ function RevenueTrendChart({ data }) {
                 {data.slice(-4).map((row) => (
                     <div key={row.date} className="rounded-lg border border-slate-200 px-2 py-1">
                         <p>{row.date}</p>
-                        <p className="font-semibold text-slate-700">{toMoney(row.revenue)}</p>
+                        <p className="font-semibold text-slate-700">{toMoney(row.revenue, currencyCode)}</p>
                     </div>
                 ))}
             </div>
@@ -64,7 +64,7 @@ function RevenueTrendChart({ data }) {
     );
 }
 
-export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, dailyRevenue, waitingTimeByStaff, lateMinutesByStaff }) {
+export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, currencyCode = 'AED' }) {
     const { auth } = usePage().props;
     const canExport = Boolean(auth?.permissions?.can_export_reports);
 
@@ -115,7 +115,7 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                     {Object.entries(overview).map(([key, value]) => (
                         <div key={key} className="ta-card p-4">
                             <p className="text-xs uppercase text-slate-500">{key.replaceAll('_', ' ')}</p>
-                            <p className="mt-1 text-xl font-semibold text-slate-800">{key.includes('revenue') ? toMoney(value) : value}</p>
+                            <p className="mt-1 text-xl font-semibold text-slate-800">{key.includes('revenue') ? toMoney(value, currencyCode) : value}</p>
                         </div>
                     ))}
                 </section>
@@ -131,7 +131,7 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                     <div className="ta-card overflow-hidden">
                         <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Daily Revenue Trend</h3></div>
                         <div className="p-5">
-                            <RevenueTrendChart data={dailyRevenue} />
+                            <RevenueTrendChart data={dailyRevenue} currencyCode={currencyCode} />
                         </div>
                     </div>
                 </section>
@@ -144,7 +144,7 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                             <div className="overflow-x-auto">
                                 <table className="min-w-full text-sm">
                                     <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Service</th><th className="px-5 py-3">Appointments</th><th className="px-5 py-3">Revenue</th></tr></thead>
-                                    <tbody>{servicePerformance.map((row, idx) => <tr key={`${row.service_name}-${idx}`} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{row.service_name}</td><td className="px-5 py-3 text-slate-600">{row.total}</td><td className="px-5 py-3 font-semibold text-slate-700">{toMoney(row.revenue)}</td></tr>)}</tbody>
+                                    <tbody>{servicePerformance.map((row, idx) => <tr key={`${row.service_name}-${idx}`} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{row.service_name}</td><td className="px-5 py-3 text-slate-600">{row.total}</td><td className="px-5 py-3 font-semibold text-slate-700">{toMoney(row.revenue, currencyCode)}</td></tr>)}</tbody>
                                 </table>
                             </div>
                         </div>

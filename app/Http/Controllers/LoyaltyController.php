@@ -80,7 +80,35 @@ class LoyaltyController extends Controller
             'section' => $section,
             'tiers' => LoyaltyTier::query()->orderBy('min_points')->get(),
             'cardTypes' => $cardTypes,
-            'packages' => ServicePackage::query()->orderBy('name')->get(),
+            'packages' => ServicePackage::query()
+                ->with('salonServices:id,name,category,duration_minutes,price')
+                ->withCount('customerPackages')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (ServicePackage $package) => [
+                    'id' => $package->id,
+                    'name' => $package->name,
+                    'description' => $package->description,
+                    'price' => $package->price,
+                    'usage_limit' => $package->usage_limit,
+                    'initial_value' => $package->initial_value,
+                    'validity_days' => $package->validity_days,
+                    'services_per_visit_limit' => $package->services_per_visit_limit,
+                    'is_active' => $package->is_active,
+                    'customer_packages_count' => $package->customer_packages_count,
+                    'salon_service_ids' => $package->salonServices->pluck('id')->all(),
+                    'service_quantities' => $package->salonServices->mapWithKeys(fn (SalonService $service) => [
+                        (string) $service->id => (int) ($service->pivot?->included_sessions ?? 1),
+                    ]),
+                    'salon_services' => $package->salonServices->map(fn (SalonService $service) => [
+                        'id' => $service->id,
+                        'name' => $service->name,
+                        'category' => $service->category,
+                        'duration_minutes' => $service->duration_minutes,
+                        'price' => $service->price,
+                        'included_sessions' => (int) ($service->pivot?->included_sessions ?? 1),
+                    ])->values(),
+                ]),
             'membershipCards' => CustomerMembershipCard::query()
                 ->with(['customer:id,name,phone,email', 'type:id,name'])
                 ->latest()
@@ -165,7 +193,7 @@ class LoyaltyController extends Controller
             'salonServices' => SalonService::query()
                 ->where('is_active', true)
                 ->orderBy('name')
-                ->get(['id', 'name', 'category']),
+                ->get(['id', 'name', 'category', 'duration_minutes', 'price']),
             'settings' => LoyaltyProgramSetting::current(),
             'recentRedemptions' => LoyaltyRedemption::query()
                 ->with(['customer:id,name', 'reward:id,name', 'redeemedBy:id,name', 'appointment.service:id,name'])
@@ -258,23 +286,52 @@ class LoyaltyController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'usage_limit' => ['nullable', 'integer', 'min:1'],
-            'initial_value' => ['nullable', 'numeric', 'min:0'],
-            'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
-            'is_active' => ['nullable', 'boolean'],
-        ]);
+        [$data, $salonServiceIds, $serviceQuantities] = $this->validatePackagePayload($request);
 
         $package = ServicePackage::create([
             ...$data,
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
+        $package->salonServices()->sync($this->buildPackageServiceSyncPayload($salonServiceIds, $serviceQuantities));
 
         Audit::log($request->user()?->id, 'package.created', 'ServicePackage', $package->id);
 
         return back()->with('status', 'Service package created.');
+    }
+
+    public function updatePackage(Request $request, ServicePackage $package): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        [$data, $salonServiceIds, $serviceQuantities] = $this->validatePackagePayload($request);
+
+        $package->update([
+            ...$data,
+            'is_active' => (bool) ($data['is_active'] ?? false),
+        ]);
+        $package->salonServices()->sync($this->buildPackageServiceSyncPayload($salonServiceIds, $serviceQuantities));
+
+        Audit::log($request->user()?->id, 'package.updated', 'ServicePackage', $package->id);
+
+        return back()->with('status', 'Service package updated.');
+    }
+
+    public function destroyPackage(Request $request, ServicePackage $package): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        if ($package->customerPackages()->exists()) {
+            return back()->withErrors([
+                'packages' => 'This package already has assigned customer records. Deactivate or edit it instead of deleting it.',
+            ]);
+        }
+
+        $package->salonServices()->detach();
+        $package->delete();
+
+        Audit::log($request->user()?->id, 'package.deleted', 'ServicePackage', $package->id);
+
+        return back()->with('status', 'Service package deleted.');
     }
 
     public function assignPackage(Request $request, PackageBalanceService $packageBalanceService): RedirectResponse
@@ -1001,6 +1058,62 @@ class LoyaltyController extends Controller
                 $request->merge([$field => null]);
             }
         }
+    }
+
+    /**
+     * @return array{0: array<string, mixed>, 1: list<int>, 2: array<string, int>}
+     */
+    private function validatePackagePayload(Request $request): array
+    {
+        $this->mergeNullablePackageFields($request);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'price' => ['required', 'numeric', 'min:0'],
+            'usage_limit' => ['nullable', 'integer', 'min:1'],
+            'initial_value' => ['nullable', 'numeric', 'min:0'],
+            'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'services_per_visit_limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'is_active' => ['nullable', 'boolean'],
+            'salon_service_ids' => ['required', 'array', 'min:1'],
+            'salon_service_ids.*' => ['integer', 'exists:salon_services,id'],
+            'service_quantities' => ['nullable', 'array'],
+        ]);
+
+        $salonServiceIds = array_values(array_unique(array_map('intval', $data['salon_service_ids'] ?? [])));
+        $serviceQuantities = collect($request->input('service_quantities', []))
+            ->mapWithKeys(fn ($value, $key) => [(string) (int) $key => max(1, (int) $value)])
+            ->all();
+        unset($data['salon_service_ids']);
+
+        return [$data, $salonServiceIds, $serviceQuantities];
+    }
+
+    private function mergeNullablePackageFields(Request $request): void
+    {
+        foreach (['usage_limit', 'initial_value', 'validity_days', 'services_per_visit_limit'] as $field) {
+            if (! $request->filled($field)) {
+                $request->merge([$field => null]);
+            }
+        }
+    }
+
+    /**
+     * @param list<int> $salonServiceIds
+     * @param array<string, int> $serviceQuantities
+     * @return array<int, array<string, int>>
+     */
+    private function buildPackageServiceSyncPayload(array $salonServiceIds, array $serviceQuantities): array
+    {
+        $payload = [];
+        foreach ($salonServiceIds as $serviceId) {
+            $payload[$serviceId] = [
+                'included_sessions' => max(1, (int) ($serviceQuantities[(string) $serviceId] ?? 1)),
+            ];
+        }
+
+        return $payload;
     }
 
     /**

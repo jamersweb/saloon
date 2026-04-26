@@ -121,7 +121,7 @@ class BookingAvailabilityService
 
         $hasConflict = Appointment::query()
             ->where('staff_profile_id', $staffProfileId)
-            ->whereNotIn('status', [Appointment::STATUS_CANCELLED, Appointment::STATUS_NO_SHOW])
+            ->whereNotIn('status', [Appointment::STATUS_COMPLETED, Appointment::STATUS_CANCELLED, Appointment::STATUS_NO_SHOW])
             ->when($ignoreAppointmentId, fn ($query) => $query->where('id', '!=', $ignoreAppointmentId))
             ->where(function ($query) use ($start, $end) {
                 $query->whereBetween('scheduled_start', [$start, $end])

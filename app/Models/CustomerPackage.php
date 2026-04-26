@@ -44,4 +44,9 @@ class CustomerPackage extends Model
     {
         return $this->hasMany(CustomerPackageUsage::class);
     }
+
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class);
+    }
 }

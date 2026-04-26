@@ -27,7 +27,7 @@
             @foreach($overview as $key => $value)
                 <td class="card">
                     <div class="card-label">{{ str_replace('_', ' ', $key) }}</div>
-                    <div class="card-value">{{ $key === 'completed_revenue' ? '$' . number_format((float) $value, 2) : $value }}</div>
+                    <div class="card-value">{{ $key === 'completed_revenue' ? $currencyCode . ' ' . number_format((float) $value, 2) : $value }}</div>
                 </td>
             @endforeach
         </tr>
@@ -60,7 +60,7 @@
                 <tr>
                     <td>{{ $row['service_name'] }}</td>
                     <td>{{ $row['total'] }}</td>
-                    <td>${{ number_format((float) $row['revenue'], 2) }}</td>
+                    <td>{{ $currencyCode }} {{ number_format((float) $row['revenue'], 2) }}</td>
                 </tr>
             @empty
                 <tr><td colspan="3">No data</td></tr>
@@ -94,7 +94,7 @@
             @forelse($dailyRevenue as $row)
                 <tr>
                     <td>{{ $row['date'] }}</td>
-                    <td>${{ number_format((float) $row['revenue'], 2) }}</td>
+                    <td>{{ $currencyCode }} {{ number_format((float) $row['revenue'], 2) }}</td>
                 </tr>
             @empty
                 <tr><td colspan="2">No data</td></tr>

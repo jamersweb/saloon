@@ -23,7 +23,7 @@ class TaxInvoiceDraftFromAppointmentService
             throw new \InvalidArgumentException('Appointment has no linked service for invoicing.');
         }
 
-        $unitPrice = (float) $service->price;
+        $unitPrice = $appointment->customer_package_id ? 0.0 : (float) $service->price;
         $vatRate = (float) FinanceSetting::current()->vat_rate_percent;
 
         $customerDisplayName = $appointment->customer?->name
@@ -48,7 +48,9 @@ class TaxInvoiceDraftFromAppointmentService
         TaxInvoiceItem::query()->create([
             'tax_invoice_id' => $invoice->id,
             'salon_service_id' => $service->id,
-            'description' => $service->name,
+            'description' => $appointment->customer_package_id
+                ? $service->name.' (package session)'
+                : $service->name,
             'quantity' => 1,
             'unit_price' => $unitPrice,
             'line_subtotal' => $computed['line_subtotal'],

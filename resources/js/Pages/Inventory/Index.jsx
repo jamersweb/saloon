@@ -8,7 +8,7 @@ const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 te
 
 export default function InventoryIndex({ items, recentTransactions, openAlerts }) {
     const ROWS_PER_PAGE = 10;
-    const { flash, auth } = usePage().props;
+    const { flash, auth, app_currency_code: currencyCode = 'AED' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_inventory);
     const [editingId, setEditingId] = useState(null);
     const [adjustingId, setAdjustingId] = useState(null);
@@ -232,7 +232,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                                         <td className="px-5 py-3 text-slate-600">{item.category || '—'}</td>
                                         <td className={`px-5 py-3 font-semibold ${item.stock_quantity <= item.reorder_level ? 'text-red-600' : 'text-slate-700'}`}>{item.stock_quantity} {item.unit}</td>
                                         <td className="px-5 py-3 text-slate-600">{item.reorder_level}</td>
-                                        <td className="px-5 py-3 text-slate-600">{item.selling_price}</td>
+                                        <td className="px-5 py-3 text-slate-600">{new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(item.selling_price || 0))}</td>
                                         <td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{item.is_active ? 'Active' : 'Inactive'}</span></td>
                                         <td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEdit(item)}>Edit</button><button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 disabled:opacity-50" disabled={!canManage} onClick={() => startAdjust(item)}>Adjust</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => setDeactivateItemId(item.id)}>Delete</button></div></td>
                                     </tr>
@@ -329,7 +329,6 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
         </AuthenticatedLayout>
     );
 }
-
 
 
 

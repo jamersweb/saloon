@@ -8,6 +8,7 @@ use App\Models\AttendanceLog;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
+use App\Models\FinanceSetting;
 use App\Models\InventoryItem;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ class ReportController extends Controller
         $dateFrom = $request->date('date_from')?->startOfDay() ?? now()->startOfMonth();
         $dateTo = $request->date('date_to')?->endOfDay() ?? now()->endOfDay();
         $report = $this->collectReportData($dateFrom, $dateTo);
+        $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
 
         return Inertia::render('Reports/Index', [
             'filters' => [
@@ -39,6 +41,7 @@ class ReportController extends Controller
             'dailyRevenue' => $report['dailyRevenue'],
             'waitingTimeByStaff' => $report['waitingTimeByStaff'],
             'lateMinutesByStaff' => $report['lateMinutesByStaff'],
+            'currencyCode' => $currencyCode,
         ]);
     }
 
@@ -155,10 +158,12 @@ class ReportController extends Controller
         $dateFrom = isset($data['date_from']) ? Carbon::parse($data['date_from'])->startOfDay() : now()->startOfMonth();
         $dateTo = isset($data['date_to']) ? Carbon::parse($data['date_to'])->endOfDay() : now()->endOfDay();
         $report = $this->collectReportData($dateFrom, $dateTo);
+        $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
 
         $pdf = Pdf::loadView('reports.pdf', [
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'currencyCode' => $currencyCode,
             'overview' => $report['overview'],
             'statusBreakdown' => $report['statusBreakdown'],
             'servicePerformance' => $report['servicePerformance'],

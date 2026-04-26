@@ -85,9 +85,9 @@ const toDateTimeLocal = (value) => {
 
 const formatMoney = (value) => {
     const amount = Number(value || 0);
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(undefined, {
         style: 'currency',
-        currency: 'USD',
+        currency: 'AED',
         minimumFractionDigits: 2,
     }).format(amount);
 };

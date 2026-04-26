@@ -14,11 +14,15 @@ class PackageBalanceService
     public function assignPackage(Customer $customer, ServicePackage $package, ?int $assignedBy = null, ?string $notes = null): CustomerPackage
     {
         $expiresAt = $package->validity_days ? now()->addDays((int) $package->validity_days) : null;
+        $sessionLimit = $package->usage_limit;
+        if ($sessionLimit === null) {
+            $sessionLimit = (int) $package->salonServices()->sum('service_package_salon_service.included_sessions') ?: null;
+        }
 
         return CustomerPackage::create([
             'customer_id' => $customer->id,
             'service_package_id' => $package->id,
-            'remaining_sessions' => $package->usage_limit,
+            'remaining_sessions' => $sessionLimit,
             'remaining_value' => $package->initial_value,
             'expires_at' => $expiresAt,
             'status' => 'active',
@@ -27,9 +31,9 @@ class PackageBalanceService
         ]);
     }
 
-    public function consume(CustomerPackage $customerPackage, int $sessionsUsed, float $valueUsed, ?int $recordedBy = null, ?string $notes = null): CustomerPackageUsage
+    public function consume(CustomerPackage $customerPackage, int $sessionsUsed, float $valueUsed, ?int $recordedBy = null, ?string $notes = null, ?int $appointmentId = null, ?int $salonServiceId = null): CustomerPackageUsage
     {
-        return DB::transaction(function () use ($customerPackage, $sessionsUsed, $valueUsed, $recordedBy, $notes) {
+        return DB::transaction(function () use ($customerPackage, $sessionsUsed, $valueUsed, $recordedBy, $notes, $appointmentId, $salonServiceId) {
             $customerPackage->refresh();
 
             $remainingSessions = $customerPackage->remaining_sessions;
@@ -59,6 +63,8 @@ class PackageBalanceService
 
             return CustomerPackageUsage::create([
                 'customer_package_id' => $customerPackage->id,
+                'appointment_id' => $appointmentId,
+                'salon_service_id' => $salonServiceId,
                 'sessions_used' => $sessionsUsed,
                 'value_used' => $valueUsed,
                 'remaining_sessions_after' => $nextSessions,

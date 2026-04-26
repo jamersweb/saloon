@@ -44,4 +44,11 @@ class SalonService extends Model
         return $this->belongsToMany(LoyaltyReward::class, 'loyalty_reward_salon_service')
             ->withTimestamps();
     }
+
+    public function servicePackages(): BelongsToMany
+    {
+        return $this->belongsToMany(ServicePackage::class, 'service_package_salon_service')
+            ->withPivot('included_sessions')
+            ->withTimestamps();
+    }
 }

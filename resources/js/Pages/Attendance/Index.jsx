@@ -3,18 +3,26 @@ import { Head, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 
 export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTimezone }) {
-    const { errors, auth } = usePage().props;
+    const { errors, auth, flash } = usePage().props;
     const isStaff = auth?.user?.role?.name === 'staff';
     const myProfileName = staffProfiles?.[0]?.name || 'My profile';
     const clockInForm = useForm({ staff_profile_id: '', clock_in_latitude: '', clock_in_longitude: '' });
     const clockOutForm = useForm({ staff_profile_id: '' });
     const [now, setNow] = useState(new Date());
+    const [toast, setToast] = useState('');
 
     useEffect(() => {
         const timer = window.setInterval(() => setNow(new Date()), 1000);
 
         return () => window.clearInterval(timer);
     }, []);
+
+    useEffect(() => {
+        if (!flash?.status) return undefined;
+        setToast(flash.status);
+        const timer = window.setTimeout(() => setToast(''), 4200);
+        return () => window.clearTimeout(timer);
+    }, [flash?.status]);
 
     const currentTime = new Intl.DateTimeFormat('en-GB', {
         hour: '2-digit',
@@ -55,6 +63,7 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
                 clock_in_latitude: latitude,
                 clock_in_longitude: longitude,
             },
+            onSuccess: () => setToast('Clock in recorded.'),
         });
     };
 
@@ -62,6 +71,16 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
         <AuthenticatedLayout header="Attendance">
             <Head title="Attendance" />
             <div className="space-y-6">
+                {toast && (
+                    <div className="pointer-events-none fixed right-4 top-4 z-[80]">
+                        <div className="pointer-events-auto min-w-[280px] max-w-[460px] rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 shadow-lg">
+                            <div className="flex items-start justify-between gap-3">
+                                <p>{toast}</p>
+                                <button type="button" className="text-xs font-semibold opacity-80 hover:opacity-100" onClick={() => setToast('')}>Close</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {Object.keys(errors).length > 0 && <div className="ta-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{Object.values(errors)[0]}</div>}
 
                 <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -107,6 +126,7 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
                                 data: {
                                     ...clockOutForm.data,
                                 },
+                                onSuccess: () => setToast('Clock out recorded.'),
                             });
                         }}
                         className="ta-card space-y-3 p-5"

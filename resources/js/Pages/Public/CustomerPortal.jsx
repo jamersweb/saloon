@@ -3,7 +3,7 @@ import { Head } from '@inertiajs/react';
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : 'N/A';
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : 'N/A';
-const formatCurrency = (value) => value === null || value === undefined ? 'N/A' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value));
+const formatCurrency = (value, currencyCode = 'AED') => value === null || value === undefined ? 'N/A' : new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(value));
 
 export default function CustomerPortal({ customer }) {
     return (

@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\CustomerMembershipCard;
 use App\Models\MembershipCardType;
 use App\Models\Role;
+use App\Models\SalonService;
 use App\Models\ServicePackage;
 use App\Models\User;
 use App\Services\GiftCardService;
@@ -112,6 +113,114 @@ class PackagesAndGiftCardsTest extends TestCase
             'initial_value' => 150,
             'remaining_value' => 150,
         ]);
+    }
+
+    public function test_manager_can_create_update_and_delete_service_package_with_services(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $serviceA = SalonService::create([
+            'name' => 'Blow Dry',
+            'category' => 'Hair',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 120,
+            'is_active' => true,
+        ]);
+        $serviceB = SalonService::create([
+            'name' => 'Root Color',
+            'category' => 'Hair',
+            'duration_minutes' => 90,
+            'buffer_minutes' => 0,
+            'price' => 250,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.packages.store'), [
+                'name' => 'Hair Refresh Pack',
+                'description' => 'For repeat clients',
+                'price' => 699,
+                'usage_limit' => 4,
+                'initial_value' => 500,
+                'validity_days' => 90,
+                'services_per_visit_limit' => 2,
+                'salon_service_ids' => [$serviceA->id, $serviceB->id],
+                'service_quantities' => [$serviceA->id => 2, $serviceB->id => 4],
+                'is_active' => true,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $package = ServicePackage::query()->where('name', 'Hair Refresh Pack')->firstOrFail();
+
+        $this->assertSame('699.00', $package->price);
+        $this->assertSame([ $serviceA->id, $serviceB->id ], $package->salonServices()->orderBy('salon_services.id')->pluck('salon_services.id')->all());
+        $this->assertSame(4, (int) $package->salonServices()->where('salon_services.id', $serviceB->id)->first()->pivot->included_sessions);
+
+        $this->actingAs($user)
+            ->put(route('loyalty.packages.update', $package), [
+                'name' => 'Hair Refresh Pack Plus',
+                'description' => 'Updated',
+                'price' => 799,
+                'usage_limit' => 5,
+                'initial_value' => 650,
+                'validity_days' => 120,
+                'services_per_visit_limit' => 1,
+                'salon_service_ids' => [$serviceB->id],
+                'service_quantities' => [$serviceB->id => 1],
+                'is_active' => false,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $package->refresh();
+
+        $this->assertSame('Hair Refresh Pack Plus', $package->name);
+        $this->assertSame('799.00', $package->price);
+        $this->assertFalse($package->is_active);
+        $this->assertSame([$serviceB->id], $package->salonServices()->pluck('salon_services.id')->all());
+
+        $this->actingAs($user)
+            ->delete(route('loyalty.packages.destroy', $package))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseMissing('service_packages', ['id' => $package->id]);
+    }
+
+    public function test_assigned_service_package_cannot_be_deleted(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-PACK-KEEP',
+            'name' => 'Keep Package Customer',
+            'phone' => '5551113333',
+            'is_active' => true,
+        ]);
+
+        $package = ServicePackage::create([
+            'name' => 'Do Not Delete',
+            'price' => 300,
+            'usage_limit' => 2,
+            'is_active' => true,
+        ]);
+
+        app(PackageBalanceService::class)->assignPackage($customer, $package);
+
+        $this->actingAs($user)
+            ->delete(route('loyalty.packages.destroy', $package))
+            ->assertSessionHasErrors('packages');
+
+        $this->assertDatabaseHas('service_packages', ['id' => $package->id]);
     }
 
     public function test_gift_card_can_be_issued_with_nfc_uid_and_looked_up(): void
