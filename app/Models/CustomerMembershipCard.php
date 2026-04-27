@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CustomerMembershipCard extends Model
 {
@@ -45,5 +46,10 @@ class CustomerMembershipCard extends Model
     public function assignedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_by');
+    }
+
+    public function registrations(): HasMany
+    {
+        return $this->hasMany(MembershipRegistration::class);
     }
 }

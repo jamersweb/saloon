@@ -87,4 +87,9 @@ class Customer extends Model
     {
         return $this->hasMany(TaxInvoice::class);
     }
+
+    public function membershipRegistrations(): HasMany
+    {
+        return $this->hasMany(MembershipRegistration::class)->latest();
+    }
 }

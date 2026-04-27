@@ -18,6 +18,7 @@ export default function LoyaltyIndex({
     packages,
     customers,
     membershipCards,
+    membershipRegistrations,
     nfcLookupResult,
     giftNfcLookupResult,
     customerPackages,
@@ -49,6 +50,37 @@ export default function LoyaltyIndex({
     const createCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
     const editCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
     const assignCardForm = useForm({ customer_id: '', membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'active', notes: '' });
+    const memberRegistrationForm = useForm({
+        customer_id: '',
+        registration_date: new Date().toISOString().slice(0, 10),
+        staff_name: auth?.user?.name ?? '',
+        full_name: '',
+        phone: '',
+        email: '',
+        nationality: '',
+        date_of_birth: '',
+        is_first_visit: true,
+        preferred_language: 'English',
+        preferred_language_other: '',
+        heard_about_us: 'Instagram',
+        heard_about_us_other: '',
+        service_interests: [],
+        service_interests_other: '',
+        requires_home_service: false,
+        home_service_location: '',
+        preferred_visit_frequency: 'Monthly',
+        spending_profile: 'AED 500 – 2,000',
+        membership_card_type_id: '',
+        card_number: '',
+        nfc_uid: '',
+        card_status: 'active',
+        card_notes: '',
+        consent_data_processing: false,
+        consent_marketing: true,
+        signature_name: '',
+        signature_date: new Date().toISOString().slice(0, 10),
+        notes: '',
+    });
     const issueInventoryForm = useForm({ membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'pending', notes: '' });
     const linkInventoryForm = useForm({ customer_id: '', customer_membership_card_id: '', status: 'active', notes: '' });
     const nfcLookupForm = useForm({ nfc_uid: '' });
@@ -195,6 +227,10 @@ export default function LoyaltyIndex({
             nfcLookupForm.setData('nfc_uid', uid);
             return;
         }
+        if (target === 'register') {
+            memberRegistrationForm.setData('nfc_uid', uid);
+            return;
+        }
         if (target === 'bind') {
             nfcBindForm.setData('nfc_uid', uid);
             return;
@@ -327,6 +363,8 @@ export default function LoyaltyIndex({
                         cardTypes={cardTypes}
                         customers={customers}
                         membershipCards={membershipCards}
+                        membershipRegistrations={membershipRegistrations}
+                        currentUserName={auth?.user?.name ?? ''}
                         nfcLookupResult={nfcLookupResult}
                         nfcBridgeLoadingTarget={nfcBridgeLoadingTarget}
                         createCardTypeForm={createCardTypeForm}
@@ -337,6 +375,7 @@ export default function LoyaltyIndex({
                         issueInventoryForm={issueInventoryForm}
                         linkInventoryForm={linkInventoryForm}
                         assignCardForm={assignCardForm}
+                        memberRegistrationForm={memberRegistrationForm}
                         nfcLookupForm={nfcLookupForm}
                         nfcBindForm={nfcBindForm}
                         recentLedgers={recentLedgers}

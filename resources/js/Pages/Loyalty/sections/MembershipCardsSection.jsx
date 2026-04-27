@@ -1,3 +1,5 @@
+import Modal from '@/Components/Modal';
+import { Transition } from '@headlessui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 export default function MembershipCardsSection({
@@ -6,6 +8,8 @@ export default function MembershipCardsSection({
     cardTypes,
     customers,
     membershipCards,
+    membershipRegistrations,
+    currentUserName,
     nfcLookupResult,
     nfcBridgeLoadingTarget,
     createCardTypeForm,
@@ -16,6 +20,7 @@ export default function MembershipCardsSection({
     issueInventoryForm,
     linkInventoryForm,
     assignCardForm,
+    memberRegistrationForm,
     nfcLookupForm,
     nfcBindForm,
     recentLedgers,
@@ -29,9 +34,19 @@ export default function MembershipCardsSection({
     const importFileRef = useRef(null);
     const [membershipCardTypeFilter, setMembershipCardTypeFilter] = useState('');
     const [selectedMembershipCardId, setSelectedMembershipCardId] = useState(null);
+    const [showRegistrationModal, setShowRegistrationModal] = useState(false);
+    const [registrationStep, setRegistrationStep] = useState(0);
     const [cardTypesPage, setCardTypesPage] = useState(1);
     const [nfcRegistryPage, setNfcRegistryPage] = useState(1);
     const [membershipCustomersPage, setMembershipCustomersPage] = useState(1);
+    const [registrationPage, setRegistrationPage] = useState(1);
+
+    const REGISTRATION_STEPS = [
+        { id: 'customer', label: 'Customer' },
+        { id: 'visit', label: 'Visit & Preferences' },
+        { id: 'membership', label: 'Membership' },
+        { id: 'consent', label: 'Consent & Review' },
+    ];
 
     const pointsByCustomerId = useMemo(() => {
         const map = {};
@@ -52,6 +67,7 @@ export default function MembershipCardsSection({
     const cardTypesTotalPages = Math.max(1, Math.ceil((cardTypes || []).length / ROWS_PER_PAGE));
     const nfcRegistryTotalPages = Math.max(1, Math.ceil((membershipCards || []).length / ROWS_PER_PAGE));
     const membershipCustomersTotalPages = Math.max(1, Math.ceil(membershipCustomers.length / ROWS_PER_PAGE));
+    const registrationTotalPages = Math.max(1, Math.ceil((membershipRegistrations || []).length / ROWS_PER_PAGE));
 
     const cardTypesPageRows = useMemo(
         () => (cardTypes || []).slice((cardTypesPage - 1) * ROWS_PER_PAGE, cardTypesPage * ROWS_PER_PAGE),
@@ -64,6 +80,10 @@ export default function MembershipCardsSection({
     const membershipCustomersPageRows = useMemo(
         () => membershipCustomers.slice((membershipCustomersPage - 1) * ROWS_PER_PAGE, membershipCustomersPage * ROWS_PER_PAGE),
         [membershipCustomers, membershipCustomersPage],
+    );
+    const registrationPageRows = useMemo(
+        () => (membershipRegistrations || []).slice((registrationPage - 1) * ROWS_PER_PAGE, registrationPage * ROWS_PER_PAGE),
+        [membershipRegistrations, registrationPage],
     );
 
     useEffect(() => {
@@ -87,6 +107,12 @@ export default function MembershipCardsSection({
             setMembershipCustomersPage(membershipCustomersTotalPages);
         }
     }, [membershipCustomersPage, membershipCustomersTotalPages]);
+
+    useEffect(() => {
+        if (registrationPage > registrationTotalPages) {
+            setRegistrationPage(registrationTotalPages);
+        }
+    }, [registrationPage, registrationTotalPages]);
 
     const selectedMembershipCard = useMemo(
         () => (membershipCards || []).find((card) => String(card.id) === String(selectedMembershipCardId)) || null,
@@ -147,10 +173,452 @@ export default function MembershipCardsSection({
         </div>
     );
 
+    const resetMemberRegistrationForm = () => {
+        memberRegistrationForm.reset();
+        memberRegistrationForm.setData({
+            customer_id: '',
+            registration_date: new Date().toISOString().slice(0, 10),
+            staff_name: currentUserName || '',
+            full_name: '',
+            phone: '',
+            email: '',
+            nationality: '',
+            date_of_birth: '',
+            is_first_visit: true,
+            preferred_language: 'English',
+            preferred_language_other: '',
+            heard_about_us: 'Instagram',
+            heard_about_us_other: '',
+            service_interests: [],
+            service_interests_other: '',
+            requires_home_service: false,
+            home_service_location: '',
+            preferred_visit_frequency: 'Monthly',
+            spending_profile: 'AED 500 – 2,000',
+            membership_card_type_id: '',
+            card_number: '',
+            nfc_uid: '',
+            card_status: 'active',
+            card_notes: '',
+            consent_data_processing: false,
+            consent_marketing: true,
+            signature_name: '',
+            signature_date: new Date().toISOString().slice(0, 10),
+            notes: '',
+        });
+        memberRegistrationForm.clearErrors();
+        setRegistrationStep(0);
+    };
+
+    const openRegistrationModal = () => {
+        resetMemberRegistrationForm();
+        setShowRegistrationModal(true);
+    };
+
+    const closeRegistrationModal = () => {
+        if (memberRegistrationForm.processing) return;
+        setShowRegistrationModal(false);
+        setRegistrationStep(0);
+    };
+
+    const syncCustomerFromExisting = (customerId) => {
+        const customer = (customers || []).find((entry) => String(entry.id) === String(customerId));
+        if (!customer) {
+            memberRegistrationForm.setData('customer_id', '');
+            return;
+        }
+
+        memberRegistrationForm.setData({
+            ...memberRegistrationForm.data,
+            customer_id: String(customer.id),
+            full_name: customer.name || memberRegistrationForm.data.full_name,
+            phone: customer.phone || memberRegistrationForm.data.phone,
+            email: customer.email || memberRegistrationForm.data.email,
+            signature_name: memberRegistrationForm.data.signature_name || customer.name || '',
+        });
+    };
+
+    const toggleServiceInterest = (value) => {
+        const current = new Set(memberRegistrationForm.data.service_interests || []);
+        if (current.has(value)) {
+            current.delete(value);
+        } else {
+            current.add(value);
+        }
+        memberRegistrationForm.setData('service_interests', Array.from(current));
+    };
+
+    const validateRegistrationStep = () => {
+        if (registrationStep === 0) {
+            if (!memberRegistrationForm.data.full_name || !memberRegistrationForm.data.phone || !memberRegistrationForm.data.registration_date) {
+                window.alert('Add registration date, full name, and phone before continuing.');
+                return false;
+            }
+        }
+        if (registrationStep === 1) {
+            if ((memberRegistrationForm.data.service_interests || []).length === 0) {
+                window.alert('Select at least one service interest.');
+                return false;
+            }
+        }
+        if (registrationStep === 2) {
+            if (!memberRegistrationForm.data.membership_card_type_id) {
+                window.alert('Select the membership card type before continuing.');
+                return false;
+            }
+        }
+        if (registrationStep === 3) {
+            if (!memberRegistrationForm.data.consent_data_processing || !memberRegistrationForm.data.signature_name || !memberRegistrationForm.data.signature_date) {
+                window.alert('Consent, signature name, and signature date are required.');
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    const handleRegistrationSubmit = (e) => {
+        e.preventDefault();
+
+        if (!validateRegistrationStep()) {
+            return;
+        }
+
+        memberRegistrationForm.post(route('loyalty.cards.register-member'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setShowRegistrationModal(false);
+                resetMemberRegistrationForm();
+            },
+        });
+    };
+
+    const selectedRegistrationCardType = (cardTypes || []).find(
+        (cardType) => String(cardType.id) === String(memberRegistrationForm.data.membership_card_type_id),
+    );
+
     return (
         <div className="space-y-6">
+            <Modal show={showRegistrationModal} onClose={closeRegistrationModal} maxWidth="6xl">
+                <form onSubmit={handleRegistrationSubmit} className="min-h-[80vh] bg-gradient-to-br from-stone-950 via-zinc-950 to-neutral-900 text-white">
+                    <div className="border-b border-white/10 px-6 py-5">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                                <h2 className="text-3xl font-semibold tracking-tight">Add New Member</h2>
+                                <p className="mt-1 text-sm text-stone-300">Digital membership registration, customer creation, and card assignment in one flow.</p>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-4">
+                                {REGISTRATION_STEPS.map((step, index) => (
+                                    <button
+                                        key={step.id}
+                                        type="button"
+                                        onClick={() => {
+                                            if (index <= registrationStep || validateRegistrationStep()) {
+                                                setRegistrationStep(index);
+                                            }
+                                        }}
+                                        className={`rounded-2xl border px-3 py-2 text-left transition ${
+                                            index === registrationStep
+                                                ? 'border-amber-300 bg-amber-200/15 text-amber-100'
+                                                : index < registrationStep
+                                                    ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-100'
+                                                    : 'border-white/10 bg-white/5 text-stone-300'
+                                        }`}
+                                    >
+                                        <div className="text-[11px] uppercase tracking-[0.3em] opacity-70">Step {index + 1}</div>
+                                        <div className="mt-1 text-sm font-medium">{step.label}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid min-h-[calc(80vh-150px)] gap-0 lg:grid-cols-[1.6fr_0.7fr]">
+                        <div className="overflow-y-auto px-6 py-6">
+                            <Transition
+                                key={registrationStep}
+                                appear
+                                show
+                                enter="transform transition duration-300 ease-out"
+                                enterFrom="translate-x-3 opacity-0"
+                                enterTo="translate-x-0 opacity-100"
+                                leave="transform transition duration-200 ease-in"
+                                leaveFrom="translate-x-0 opacity-100"
+                                leaveTo="-translate-x-2 opacity-0"
+                            >
+                                <div className="space-y-6">
+                                    {registrationStep === 0 && (
+                                        <div className="grid gap-5 md:grid-cols-2">
+                                            <div className="md:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-4">
+                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Existing Customer Optional</label>
+                                                <select
+                                                    className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm text-slate-900"
+                                                    value={memberRegistrationForm.data.customer_id}
+                                                    onChange={(e) => syncCustomerFromExisting(e.target.value)}
+                                                >
+                                                    <option value="">Create new customer</option>
+                                                    {customers.map((customer) => (
+                                                        <option key={customer.id} value={customer.id}>{customer.name} {customer.phone ? `(${customer.phone})` : ''}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Registration Date</label>
+                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" type="date" value={memberRegistrationForm.data.registration_date} onChange={(e) => memberRegistrationForm.setData('registration_date', e.target.value)} />
+                                                {fieldError(memberRegistrationForm, 'registration_date')}
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Staff Name</label>
+                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.staff_name} onChange={(e) => memberRegistrationForm.setData('staff_name', e.target.value)} />
+                                                {fieldError(memberRegistrationForm, 'staff_name')}
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Full Name</label>
+                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.full_name} onChange={(e) => memberRegistrationForm.setData('full_name', e.target.value)} />
+                                                {fieldError(memberRegistrationForm, 'full_name')}
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Phone Number</label>
+                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.phone} onChange={(e) => memberRegistrationForm.setData('phone', e.target.value)} />
+                                                {fieldError(memberRegistrationForm, 'phone')}
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Email Address</label>
+                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" type="email" value={memberRegistrationForm.data.email} onChange={(e) => memberRegistrationForm.setData('email', e.target.value)} />
+                                                {fieldError(memberRegistrationForm, 'email')}
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Nationality</label>
+                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.nationality} onChange={(e) => memberRegistrationForm.setData('nationality', e.target.value)} />
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Date of Birth</label>
+                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" type="date" value={memberRegistrationForm.data.date_of_birth} onChange={(e) => memberRegistrationForm.setData('date_of_birth', e.target.value)} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {registrationStep === 1 && (
+                                        <div className="space-y-6">
+                                            <div className="grid gap-5 md:grid-cols-2">
+                                                <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                                                    <div className="mb-3 text-xs uppercase tracking-[0.3em] text-stone-400">First Visit</div>
+                                                    <div className="flex gap-3">
+                                                        <button type="button" className={`rounded-2xl px-4 py-3 text-sm ${memberRegistrationForm.data.is_first_visit ? 'bg-emerald-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('is_first_visit', true)}>Yes</button>
+                                                        <button type="button" className={`rounded-2xl px-4 py-3 text-sm ${memberRegistrationForm.data.is_first_visit === false ? 'bg-emerald-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('is_first_visit', false)}>No</button>
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                                                    <div className="mb-3 text-xs uppercase tracking-[0.3em] text-stone-400">Preferred Visit Frequency</div>
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        {['Weekly', 'Monthly', 'Occasionally'].map((entry) => (
+                                                            <button key={entry} type="button" className={`rounded-2xl px-3 py-3 text-sm ${memberRegistrationForm.data.preferred_visit_frequency === entry ? 'bg-amber-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('preferred_visit_frequency', entry)}>{entry}</button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid gap-5 md:grid-cols-2">
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Preferred Language</label>
+                                                    <select className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-slate-900" value={memberRegistrationForm.data.preferred_language} onChange={(e) => memberRegistrationForm.setData('preferred_language', e.target.value)}>
+                                                        <option value="English">English</option>
+                                                        <option value="Arabic">Arabic</option>
+                                                        <option value="Russian">Russian</option>
+                                                        <option value="Other">Other</option>
+                                                    </select>
+                                                </div>
+                                                {memberRegistrationForm.data.preferred_language === 'Other' && (
+                                                    <div>
+                                                        <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Other Language</label>
+                                                        <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.preferred_language_other} onChange={(e) => memberRegistrationForm.setData('preferred_language_other', e.target.value)} />
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">How Did You Hear About Us?</label>
+                                                    <select className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-slate-900" value={memberRegistrationForm.data.heard_about_us} onChange={(e) => memberRegistrationForm.setData('heard_about_us', e.target.value)}>
+                                                        <option value="Instagram">Instagram</option>
+                                                        <option value="Google">Google</option>
+                                                        <option value="Friend">Friend</option>
+                                                        <option value="Walk-in">Walk-in</option>
+                                                        <option value="Other">Other</option>
+                                                    </select>
+                                                </div>
+                                                {memberRegistrationForm.data.heard_about_us === 'Other' && (
+                                                    <div>
+                                                        <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Other Source</label>
+                                                        <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.heard_about_us_other} onChange={(e) => memberRegistrationForm.setData('heard_about_us_other', e.target.value)} />
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                                                <div className="mb-4 text-xs uppercase tracking-[0.3em] text-stone-400">Services of Interest</div>
+                                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                                                    {['Hair', 'Nails', 'Skin', 'Massage', 'Other'].map((service) => (
+                                                        <button key={service} type="button" className={`rounded-2xl border px-4 py-4 text-sm transition ${memberRegistrationForm.data.service_interests.includes(service) ? 'border-amber-300 bg-amber-200/20 text-amber-100' : 'border-white/10 bg-white/5 text-stone-200'}`} onClick={() => toggleServiceInterest(service)}>
+                                                            {service}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {memberRegistrationForm.data.service_interests.includes('Other') && (
+                                                    <div className="mt-4">
+                                                        <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" placeholder="Other service interest" value={memberRegistrationForm.data.service_interests_other} onChange={(e) => memberRegistrationForm.setData('service_interests_other', e.target.value)} />
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="grid gap-5 md:grid-cols-2">
+                                                <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                                                    <div className="mb-3 text-xs uppercase tracking-[0.3em] text-stone-400">Home Service</div>
+                                                    <div className="flex gap-3">
+                                                        <button type="button" className={`rounded-2xl px-4 py-3 text-sm ${memberRegistrationForm.data.requires_home_service ? 'bg-emerald-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('requires_home_service', true)}>Yes</button>
+                                                        <button type="button" className={`rounded-2xl px-4 py-3 text-sm ${memberRegistrationForm.data.requires_home_service === false ? 'bg-emerald-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('requires_home_service', false)}>No</button>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Spending Profile</label>
+                                                    <select className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-slate-900" value={memberRegistrationForm.data.spending_profile} onChange={(e) => memberRegistrationForm.setData('spending_profile', e.target.value)}>
+                                                        <option value="Under AED 500">Under AED 500</option>
+                                                        <option value="AED 500 – 2,000">AED 500 – 2,000</option>
+                                                        <option value="AED 2,000 – 5,000">AED 2,000 – 5,000</option>
+                                                        <option value="Above AED 5,000">Above AED 5,000</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            {memberRegistrationForm.data.requires_home_service && (
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Home Service Location</label>
+                                                    <textarea className="min-h-[110px] w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.home_service_location} onChange={(e) => memberRegistrationForm.setData('home_service_location', e.target.value)} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {registrationStep === 2 && (
+                                        <div className="space-y-6">
+                                            <div className="grid gap-4 lg:grid-cols-3">
+                                                {cardTypes.filter((type) => type.kind !== 'gift' && type.is_active).map((cardType) => (
+                                                    <button
+                                                        key={cardType.id}
+                                                        type="button"
+                                                        onClick={() => memberRegistrationForm.setData('membership_card_type_id', String(cardType.id))}
+                                                        className={`rounded-[28px] border p-5 text-left transition ${String(memberRegistrationForm.data.membership_card_type_id) === String(cardType.id) ? 'border-amber-300 bg-amber-200/15 shadow-[0_0_0_1px_rgba(252,211,77,0.35)]' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                    >
+                                                        <div className="text-xs uppercase tracking-[0.3em] text-stone-400">{cardType.kind}</div>
+                                                        <div className="mt-2 text-xl font-semibold">{cardType.name}</div>
+                                                        <div className="mt-3 text-sm text-stone-300">Validity: {cardType.validity_days ? `${cardType.validity_days} days` : 'No expiry'}</div>
+                                                        <div className="mt-1 text-sm text-stone-300">Direct price: {cardType.direct_purchase_price ?? '0.00'}</div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {fieldError(memberRegistrationForm, 'membership_card_type_id')}
+                                            <div className="grid gap-5 md:grid-cols-2">
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Card Number Optional</label>
+                                                    <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.card_number} onChange={(e) => memberRegistrationForm.setData('card_number', e.target.value)} placeholder="Auto-generate if blank" />
+                                                    {fieldError(memberRegistrationForm, 'card_number')}
+                                                </div>
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">NFC UID Optional</label>
+                                                    <div className="flex gap-3">
+                                                        <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.nfc_uid} onChange={(e) => memberRegistrationForm.setData('nfc_uid', e.target.value)} />
+                                                        <button type="button" className="rounded-2xl border border-sky-200/40 bg-sky-300/10 px-4 py-3 text-sm text-sky-100" onClick={() => readUidFromBridge('register')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'register' ? 'Reading...' : 'Read UID'}</button>
+                                                    </div>
+                                                    {fieldError(memberRegistrationForm, 'nfc_uid')}
+                                                </div>
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Card Status</label>
+                                                    <select className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-slate-900" value={memberRegistrationForm.data.card_status} onChange={(e) => memberRegistrationForm.setData('card_status', e.target.value)}>
+                                                        <option value="active">Active</option>
+                                                        <option value="pending">Pending</option>
+                                                        <option value="inactive">Inactive</option>
+                                                        <option value="expired">Expired</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Card Notes</label>
+                                                    <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.card_notes} onChange={(e) => memberRegistrationForm.setData('card_notes', e.target.value)} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {registrationStep === 3 && (
+                                        <div className="space-y-6">
+                                            <div className="rounded-[28px] border border-emerald-300/30 bg-emerald-300/10 p-5">
+                                                <label className="flex items-start gap-3">
+                                                    <input type="checkbox" className="mt-1 rounded border-white/20" checked={Boolean(memberRegistrationForm.data.consent_data_processing)} onChange={(e) => memberRegistrationForm.setData('consent_data_processing', e.target.checked)} />
+                                                    <span className="text-sm text-emerald-50">I consent to the collection and processing of my personal data by Vina Luxury Beauty Salon for service delivery, appointment management, and customer care purposes.</span>
+                                                </label>
+                                                {fieldError(memberRegistrationForm, 'consent_data_processing')}
+                                            </div>
+                                            <div className="rounded-[28px] border border-white/10 bg-white/5 p-5">
+                                                <label className="flex items-start gap-3">
+                                                    <input type="checkbox" className="mt-1 rounded border-white/20" checked={Boolean(memberRegistrationForm.data.consent_marketing)} onChange={(e) => memberRegistrationForm.setData('consent_marketing', e.target.checked)} />
+                                                    <span className="text-sm text-stone-200">Allow promotional offers, updates, and marketing communication by SMS, WhatsApp, email, or phone call.</span>
+                                                </label>
+                                            </div>
+                                            <div className="grid gap-5 md:grid-cols-2">
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Signature Name</label>
+                                                    <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.signature_name} onChange={(e) => memberRegistrationForm.setData('signature_name', e.target.value)} />
+                                                    {fieldError(memberRegistrationForm, 'signature_name')}
+                                                </div>
+                                                <div>
+                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Signature Date</label>
+                                                    <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" type="date" value={memberRegistrationForm.data.signature_date} onChange={(e) => memberRegistrationForm.setData('signature_date', e.target.value)} />
+                                                    {fieldError(memberRegistrationForm, 'signature_date')}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Internal Notes Optional</label>
+                                                <textarea className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.notes} onChange={(e) => memberRegistrationForm.setData('notes', e.target.value)} />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </Transition>
+                        </div>
+
+                        <aside className="border-t border-white/10 bg-black/20 px-6 py-6 lg:border-l lg:border-t-0">
+                            <div className="rounded-[28px] border border-white/10 bg-white/5 p-5">
+                                <div className="text-xs uppercase tracking-[0.3em] text-stone-400">Summary</div>
+                                <div className="mt-4 space-y-4 text-sm">
+                                    <div><div className="text-stone-400">Member</div><div className="font-medium text-white">{memberRegistrationForm.data.full_name || 'Not entered yet'}</div></div>
+                                    <div><div className="text-stone-400">Phone</div><div className="font-medium text-white">{memberRegistrationForm.data.phone || 'Not entered yet'}</div></div>
+                                    <div><div className="text-stone-400">Card Type</div><div className="font-medium text-white">{selectedRegistrationCardType?.name || 'Not selected yet'}</div></div>
+                                    <div><div className="text-stone-400">Membership Price</div><div className="font-medium text-white">{selectedRegistrationCardType?.direct_purchase_price ?? '0.00'}</div></div>
+                                    <div><div className="text-stone-400">Services</div><div className="font-medium text-white">{(memberRegistrationForm.data.service_interests || []).join(', ') || 'Not selected yet'}</div></div>
+                                    <div><div className="text-stone-400">Marketing Consent</div><div className="font-medium text-white">{memberRegistrationForm.data.consent_marketing ? 'Yes' : 'No'}</div></div>
+                                </div>
+                            </div>
+                        </aside>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-white/10 px-6 py-5">
+                        <button type="button" className="rounded-2xl border border-white/10 px-4 py-3 text-sm text-stone-200" onClick={registrationStep === 0 ? closeRegistrationModal : () => setRegistrationStep((prev) => Math.max(0, prev - 1))}>
+                            {registrationStep === 0 ? 'Cancel' : 'Back'}
+                        </button>
+                        <div className="flex gap-3">
+                            {registrationStep < REGISTRATION_STEPS.length - 1 ? (
+                                <button type="button" className="rounded-2xl bg-amber-300 px-5 py-3 text-sm font-medium text-slate-900" onClick={() => { if (validateRegistrationStep()) setRegistrationStep((prev) => Math.min(REGISTRATION_STEPS.length - 1, prev + 1)); }}>
+                                    Continue
+                                </button>
+                            ) : (
+                                <button type="submit" className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-medium text-slate-900 disabled:opacity-60" disabled={memberRegistrationForm.processing}>
+                                    {memberRegistrationForm.processing ? 'Saving...' : 'Save Member'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </form>
+            </Modal>
+
             <section className="ta-card p-4">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50" disabled={!canManage} onClick={openRegistrationModal}>Add New Member</button>
                     <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => {
                         const file = e.target.files?.[0];
                         importCsv?.('membership_cards', file, () => {
@@ -285,6 +753,23 @@ export default function MembershipCardsSection({
                     </table>
                 </div>
                 {renderPager(nfcRegistryPage, nfcRegistryTotalPages, setNfcRegistryPage)}
+            </section>
+
+            <section className="ta-card overflow-hidden">
+                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                    <h3 className="text-sm font-semibold text-slate-700">Membership Registrations</h3>
+                    <p className="text-xs text-slate-500">Latest digital registration forms saved from the multi-step wizard.</p>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Member</th><th className="px-5 py-3">Membership</th><th className="px-5 py-3">Card Number</th><th className="px-5 py-3">Language</th><th className="px-5 py-3">Visit Frequency</th><th className="px-5 py-3">First Visit</th><th className="px-5 py-3">Marketing</th><th className="px-5 py-3">Registered By</th></tr></thead>
+                        <tbody>
+                            {registrationPageRows.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="9">No membership registrations saved yet.</td></tr>}
+                            {registrationPageRows.map((registration) => <tr key={registration.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{registration.registration_date || '-'}</td><td className="px-5 py-3 text-slate-700">{registration.customer_name}<div className="text-xs text-slate-500">{registration.phone || '-'} {registration.email ? `· ${registration.email}` : ''}</div></td><td className="px-5 py-3 text-slate-600">{registration.membership_type_name || '-'}</td><td className="px-5 py-3 text-slate-600">{registration.membership_card_number || '-'}</td><td className="px-5 py-3 text-slate-600">{registration.preferred_language || '-'}</td><td className="px-5 py-3 text-slate-600">{registration.preferred_visit_frequency || '-'}</td><td className="px-5 py-3 text-slate-600">{registration.is_first_visit ? 'Yes' : 'No'}</td><td className="px-5 py-3 text-slate-600">{registration.consent_marketing ? 'Yes' : 'No'}</td><td className="px-5 py-3 text-slate-600">{registration.registered_by_name || '-'}</td></tr>)}
+                        </tbody>
+                    </table>
+                </div>
+                {renderPager(registrationPage, registrationTotalPages, setRegistrationPage)}
             </section>
 
             <section className="ta-card overflow-hidden">

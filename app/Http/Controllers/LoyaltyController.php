@@ -15,6 +15,7 @@ use App\Models\LoyaltyRedemption;
 use App\Models\LoyaltyReward;
 use App\Models\LoyaltyTier;
 use App\Models\MembershipCardType;
+use App\Models\MembershipRegistration;
 use App\Models\SalonService;
 use App\Models\ServicePackage;
 use App\Services\GiftCardService;
@@ -129,6 +130,31 @@ class LoyaltyController extends Controller
                     'activated_at' => $card->activated_at,
                     'expires_at' => $card->expires_at,
                     'notes' => $card->notes,
+                ]),
+            'membershipRegistrations' => MembershipRegistration::query()
+                ->with([
+                    'customer:id,name,phone,email',
+                    'membershipCard:id,card_number,status',
+                    'membershipCardType:id,name',
+                    'registeredBy:id,name',
+                ])
+                ->latest()
+                ->limit(120)
+                ->get()
+                ->map(fn (MembershipRegistration $registration) => [
+                    'id' => $registration->id,
+                    'customer_id' => $registration->customer_id,
+                    'customer_name' => $registration->customer?->name ?? $registration->full_name,
+                    'phone' => $registration->phone,
+                    'email' => $registration->email,
+                    'registration_date' => optional($registration->registration_date)?->toDateString(),
+                    'membership_type_name' => $registration->membershipCardType?->name,
+                    'membership_card_number' => $registration->membershipCard?->card_number,
+                    'preferred_language' => $registration->preferred_language,
+                    'preferred_visit_frequency' => $registration->preferred_visit_frequency,
+                    'is_first_visit' => $registration->is_first_visit,
+                    'consent_marketing' => $registration->consent_marketing,
+                    'registered_by_name' => $registration->registeredBy?->name ?? $registration->staff_name,
                 ]),
             'nfcLookupResult' => $request->session()->get('nfc_lookup'),
             'giftNfcLookupResult' => $request->session()->get('gift_nfc_lookup'),
@@ -556,6 +582,123 @@ class LoyaltyController extends Controller
         ]);
 
         return back()->with('status', 'Membership card assigned.');
+    }
+
+    public function registerMember(Request $request, MembershipCardService $membershipCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff', 'reception');
+
+        $this->prepareNfcUidField($request, 'nfc_uid');
+        $this->mergeNullableMembershipRegistrationFields($request);
+
+        $data = $request->validate([
+            'customer_id' => ['nullable', 'exists:customers,id'],
+            'registration_date' => ['required', 'date'],
+            'staff_name' => ['nullable', 'string', 'max:255'],
+            'full_name' => ['required', 'string', 'max:255'],
+            'phone' => ['required', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'nationality' => ['nullable', 'string', 'max:255'],
+            'date_of_birth' => ['nullable', 'date'],
+            'is_first_visit' => ['nullable', 'boolean'],
+            'preferred_language' => ['nullable', 'string', 'max:100'],
+            'preferred_language_other' => ['nullable', 'string', 'max:255'],
+            'heard_about_us' => ['nullable', 'string', 'max:100'],
+            'heard_about_us_other' => ['nullable', 'string', 'max:255'],
+            'service_interests' => ['nullable', 'array'],
+            'service_interests.*' => ['string', 'max:100'],
+            'service_interests_other' => ['nullable', 'string', 'max:255'],
+            'requires_home_service' => ['nullable', 'boolean'],
+            'home_service_location' => ['nullable', 'string'],
+            'preferred_visit_frequency' => ['nullable', 'string', 'max:100'],
+            'spending_profile' => ['nullable', 'string', 'max:100'],
+            'membership_card_type_id' => ['required', 'exists:membership_card_types,id'],
+            ...$this->rulesOptionalDigitsCardNumber(),
+            'nfc_uid' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('customer_membership_cards', 'nfc_uid'),
+                Rule::unique('gift_cards', 'nfc_uid'),
+            ],
+            'card_status' => ['nullable', Rule::in(['pending', 'active', 'inactive', 'expired'])],
+            'card_notes' => ['nullable', 'string'],
+            'consent_data_processing' => ['accepted'],
+            'consent_marketing' => ['nullable', 'boolean'],
+            'signature_name' => ['required', 'string', 'max:255'],
+            'signature_date' => ['required', 'date'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $customer = null;
+        $card = null;
+
+        DB::transaction(function () use ($request, $data, $membershipCardService, &$customer, &$card): void {
+            $customer = ! empty($data['customer_id'])
+                ? Customer::findOrFail((int) $data['customer_id'])
+                : new Customer();
+
+            $customer->fill([
+                'name' => $data['full_name'],
+                'phone' => $data['phone'],
+                'email' => $data['email'] ?? null,
+                'birthday' => $data['date_of_birth'] ?? null,
+                'acquisition_source' => $data['heard_about_us_other'] ?: ($data['heard_about_us'] ?? null),
+                'notes' => $this->buildCustomerMembershipNotes($data),
+                'is_active' => true,
+            ]);
+            $customer->save();
+
+            $cardType = MembershipCardType::findOrFail((int) $data['membership_card_type_id']);
+            $card = $membershipCardService->assignCard(
+                customer: $customer,
+                type: $cardType,
+                assignedBy: $request->user()?->id,
+                attributes: [
+                    'card_number' => $data['card_number'] ?? null,
+                    'nfc_uid' => $data['nfc_uid'] ?? null,
+                    'status' => $data['card_status'] ?? 'active',
+                    'notes' => $data['card_notes'] ?? null,
+                ],
+            );
+
+            MembershipRegistration::create([
+                'customer_id' => $customer->id,
+                'customer_membership_card_id' => $card->id,
+                'membership_card_type_id' => $cardType->id,
+                'registered_by' => $request->user()?->id,
+                'registration_date' => $data['registration_date'],
+                'staff_name' => $data['staff_name'] ?? $request->user()?->name,
+                'full_name' => $data['full_name'],
+                'phone' => $data['phone'],
+                'email' => $data['email'] ?? null,
+                'nationality' => $data['nationality'] ?? null,
+                'date_of_birth' => $data['date_of_birth'] ?? null,
+                'is_first_visit' => $data['is_first_visit'] ?? null,
+                'preferred_language' => $data['preferred_language'] ?? null,
+                'preferred_language_other' => $data['preferred_language_other'] ?? null,
+                'heard_about_us' => $data['heard_about_us'] ?? null,
+                'heard_about_us_other' => $data['heard_about_us_other'] ?? null,
+                'service_interests' => array_values($data['service_interests'] ?? []),
+                'service_interests_other' => $data['service_interests_other'] ?? null,
+                'requires_home_service' => $data['requires_home_service'] ?? null,
+                'home_service_location' => $data['home_service_location'] ?? null,
+                'preferred_visit_frequency' => $data['preferred_visit_frequency'] ?? null,
+                'spending_profile' => $data['spending_profile'] ?? null,
+                'consent_data_processing' => true,
+                'consent_marketing' => (bool) ($data['consent_marketing'] ?? false),
+                'signature_name' => $data['signature_name'],
+                'signature_date' => $data['signature_date'],
+                'notes' => $data['notes'] ?? null,
+            ]);
+        });
+
+        Audit::log($request->user()?->id, 'loyalty.member_registered', 'Customer', $customer->id, [
+            'membership_card_id' => $card?->id,
+            'membership_card_type_id' => $data['membership_card_type_id'],
+        ]);
+
+        return back()->with('status', 'Membership registration saved and card assigned.');
     }
 
     public function issueInventoryCard(Request $request, MembershipCardService $membershipCardService): RedirectResponse
@@ -1058,6 +1201,49 @@ class LoyaltyController extends Controller
                 $request->merge([$field => null]);
             }
         }
+    }
+
+    private function mergeNullableMembershipRegistrationFields(Request $request): void
+    {
+        foreach ([
+            'customer_id',
+            'email',
+            'nationality',
+            'date_of_birth',
+            'preferred_language',
+            'preferred_language_other',
+            'heard_about_us',
+            'heard_about_us_other',
+            'service_interests_other',
+            'home_service_location',
+            'preferred_visit_frequency',
+            'spending_profile',
+            'card_number',
+            'nfc_uid',
+            'card_notes',
+            'notes',
+        ] as $field) {
+            if (! $request->filled($field)) {
+                $request->merge([$field => null]);
+            }
+        }
+
+        foreach (['is_first_visit', 'requires_home_service', 'consent_marketing'] as $field) {
+            $request->merge([$field => $request->boolean($field)]);
+        }
+    }
+
+    private function buildCustomerMembershipNotes(array $data): ?string
+    {
+        $parts = array_filter([
+            ! empty($data['nationality']) ? 'Nationality: '.$data['nationality'] : null,
+            ! empty($data['preferred_language']) ? 'Language: '.$data['preferred_language'].(! empty($data['preferred_language_other']) ? ' - '.$data['preferred_language_other'] : '') : null,
+            ! empty($data['preferred_visit_frequency']) ? 'Visit frequency: '.$data['preferred_visit_frequency'] : null,
+            ! empty($data['requires_home_service']) ? 'Home service requested'.(! empty($data['home_service_location']) ? ' - '.$data['home_service_location'] : '') : null,
+            ! empty($data['notes']) ? 'Membership notes: '.$data['notes'] : null,
+        ]);
+
+        return empty($parts) ? null : implode(PHP_EOL, $parts);
     }
 
     /**

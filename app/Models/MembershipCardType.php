@@ -34,4 +34,9 @@ class MembershipCardType extends Model
     {
         return $this->hasMany(CustomerMembershipCard::class);
     }
+
+    public function registrations(): HasMany
+    {
+        return $this->hasMany(MembershipRegistration::class);
+    }
 }
