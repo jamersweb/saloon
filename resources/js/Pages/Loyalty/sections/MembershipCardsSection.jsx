@@ -10,6 +10,7 @@ export default function MembershipCardsSection({
     membershipCards,
     membershipRegistrations,
     currentUserName,
+    openRegistrationByDefault = false,
     nfcLookupResult,
     nfcBridgeLoadingTarget,
     createCardTypeForm,
@@ -113,6 +114,12 @@ export default function MembershipCardsSection({
             setRegistrationPage(registrationTotalPages);
         }
     }, [registrationPage, registrationTotalPages]);
+
+    useEffect(() => {
+        if (openRegistrationByDefault) {
+            openRegistrationModal();
+        }
+    }, [openRegistrationByDefault]);
 
     const selectedMembershipCard = useMemo(
         () => (membershipCards || []).find((card) => String(card.id) === String(selectedMembershipCardId)) || null,

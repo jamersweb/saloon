@@ -32,6 +32,7 @@ export default function LoyaltyIndex({
     settings,
 }) {
     const { flash, auth } = usePage().props;
+    const page = usePage();
     const { app_currency_code: currencyCode = 'AED' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_loyalty);
     const [editingTierId, setEditingTierId] = useState(null);
@@ -365,6 +366,7 @@ export default function LoyaltyIndex({
                         membershipCards={membershipCards}
                         membershipRegistrations={membershipRegistrations}
                         currentUserName={auth?.user?.name ?? ''}
+                        openRegistrationByDefault={(page.url || '').includes('register=1')}
                         nfcLookupResult={nfcLookupResult}
                         nfcBridgeLoadingTarget={nfcBridgeLoadingTarget}
                         createCardTypeForm={createCardTypeForm}
