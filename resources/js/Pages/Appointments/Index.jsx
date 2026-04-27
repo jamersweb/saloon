@@ -1405,7 +1405,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                 }}
             />
 
-            <Modal show={showBoardView} maxWidth="7xl" onClose={() => setShowBoardView(false)}>
+            <Modal show={showBoardView} maxWidth="full" onClose={() => setShowBoardView(false)}>
                 <div className="flex h-[90vh] flex-col bg-[#111315] text-white">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-6 py-4">
                         <div>
@@ -1442,13 +1442,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 Next
                             </button>
                             <select
-                                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                                className="rounded-xl border border-white/10 bg-white px-3 py-2 text-sm text-slate-900"
                                 value={boardStaffFilter}
                                 onChange={(e) => setBoardStaffFilter(e.target.value)}
                             >
-                                <option value="all">All team</option>
+                                <option value="all" className="bg-white text-slate-900">All team</option>
                                 {staffProfiles.map((staff) => (
-                                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                                    <option key={staff.id} value={staff.id} className="bg-white text-slate-900">{staff.name}</option>
                                 ))}
                             </select>
                             <button type="button" onClick={() => setShowBoardView(false)} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Close</button>

@@ -130,6 +130,7 @@ export default function AuthenticatedLayout({ header, headerActions = null, chil
                 items: [
                     { label: 'CRM Automation', href: route('customers.automation.index'), active: route().current('customers.automation.*'), visible: permissions.can_manage_crm_automation },
                     { label: 'Services', href: route('services.index'), active: route().current('services.*'), visible: permissions.can_manage_services },
+                    { label: 'Packages', href: '/loyalty/packages', active: ((page.url || '').split('?')[0] === '/loyalty/packages'), visible: permissions.can_manage_loyalty },
                     { label: 'Staff', href: route('staff.index'), active: route().current('staff.*'), visible: permissions.can_manage_staff },
                     { label: 'Schedules', href: route('schedules.index'), active: route().current('schedules.*'), visible: permissions.can_manage_schedules },
                     { label: 'Inventory', href: route('inventory.index'), active: route().current('inventory.*'), visible: permissions.can_manage_inventory },
