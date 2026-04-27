@@ -307,12 +307,12 @@ export default function MembershipCardsSection({
     return (
         <div className="space-y-6">
             <Modal show={showRegistrationModal} onClose={closeRegistrationModal} maxWidth="6xl">
-                <form onSubmit={handleRegistrationSubmit} className="min-h-[80vh] bg-gradient-to-br from-stone-950 via-zinc-950 to-neutral-900 text-white">
-                    <div className="border-b border-white/10 px-6 py-5">
+                <form onSubmit={handleRegistrationSubmit} className="bg-slate-50 text-slate-800">
+                    <div className="border-b border-slate-200 bg-white px-6 py-5">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div>
-                                <h2 className="text-3xl font-semibold tracking-tight">Add New Member</h2>
-                                <p className="mt-1 text-sm text-stone-300">Digital membership registration, customer creation, and card assignment in one flow.</p>
+                                <h2 className="text-2xl font-semibold text-slate-900">Add New Member</h2>
+                                <p className="mt-1 text-sm text-slate-500">Digital membership registration, customer creation, and card assignment in one flow.</p>
                             </div>
                             <div className="grid gap-2 sm:grid-cols-4">
                                 {REGISTRATION_STEPS.map((step, index) => (
@@ -326,10 +326,10 @@ export default function MembershipCardsSection({
                                         }}
                                         className={`rounded-2xl border px-3 py-2 text-left transition ${
                                             index === registrationStep
-                                                ? 'border-amber-300 bg-amber-200/15 text-amber-100'
+                                                ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
                                                 : index < registrationStep
-                                                    ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-100'
-                                                    : 'border-white/10 bg-white/5 text-stone-300'
+                                                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                                    : 'border-slate-200 bg-white text-slate-500'
                                         }`}
                                     >
                                         <div className="text-[11px] uppercase tracking-[0.3em] opacity-70">Step {index + 1}</div>
@@ -340,8 +340,8 @@ export default function MembershipCardsSection({
                         </div>
                     </div>
 
-                    <div className="grid min-h-[calc(80vh-150px)] gap-0 lg:grid-cols-[1.6fr_0.7fr]">
-                        <div className="overflow-y-auto px-6 py-6">
+                    <div className="grid min-h-[70vh] gap-0 lg:grid-cols-[1.65fr_0.75fr]">
+                        <div className="overflow-y-auto p-6">
                             <Transition
                                 key={registrationStep}
                                 appear
@@ -356,10 +356,10 @@ export default function MembershipCardsSection({
                                 <div className="space-y-6">
                                     {registrationStep === 0 && (
                                         <div className="grid gap-5 md:grid-cols-2">
-                                            <div className="md:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-4">
-                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Existing Customer Optional</label>
+                                            <div className="ta-card md:col-span-2 p-5">
+                                                <label className="ta-field-label">Existing Customer Optional</label>
                                                 <select
-                                                    className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm text-slate-900"
+                                                    className="ta-input"
                                                     value={memberRegistrationForm.data.customer_id}
                                                     onChange={(e) => syncCustomerFromExisting(e.target.value)}
                                                 >
@@ -370,37 +370,37 @@ export default function MembershipCardsSection({
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Registration Date</label>
-                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" type="date" value={memberRegistrationForm.data.registration_date} onChange={(e) => memberRegistrationForm.setData('registration_date', e.target.value)} />
+                                                <label className="ta-field-label">Registration Date</label>
+                                                <input className="ta-input" type="date" value={memberRegistrationForm.data.registration_date} onChange={(e) => memberRegistrationForm.setData('registration_date', e.target.value)} />
                                                 {fieldError(memberRegistrationForm, 'registration_date')}
                                             </div>
                                             <div>
-                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Staff Name</label>
-                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.staff_name} onChange={(e) => memberRegistrationForm.setData('staff_name', e.target.value)} />
+                                                <label className="ta-field-label">Staff Name</label>
+                                                <input className="ta-input" value={memberRegistrationForm.data.staff_name} onChange={(e) => memberRegistrationForm.setData('staff_name', e.target.value)} />
                                                 {fieldError(memberRegistrationForm, 'staff_name')}
                                             </div>
                                             <div>
-                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Full Name</label>
-                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.full_name} onChange={(e) => memberRegistrationForm.setData('full_name', e.target.value)} />
+                                                <label className="ta-field-label">Full Name</label>
+                                                <input className="ta-input" value={memberRegistrationForm.data.full_name} onChange={(e) => memberRegistrationForm.setData('full_name', e.target.value)} />
                                                 {fieldError(memberRegistrationForm, 'full_name')}
                                             </div>
                                             <div>
-                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Phone Number</label>
-                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.phone} onChange={(e) => memberRegistrationForm.setData('phone', e.target.value)} />
+                                                <label className="ta-field-label">Phone Number</label>
+                                                <input className="ta-input" value={memberRegistrationForm.data.phone} onChange={(e) => memberRegistrationForm.setData('phone', e.target.value)} />
                                                 {fieldError(memberRegistrationForm, 'phone')}
                                             </div>
                                             <div>
-                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Email Address</label>
-                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" type="email" value={memberRegistrationForm.data.email} onChange={(e) => memberRegistrationForm.setData('email', e.target.value)} />
+                                                <label className="ta-field-label">Email Address</label>
+                                                <input className="ta-input" type="email" value={memberRegistrationForm.data.email} onChange={(e) => memberRegistrationForm.setData('email', e.target.value)} />
                                                 {fieldError(memberRegistrationForm, 'email')}
                                             </div>
                                             <div>
-                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Nationality</label>
-                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.nationality} onChange={(e) => memberRegistrationForm.setData('nationality', e.target.value)} />
+                                                <label className="ta-field-label">Nationality</label>
+                                                <input className="ta-input" value={memberRegistrationForm.data.nationality} onChange={(e) => memberRegistrationForm.setData('nationality', e.target.value)} />
                                             </div>
                                             <div>
-                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Date of Birth</label>
-                                                <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" type="date" value={memberRegistrationForm.data.date_of_birth} onChange={(e) => memberRegistrationForm.setData('date_of_birth', e.target.value)} />
+                                                <label className="ta-field-label">Date of Birth</label>
+                                                <input className="ta-input" type="date" value={memberRegistrationForm.data.date_of_birth} onChange={(e) => memberRegistrationForm.setData('date_of_birth', e.target.value)} />
                                             </div>
                                         </div>
                                     )}
@@ -408,18 +408,18 @@ export default function MembershipCardsSection({
                                     {registrationStep === 1 && (
                                         <div className="space-y-6">
                                             <div className="grid gap-5 md:grid-cols-2">
-                                                <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                                                    <div className="mb-3 text-xs uppercase tracking-[0.3em] text-stone-400">First Visit</div>
+                                                <div className="ta-card p-5">
+                                                    <div className="ta-field-label">First Visit</div>
                                                     <div className="flex gap-3">
-                                                        <button type="button" className={`rounded-2xl px-4 py-3 text-sm ${memberRegistrationForm.data.is_first_visit ? 'bg-emerald-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('is_first_visit', true)}>Yes</button>
-                                                        <button type="button" className={`rounded-2xl px-4 py-3 text-sm ${memberRegistrationForm.data.is_first_visit === false ? 'bg-emerald-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('is_first_visit', false)}>No</button>
+                                                        <button type="button" className={`rounded-xl px-4 py-2 text-sm ${memberRegistrationForm.data.is_first_visit ? 'bg-emerald-100 text-emerald-700' : 'border border-slate-200 bg-white text-slate-600'}`} onClick={() => memberRegistrationForm.setData('is_first_visit', true)}>Yes</button>
+                                                        <button type="button" className={`rounded-xl px-4 py-2 text-sm ${memberRegistrationForm.data.is_first_visit === false ? 'bg-emerald-100 text-emerald-700' : 'border border-slate-200 bg-white text-slate-600'}`} onClick={() => memberRegistrationForm.setData('is_first_visit', false)}>No</button>
                                                     </div>
                                                 </div>
-                                                <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                                                    <div className="mb-3 text-xs uppercase tracking-[0.3em] text-stone-400">Preferred Visit Frequency</div>
+                                                <div className="ta-card p-5">
+                                                    <div className="ta-field-label">Preferred Visit Frequency</div>
                                                     <div className="grid grid-cols-3 gap-2">
                                                         {['Weekly', 'Monthly', 'Occasionally'].map((entry) => (
-                                                            <button key={entry} type="button" className={`rounded-2xl px-3 py-3 text-sm ${memberRegistrationForm.data.preferred_visit_frequency === entry ? 'bg-amber-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('preferred_visit_frequency', entry)}>{entry}</button>
+                                                            <button key={entry} type="button" className={`rounded-xl px-3 py-2 text-sm ${memberRegistrationForm.data.preferred_visit_frequency === entry ? 'bg-indigo-100 text-indigo-700' : 'border border-slate-200 bg-white text-slate-600'}`} onClick={() => memberRegistrationForm.setData('preferred_visit_frequency', entry)}>{entry}</button>
                                                         ))}
                                                     </div>
                                                 </div>
@@ -427,8 +427,8 @@ export default function MembershipCardsSection({
 
                                             <div className="grid gap-5 md:grid-cols-2">
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Preferred Language</label>
-                                                    <select className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-slate-900" value={memberRegistrationForm.data.preferred_language} onChange={(e) => memberRegistrationForm.setData('preferred_language', e.target.value)}>
+                                                    <label className="ta-field-label">Preferred Language</label>
+                                                    <select className="ta-input" value={memberRegistrationForm.data.preferred_language} onChange={(e) => memberRegistrationForm.setData('preferred_language', e.target.value)}>
                                                         <option value="English">English</option>
                                                         <option value="Arabic">Arabic</option>
                                                         <option value="Russian">Russian</option>
@@ -442,8 +442,8 @@ export default function MembershipCardsSection({
                                                     </div>
                                                 )}
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">How Did You Hear About Us?</label>
-                                                    <select className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-slate-900" value={memberRegistrationForm.data.heard_about_us} onChange={(e) => memberRegistrationForm.setData('heard_about_us', e.target.value)}>
+                                                    <label className="ta-field-label">How Did You Hear About Us?</label>
+                                                    <select className="ta-input" value={memberRegistrationForm.data.heard_about_us} onChange={(e) => memberRegistrationForm.setData('heard_about_us', e.target.value)}>
                                                         <option value="Instagram">Instagram</option>
                                                         <option value="Google">Google</option>
                                                         <option value="Friend">Friend</option>
@@ -459,11 +459,11 @@ export default function MembershipCardsSection({
                                                 )}
                                             </div>
 
-                                            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-                                                <div className="mb-4 text-xs uppercase tracking-[0.3em] text-stone-400">Services of Interest</div>
+                                            <div className="ta-card p-5">
+                                                <div className="ta-field-label">Services of Interest</div>
                                                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                                                     {['Hair', 'Nails', 'Skin', 'Massage', 'Other'].map((service) => (
-                                                        <button key={service} type="button" className={`rounded-2xl border px-4 py-4 text-sm transition ${memberRegistrationForm.data.service_interests.includes(service) ? 'border-amber-300 bg-amber-200/20 text-amber-100' : 'border-white/10 bg-white/5 text-stone-200'}`} onClick={() => toggleServiceInterest(service)}>
+                                                        <button key={service} type="button" className={`rounded-xl border px-4 py-3 text-sm transition ${memberRegistrationForm.data.service_interests.includes(service) ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`} onClick={() => toggleServiceInterest(service)}>
                                                             {service}
                                                         </button>
                                                     ))}
@@ -476,16 +476,16 @@ export default function MembershipCardsSection({
                                             </div>
 
                                             <div className="grid gap-5 md:grid-cols-2">
-                                                <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                                                    <div className="mb-3 text-xs uppercase tracking-[0.3em] text-stone-400">Home Service</div>
+                                                <div className="ta-card p-5">
+                                                    <div className="ta-field-label">Home Service</div>
                                                     <div className="flex gap-3">
-                                                        <button type="button" className={`rounded-2xl px-4 py-3 text-sm ${memberRegistrationForm.data.requires_home_service ? 'bg-emerald-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('requires_home_service', true)}>Yes</button>
-                                                        <button type="button" className={`rounded-2xl px-4 py-3 text-sm ${memberRegistrationForm.data.requires_home_service === false ? 'bg-emerald-300 text-slate-900' : 'bg-white/10 text-white'}`} onClick={() => memberRegistrationForm.setData('requires_home_service', false)}>No</button>
+                                                        <button type="button" className={`rounded-xl px-4 py-2 text-sm ${memberRegistrationForm.data.requires_home_service ? 'bg-emerald-100 text-emerald-700' : 'border border-slate-200 bg-white text-slate-600'}`} onClick={() => memberRegistrationForm.setData('requires_home_service', true)}>Yes</button>
+                                                        <button type="button" className={`rounded-xl px-4 py-2 text-sm ${memberRegistrationForm.data.requires_home_service === false ? 'bg-emerald-100 text-emerald-700' : 'border border-slate-200 bg-white text-slate-600'}`} onClick={() => memberRegistrationForm.setData('requires_home_service', false)}>No</button>
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Spending Profile</label>
-                                                    <select className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-slate-900" value={memberRegistrationForm.data.spending_profile} onChange={(e) => memberRegistrationForm.setData('spending_profile', e.target.value)}>
+                                                    <label className="ta-field-label">Spending Profile</label>
+                                                    <select className="ta-input" value={memberRegistrationForm.data.spending_profile} onChange={(e) => memberRegistrationForm.setData('spending_profile', e.target.value)}>
                                                         <option value="Under AED 500">Under AED 500</option>
                                                         <option value="AED 500 – 2,000">AED 500 – 2,000</option>
                                                         <option value="AED 2,000 – 5,000">AED 2,000 – 5,000</option>
@@ -496,8 +496,8 @@ export default function MembershipCardsSection({
 
                                             {memberRegistrationForm.data.requires_home_service && (
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Home Service Location</label>
-                                                    <textarea className="min-h-[110px] w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.home_service_location} onChange={(e) => memberRegistrationForm.setData('home_service_location', e.target.value)} />
+                                                    <label className="ta-field-label">Home Service Location</label>
+                                                    <textarea className="ta-input min-h-[110px]" value={memberRegistrationForm.data.home_service_location} onChange={(e) => memberRegistrationForm.setData('home_service_location', e.target.value)} />
                                                 </div>
                                             )}
                                         </div>
@@ -511,33 +511,33 @@ export default function MembershipCardsSection({
                                                         key={cardType.id}
                                                         type="button"
                                                         onClick={() => memberRegistrationForm.setData('membership_card_type_id', String(cardType.id))}
-                                                        className={`rounded-[28px] border p-5 text-left transition ${String(memberRegistrationForm.data.membership_card_type_id) === String(cardType.id) ? 'border-amber-300 bg-amber-200/15 shadow-[0_0_0_1px_rgba(252,211,77,0.35)]' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                        className={`rounded-2xl border p-5 text-left transition ${String(memberRegistrationForm.data.membership_card_type_id) === String(cardType.id) ? 'border-indigo-300 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
                                                     >
-                                                        <div className="text-xs uppercase tracking-[0.3em] text-stone-400">{cardType.kind}</div>
-                                                        <div className="mt-2 text-xl font-semibold">{cardType.name}</div>
-                                                        <div className="mt-3 text-sm text-stone-300">Validity: {cardType.validity_days ? `${cardType.validity_days} days` : 'No expiry'}</div>
-                                                        <div className="mt-1 text-sm text-stone-300">Direct price: {cardType.direct_purchase_price ?? '0.00'}</div>
+                                                        <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{cardType.kind}</div>
+                                                        <div className="mt-2 text-lg font-semibold text-slate-800">{cardType.name}</div>
+                                                        <div className="mt-3 text-sm text-slate-500">Validity: {cardType.validity_days ? `${cardType.validity_days} days` : 'No expiry'}</div>
+                                                        <div className="mt-1 text-sm text-slate-500">Direct price: {cardType.direct_purchase_price ?? '0.00'}</div>
                                                     </button>
                                                 ))}
                                             </div>
                                             {fieldError(memberRegistrationForm, 'membership_card_type_id')}
                                             <div className="grid gap-5 md:grid-cols-2">
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Card Number Optional</label>
-                                                    <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.card_number} onChange={(e) => memberRegistrationForm.setData('card_number', e.target.value)} placeholder="Auto-generate if blank" />
+                                                    <label className="ta-field-label">Card Number Optional</label>
+                                                    <input className="ta-input" value={memberRegistrationForm.data.card_number} onChange={(e) => memberRegistrationForm.setData('card_number', e.target.value)} placeholder="Auto-generate if blank" />
                                                     {fieldError(memberRegistrationForm, 'card_number')}
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">NFC UID Optional</label>
+                                                    <label className="ta-field-label">NFC UID Optional</label>
                                                     <div className="flex gap-3">
-                                                        <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.nfc_uid} onChange={(e) => memberRegistrationForm.setData('nfc_uid', e.target.value)} />
-                                                        <button type="button" className="rounded-2xl border border-sky-200/40 bg-sky-300/10 px-4 py-3 text-sm text-sky-100" onClick={() => readUidFromBridge('register')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'register' ? 'Reading...' : 'Read UID'}</button>
+                                                        <input className="ta-input" value={memberRegistrationForm.data.nfc_uid} onChange={(e) => memberRegistrationForm.setData('nfc_uid', e.target.value)} />
+                                                        <button type="button" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-700" onClick={() => readUidFromBridge('register')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'register' ? 'Reading...' : 'Read UID'}</button>
                                                     </div>
                                                     {fieldError(memberRegistrationForm, 'nfc_uid')}
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Card Status</label>
-                                                    <select className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-slate-900" value={memberRegistrationForm.data.card_status} onChange={(e) => memberRegistrationForm.setData('card_status', e.target.value)}>
+                                                    <label className="ta-field-label">Card Status</label>
+                                                    <select className="ta-input" value={memberRegistrationForm.data.card_status} onChange={(e) => memberRegistrationForm.setData('card_status', e.target.value)}>
                                                         <option value="active">Active</option>
                                                         <option value="pending">Pending</option>
                                                         <option value="inactive">Inactive</option>
@@ -545,8 +545,8 @@ export default function MembershipCardsSection({
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Card Notes</label>
-                                                    <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.card_notes} onChange={(e) => memberRegistrationForm.setData('card_notes', e.target.value)} />
+                                                    <label className="ta-field-label">Card Notes</label>
+                                                    <input className="ta-input" value={memberRegistrationForm.data.card_notes} onChange={(e) => memberRegistrationForm.setData('card_notes', e.target.value)} />
                                                 </div>
                                             </div>
                                         </div>
@@ -554,34 +554,34 @@ export default function MembershipCardsSection({
 
                                     {registrationStep === 3 && (
                                         <div className="space-y-6">
-                                            <div className="rounded-[28px] border border-emerald-300/30 bg-emerald-300/10 p-5">
+                                            <div className="ta-card border-emerald-200 bg-emerald-50 p-5">
                                                 <label className="flex items-start gap-3">
-                                                    <input type="checkbox" className="mt-1 rounded border-white/20" checked={Boolean(memberRegistrationForm.data.consent_data_processing)} onChange={(e) => memberRegistrationForm.setData('consent_data_processing', e.target.checked)} />
-                                                    <span className="text-sm text-emerald-50">I consent to the collection and processing of my personal data by Vina Luxury Beauty Salon for service delivery, appointment management, and customer care purposes.</span>
+                                                    <input type="checkbox" className="mt-1" checked={Boolean(memberRegistrationForm.data.consent_data_processing)} onChange={(e) => memberRegistrationForm.setData('consent_data_processing', e.target.checked)} />
+                                                    <span className="text-sm text-emerald-900">I consent to the collection and processing of my personal data by Vina Luxury Beauty Salon for service delivery, appointment management, and customer care purposes.</span>
                                                 </label>
                                                 {fieldError(memberRegistrationForm, 'consent_data_processing')}
                                             </div>
-                                            <div className="rounded-[28px] border border-white/10 bg-white/5 p-5">
+                                            <div className="ta-card p-5">
                                                 <label className="flex items-start gap-3">
-                                                    <input type="checkbox" className="mt-1 rounded border-white/20" checked={Boolean(memberRegistrationForm.data.consent_marketing)} onChange={(e) => memberRegistrationForm.setData('consent_marketing', e.target.checked)} />
-                                                    <span className="text-sm text-stone-200">Allow promotional offers, updates, and marketing communication by SMS, WhatsApp, email, or phone call.</span>
+                                                    <input type="checkbox" className="mt-1" checked={Boolean(memberRegistrationForm.data.consent_marketing)} onChange={(e) => memberRegistrationForm.setData('consent_marketing', e.target.checked)} />
+                                                    <span className="text-sm text-slate-700">Allow promotional offers, updates, and marketing communication by SMS, WhatsApp, email, or phone call.</span>
                                                 </label>
                                             </div>
                                             <div className="grid gap-5 md:grid-cols-2">
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Signature Name</label>
-                                                    <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.signature_name} onChange={(e) => memberRegistrationForm.setData('signature_name', e.target.value)} />
+                                                    <label className="ta-field-label">Signature Name</label>
+                                                    <input className="ta-input" value={memberRegistrationForm.data.signature_name} onChange={(e) => memberRegistrationForm.setData('signature_name', e.target.value)} />
                                                     {fieldError(memberRegistrationForm, 'signature_name')}
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Signature Date</label>
-                                                    <input className="w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" type="date" value={memberRegistrationForm.data.signature_date} onChange={(e) => memberRegistrationForm.setData('signature_date', e.target.value)} />
+                                                    <label className="ta-field-label">Signature Date</label>
+                                                    <input className="ta-input" type="date" value={memberRegistrationForm.data.signature_date} onChange={(e) => memberRegistrationForm.setData('signature_date', e.target.value)} />
                                                     {fieldError(memberRegistrationForm, 'signature_date')}
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="mb-2 block text-xs uppercase tracking-[0.3em] text-stone-400">Internal Notes Optional</label>
-                                                <textarea className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/95 px-4 py-3 text-slate-900" value={memberRegistrationForm.data.notes} onChange={(e) => memberRegistrationForm.setData('notes', e.target.value)} />
+                                                <label className="ta-field-label">Internal Notes Optional</label>
+                                                <textarea className="ta-input min-h-[120px]" value={memberRegistrationForm.data.notes} onChange={(e) => memberRegistrationForm.setData('notes', e.target.value)} />
                                             </div>
                                         </div>
                                     )}
@@ -589,32 +589,32 @@ export default function MembershipCardsSection({
                             </Transition>
                         </div>
 
-                        <aside className="border-t border-white/10 bg-black/20 px-6 py-6 lg:border-l lg:border-t-0">
-                            <div className="rounded-[28px] border border-white/10 bg-white/5 p-5">
-                                <div className="text-xs uppercase tracking-[0.3em] text-stone-400">Summary</div>
+                        <aside className="border-t border-slate-200 bg-white p-6 lg:border-l lg:border-t-0">
+                            <div className="ta-card sticky top-0 p-5">
+                                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Summary</div>
                                 <div className="mt-4 space-y-4 text-sm">
-                                    <div><div className="text-stone-400">Member</div><div className="font-medium text-white">{memberRegistrationForm.data.full_name || 'Not entered yet'}</div></div>
-                                    <div><div className="text-stone-400">Phone</div><div className="font-medium text-white">{memberRegistrationForm.data.phone || 'Not entered yet'}</div></div>
-                                    <div><div className="text-stone-400">Card Type</div><div className="font-medium text-white">{selectedRegistrationCardType?.name || 'Not selected yet'}</div></div>
-                                    <div><div className="text-stone-400">Membership Price</div><div className="font-medium text-white">{selectedRegistrationCardType?.direct_purchase_price ?? '0.00'}</div></div>
-                                    <div><div className="text-stone-400">Services</div><div className="font-medium text-white">{(memberRegistrationForm.data.service_interests || []).join(', ') || 'Not selected yet'}</div></div>
-                                    <div><div className="text-stone-400">Marketing Consent</div><div className="font-medium text-white">{memberRegistrationForm.data.consent_marketing ? 'Yes' : 'No'}</div></div>
+                                    <div><div className="text-slate-400">Member</div><div className="font-medium text-slate-800">{memberRegistrationForm.data.full_name || 'Not entered yet'}</div></div>
+                                    <div><div className="text-slate-400">Phone</div><div className="font-medium text-slate-800">{memberRegistrationForm.data.phone || 'Not entered yet'}</div></div>
+                                    <div><div className="text-slate-400">Card Type</div><div className="font-medium text-slate-800">{selectedRegistrationCardType?.name || 'Not selected yet'}</div></div>
+                                    <div><div className="text-slate-400">Membership Price</div><div className="font-medium text-slate-800">{selectedRegistrationCardType?.direct_purchase_price ?? '0.00'}</div></div>
+                                    <div><div className="text-slate-400">Services</div><div className="font-medium text-slate-800">{(memberRegistrationForm.data.service_interests || []).join(', ') || 'Not selected yet'}</div></div>
+                                    <div><div className="text-slate-400">Marketing Consent</div><div className="font-medium text-slate-800">{memberRegistrationForm.data.consent_marketing ? 'Yes' : 'No'}</div></div>
                                 </div>
                             </div>
                         </aside>
                     </div>
 
-                    <div className="flex items-center justify-between border-t border-white/10 px-6 py-5">
-                        <button type="button" className="rounded-2xl border border-white/10 px-4 py-3 text-sm text-stone-200" onClick={registrationStep === 0 ? closeRegistrationModal : () => setRegistrationStep((prev) => Math.max(0, prev - 1))}>
+                    <div className="flex items-center justify-between border-t border-slate-200 bg-white px-6 py-5">
+                        <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600" onClick={registrationStep === 0 ? closeRegistrationModal : () => setRegistrationStep((prev) => Math.max(0, prev - 1))}>
                             {registrationStep === 0 ? 'Cancel' : 'Back'}
                         </button>
                         <div className="flex gap-3">
                             {registrationStep < REGISTRATION_STEPS.length - 1 ? (
-                                <button type="button" className="rounded-2xl bg-amber-300 px-5 py-3 text-sm font-medium text-slate-900" onClick={() => { if (validateRegistrationStep()) setRegistrationStep((prev) => Math.min(REGISTRATION_STEPS.length - 1, prev + 1)); }}>
+                                <button type="button" className="ta-btn-primary" onClick={() => { if (validateRegistrationStep()) setRegistrationStep((prev) => Math.min(REGISTRATION_STEPS.length - 1, prev + 1)); }}>
                                     Continue
                                 </button>
                             ) : (
-                                <button type="submit" className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-medium text-slate-900 disabled:opacity-60" disabled={memberRegistrationForm.processing}>
+                                <button type="submit" className="ta-btn-primary disabled:opacity-60" disabled={memberRegistrationForm.processing}>
                                     {memberRegistrationForm.processing ? 'Saving...' : 'Save Member'}
                                 </button>
                             )}
