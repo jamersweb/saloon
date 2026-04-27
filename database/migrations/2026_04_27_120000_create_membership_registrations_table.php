@@ -40,8 +40,8 @@ return new class extends Migration
             $table->text('notes')->nullable();
             $table->timestamps();
 
-            $table->index(['customer_id', 'created_at']);
-            $table->index(['membership_card_type_id', 'registration_date']);
+            $table->index(['customer_id', 'created_at'], 'mem_reg_customer_created_idx');
+            $table->index(['membership_card_type_id', 'registration_date'], 'mem_reg_cardtype_regdate_idx');
         });
     }
 
