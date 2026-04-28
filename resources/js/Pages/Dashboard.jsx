@@ -35,7 +35,7 @@ export default function Dashboard({
     staffToCustomerFeedback,
     customerToStaffReviews,
 }) {
-    const { flash, auth } = usePage().props;
+    const { flash, auth, app_timezone: appTimezone = 'Asia/Dubai' } = usePage().props;
     const canDailyBackup = Boolean(auth?.permissions?.can_run_daily_backup);
     const roleName = auth?.user?.role?.name;
     const isStaff = roleName === 'staff';
@@ -44,6 +44,7 @@ export default function Dashboard({
     const [nfcBridgeStatus, setNfcBridgeStatus] = useState('');
     const [nfcBridgeOnline, setNfcBridgeOnline] = useState(null);
     const [nfcBridgeChecking, setNfcBridgeChecking] = useState(false);
+    const [now, setNow] = useState(new Date());
 
     const staffToCustomerForm = useForm({ customer_id: '', comment: '' });
     const customerToStaffForm = useForm({ staff_profile_id: '', rating: '5', comment: '' });
@@ -78,6 +79,20 @@ export default function Dashboard({
         checkNfcBridge();
     }, []);
 
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(new Date()), 1000);
+
+        return () => window.clearInterval(timer);
+    }, []);
+
+    const welcomeTimeLabel = new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+        timeZone: appTimezone,
+    }).format(now);
+
     return (
         <AuthenticatedLayout
             header={isStaff ? 'My Workspace' : 'Vina Operations Dashboard'}
@@ -94,6 +109,34 @@ export default function Dashboard({
         >
             <Head title="Dashboard" />
             <div className="space-y-6">
+                <section className="overflow-hidden rounded-[28px] border border-[#e7d7d1] bg-gradient-to-r from-[#fff7f2] via-[#f7e9e3] to-[#efe0db] p-6 shadow-sm">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-center gap-4">
+                            {auth?.user?.profile_image_url ? (
+                                <img
+                                    src={auth.user.profile_image_url}
+                                    alt={auth.user.name || 'User'}
+                                    className="h-20 w-20 rounded-3xl object-cover ring-4 ring-white/80"
+                                />
+                            ) : (
+                                <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white text-2xl font-semibold text-[#8c5f52] ring-4 ring-white/80">
+                                    {String(auth?.user?.name || 'U').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+                                </div>
+                            )}
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#b08b7e]">Welcome Back</p>
+                                <h2 className="mt-1 text-3xl font-semibold text-[#6f4d42]">{auth?.user?.name || 'User'}</h2>
+                                <p className="mt-1 text-sm text-[#9a7668]">You are signed in as {auth?.user?.role?.label || 'Team member'}.</p>
+                            </div>
+                        </div>
+                        <div className="rounded-3xl border border-white/70 bg-white/70 px-5 py-4 text-right backdrop-blur">
+                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#b08b7e]">Current Time</p>
+                            <p className="mt-2 text-2xl font-semibold text-[#6f4d42]">{welcomeTimeLabel}</p>
+                            <p className="mt-1 text-xs text-[#9a7668]">{appTimezone}</p>
+                        </div>
+                    </div>
+                </section>
+
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
                 {awaitingCheckoutVisits?.length > 0 && (
                     <section id="checkout-alerts" className="ta-card border-amber-200 bg-amber-50/90 p-4">
