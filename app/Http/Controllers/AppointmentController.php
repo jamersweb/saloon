@@ -24,6 +24,7 @@ use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoicePaymentService;
 use App\Support\Audit;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -35,6 +36,49 @@ use Inertia\Response;
 
 class AppointmentController extends Controller
 {
+    public function staffAvailability(Request $request, BookingAvailabilityService $availabilityService): JsonResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff', 'reception');
+
+        $data = $request->validate([
+            'scheduled_start' => ['required', 'date'],
+            'scheduled_end' => ['nullable', 'date'],
+            'ignore_appointment_id' => ['nullable', 'integer', 'exists:appointments,id'],
+        ]);
+
+        $start = Carbon::parse($data['scheduled_start']);
+        $end = ! empty($data['scheduled_end'])
+            ? Carbon::parse($data['scheduled_end'])
+            : $start->copy()->addMinutes(30);
+
+        if ($end->lessThanOrEqualTo($start)) {
+            $end = $start->copy()->addMinutes(30);
+        }
+
+        $ignoreAppointmentId = isset($data['ignore_appointment_id']) ? (int) $data['ignore_appointment_id'] : null;
+
+        $staff = StaffProfile::query()
+            ->with('user:id,name')
+            ->where('is_active', true)
+            ->orderBy('employee_code')
+            ->get()
+            ->map(function (StaffProfile $profile) use ($availabilityService, $start, $end, $ignoreAppointmentId) {
+                $availabilityError = $availabilityService->validateStaffAvailability($profile->id, $start, $end, $ignoreAppointmentId);
+
+                return [
+                    'id' => $profile->id,
+                    'name' => $profile->user?->name,
+                    'available' => $availabilityError === null,
+                    'reason' => $availabilityError,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'staff' => $staff,
+        ]);
+    }
+
     public function index(Request $request): Response
     {
         $status = $request->string('status')->toString();

@@ -120,7 +120,8 @@ class BookingAvailabilityService
             return 'Selected staff is on approved leave.';
         }
 
-        $hasConflict = Appointment::query()
+        $conflictingAppointment = Appointment::query()
+            ->with('staffProfile.user:id,name')
             ->where('staff_profile_id', $staffProfileId)
             ->whereNotIn('status', [Appointment::STATUS_COMPLETED, Appointment::STATUS_CANCELLED, Appointment::STATUS_NO_SHOW])
             ->when($ignoreAppointmentId, fn ($query) => $query->where('id', '!=', $ignoreAppointmentId))
@@ -132,9 +133,22 @@ class BookingAvailabilityService
                             ->where('scheduled_end', '>=', $end);
                     });
             })
-            ->exists();
+            ->orderBy('scheduled_start')
+            ->first();
 
-        return $hasConflict ? 'Selected staff already has a conflicting appointment.' : null;
+        if ($conflictingAppointment) {
+            $staffName = $conflictingAppointment->staffProfile?->user?->name ?: 'Selected staff';
+            $customerName = $conflictingAppointment->customer_name ?: 'another client';
+            $conflictStart = optional($conflictingAppointment->scheduled_start)?->format('M j, g:i A');
+            $conflictEnd = optional($conflictingAppointment->scheduled_end)?->format('g:i A');
+            $timeLabel = $conflictStart && $conflictEnd
+                ? "{$conflictStart} - {$conflictEnd}"
+                : 'that time';
+
+            return "{$staffName} is busy with {$customerName} ({$timeLabel}).";
+        }
+
+        return null;
     }
 
     public function findAnyAvailableStaffId(Carbon $start, Carbon $end): ?int

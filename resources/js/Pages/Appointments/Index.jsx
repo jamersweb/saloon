@@ -58,6 +58,8 @@ const hasAssignmentsForAllServices = (serviceIds, staffAssignments) => {
 
     return selected.every((serviceId) => String(staffAssignments?.[serviceId] || '').trim() !== '');
 };
+const isBlockingAppointmentStatus = (status) => !['completed', 'cancelled', 'no_show'].includes(String(status || '').toLowerCase());
+const intervalsOverlap = (startA, endA, startB, endB) => startA < endB && endA > startB;
 const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const sameLocalDate = (a, ymd) => {
     if (!a || !ymd) return false;
@@ -184,6 +186,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [showBoardView, setShowBoardView] = useState(false);
     const [boardDate, setBoardDate] = useState(() => localYmd(new Date()));
     const [boardStaffFilter, setBoardStaffFilter] = useState('all');
+    const [createStaffAvailability, setCreateStaffAvailability] = useState({});
+    const [editStaffAvailability, setEditStaffAvailability] = useState({});
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
 
     const createStartRef = useRef(null);
@@ -485,6 +489,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
 
     const createSelectedServices = createForm.data.service_ids || [];
     const editSelectedServices = editForm.data.service_ids || [];
+    const createHasMultipleServices = createSelectedServices.length > 1;
+    const editHasMultipleServices = editSelectedServices.length > 1;
     const createSelectedCustomer = customers.find((c) => String(c.id) === String(createSelectedCustomerId)) || null;
     const editSelectedCustomer = customers.find((c) => String(c.id) === String(editSelectedCustomerId)) || null;
     const createAvailablePackages = createSelectedCustomer?.active_packages || [];
@@ -497,6 +503,110 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editAvailableServices = services.filter((s) => !editSelectedServices.includes(String(s.id)));
     const createFilteredServices = createAvailableServices.filter((s) => serviceMatchesSearch(s, createServiceSearch));
     const editFilteredServices = editAvailableServices.filter((s) => serviceMatchesSearch(s, editServiceSearch));
+    const createStartForAvailability = createStartRef.current?.value || createForm.data.scheduled_start || '';
+    const createEndForAvailability = createForm.data.scheduled_end || calculateSuggestedEnd(createStartForAvailability, createSelectedServices);
+    const editStartForAvailability = editStartRef.current?.value || editForm.data.scheduled_start || '';
+    const editEndForAvailability = editForm.data.scheduled_end || calculateSuggestedEnd(editStartForAvailability, editSelectedServices);
+
+    const buildStaffAvailabilityMap = (startValue, endValue, ignoreAppointmentId = null) => {
+        const start = new Date(startValue);
+        const end = new Date(endValue || startValue);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return {};
+        const normalizedEnd = end > start ? end : new Date(start.getTime() + (30 * 60 * 1000));
+
+        return Object.fromEntries(staffProfiles.map((staff) => {
+            const conflictingAppointment = appointments.find((appt) => {
+                if (ignoreAppointmentId && String(appt.id) === String(ignoreAppointmentId)) return false;
+                if (String(appt.staff_profile_id || '') !== String(staff.id)) return false;
+                if (!isBlockingAppointmentStatus(appt.status)) return false;
+
+                const apptStart = new Date(appt.scheduled_start);
+                const apptEnd = new Date(appt.scheduled_end || appt.scheduled_start);
+                if (Number.isNaN(apptStart.getTime()) || Number.isNaN(apptEnd.getTime())) return false;
+                const normalizedApptEnd = apptEnd > apptStart ? apptEnd : new Date(apptStart.getTime() + (30 * 60 * 1000));
+
+                return intervalsOverlap(start, normalizedEnd, apptStart, normalizedApptEnd);
+            });
+
+            return [String(staff.id), {
+                busy: Boolean(conflictingAppointment),
+                label: conflictingAppointment
+                    ? `Busy${conflictingAppointment.customer_name ? ` - ${conflictingAppointment.customer_name}` : ''}`
+                    : 'Available',
+            }];
+        }));
+    };
+
+    const createFallbackStaffAvailability = buildStaffAvailabilityMap(createStartForAvailability, createEndForAvailability);
+    const editFallbackStaffAvailability = buildStaffAvailabilityMap(editStartForAvailability, editEndForAvailability, editingId);
+
+    useEffect(() => {
+        const startValue = createStartRef.current?.value || createForm.data.scheduled_start || '';
+        const endValue = createForm.data.scheduled_end || calculateSuggestedEnd(startValue, createSelectedServices);
+        if (!startValue) {
+            setCreateStaffAvailability({});
+            return;
+        }
+
+        let cancelled = false;
+        const params = new URLSearchParams({ scheduled_start: startValue });
+        if (endValue) params.set('scheduled_end', endValue);
+
+        fetch(`${route('appointments.staff-availability')}?${params.toString()}`, {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        })
+            .then((response) => response.ok ? response.json() : Promise.reject(new Error('Availability request failed')))
+            .then((payload) => {
+                if (cancelled) return;
+                const next = Object.fromEntries((payload?.staff || []).map((staff) => [String(staff.id), {
+                    busy: !staff.available,
+                    label: staff.available ? 'Available' : (staff.reason || 'Busy'),
+                }]));
+                setCreateStaffAvailability(next);
+            })
+            .catch(() => {
+                if (!cancelled) setCreateStaffAvailability({});
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [createForm.data.scheduled_start, createForm.data.scheduled_end, createSelectedServices, createStartMount]);
+
+    useEffect(() => {
+        const startValue = editStartRef.current?.value || editForm.data.scheduled_start || '';
+        const endValue = editForm.data.scheduled_end || calculateSuggestedEnd(startValue, editSelectedServices);
+        if (!editingId || !startValue) {
+            setEditStaffAvailability({});
+            return;
+        }
+
+        let cancelled = false;
+        const params = new URLSearchParams({ scheduled_start: startValue, ignore_appointment_id: String(editingId) });
+        if (endValue) params.set('scheduled_end', endValue);
+
+        fetch(`${route('appointments.staff-availability')}?${params.toString()}`, {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        })
+            .then((response) => response.ok ? response.json() : Promise.reject(new Error('Availability request failed')))
+            .then((payload) => {
+                if (cancelled) return;
+                const next = Object.fromEntries((payload?.staff || []).map((staff) => [String(staff.id), {
+                    busy: !staff.available,
+                    label: staff.available ? 'Available' : (staff.reason || 'Busy'),
+                }]));
+                setEditStaffAvailability(next);
+            })
+            .catch(() => {
+                if (!cancelled) setEditStaffAvailability({});
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [editingId, editForm.data.scheduled_start, editForm.data.scheduled_end, editSelectedServices, editStartMountKey]);
 
     const updateProductRow = (index, field, value) => {
         completeForm.setData('products', completeForm.data.products.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
@@ -753,7 +863,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         onClick={() => handleCreateServiceChange([...createSelectedServices, String(s.id)])}
                                     >
                                         <div className="font-medium text-slate-700">{s.name}</div>
-                                        <div className="mt-0.5 text-[11px] text-slate-500">{s.category || 'Uncategorized'} • {s.duration_minutes}m • {formatMoney(s.price, currencyCode)}</div>
+                                        <div className="mt-0.5 text-[11px] text-slate-500">{s.category || 'Uncategorized'} • {s.duration_minutes}m • <span className="font-bold text-slate-700">{formatMoney(s.price, currencyCode)}</span></div>
                                     </button>
                                 ))}
                                 {createFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
@@ -789,15 +899,22 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(createForm, 'service_id')}
                             {fieldError(createForm, 'service_ids')}
                         </div>
-                        <div>
-                            <label className="ta-field-label">Default Staff Profile</label>
-                            <select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}>
-                                <option value="">Auto / Unassigned</option>
-                                {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                            <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
-                            {fieldError(createForm, 'staff_profile_id')}
-                        </div>
+                        {createHasMultipleServices ? (
+                            <div>
+                                <label className="ta-field-label">Default Staff Profile</label>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">Hidden for multi-service bookings. Assign staff per service below.</div>
+                            </div>
+                        ) : (
+                            <div>
+                                <label className="ta-field-label">Default Staff Profile</label>
+                                <select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}>
+                                    <option value="">Auto / Unassigned</option>
+                                    {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                                <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
+                                {fieldError(createForm, 'staff_profile_id')}
+                            </div>
+                        )}
                         {createSelectedServices.length > 0 ? (
                             <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Per Service</p>
@@ -827,12 +944,16 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                     }}
                                                 >
                                                     <option value="">Use default / auto</option>
-                                                    {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                    {staffProfiles.map((s) => {
+                                                        const availability = createStaffAvailability[String(s.id)] || createFallbackStaffAvailability[String(s.id)];
+                                                        return <option key={s.id} value={s.id} disabled={Boolean(availability?.busy)}>{s.name} {availability ? `(${availability.label})` : ''}</option>;
+                                                    })}
                                                 </select>
                                             </div>
                                         );
                                     })}
                                 </div>
+                                <p className="mt-2 text-xs text-slate-500">Staff marked busy already have an overlapping appointment in the current schedule view.</p>
                                 {fieldError(createForm, 'staff_assignments')}
                             </div>
                         ) : null}
@@ -1338,7 +1459,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         onClick={() => handleEditServiceChange([...editSelectedServices, String(s.id)])}
                                     >
                                         <div className="font-medium text-slate-700">{s.name}</div>
-                                        <div className="mt-0.5 text-[11px] text-slate-500">{s.category || 'Uncategorized'} • {s.duration_minutes}m • {formatMoney(s.price, currencyCode)}</div>
+                                        <div className="mt-0.5 text-[11px] text-slate-500">{s.category || 'Uncategorized'} • {s.duration_minutes}m • <span className="font-bold text-slate-700">{formatMoney(s.price, currencyCode)}</span></div>
                                     </button>
                                 ))}
                                 {editFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
@@ -1357,15 +1478,22 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(editForm, 'service_id')}
                             {fieldError(editForm, 'service_ids')}
                         </div>
-                        <div>
-                            <label className="ta-field-label">Default Staff Profile</label>
-                            <select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}>
-                                <option value="">Auto / Unassigned</option>
-                                {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                            <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
-                            {fieldError(editForm, 'staff_profile_id')}
-                        </div>
+                        {editHasMultipleServices ? (
+                            <div>
+                                <label className="ta-field-label">Default Staff Profile</label>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">Hidden for multi-service bookings. Assign staff per service below.</div>
+                            </div>
+                        ) : (
+                            <div>
+                                <label className="ta-field-label">Default Staff Profile</label>
+                                <select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}>
+                                    <option value="">Auto / Unassigned</option>
+                                    {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                                <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
+                                {fieldError(editForm, 'staff_profile_id')}
+                            </div>
+                        )}
                         {editSelectedServices.length > 0 ? (
                             <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Per Service</p>
@@ -1395,12 +1523,16 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                     }}
                                                 >
                                                     <option value="">Use default / auto</option>
-                                                    {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                    {staffProfiles.map((s) => {
+                                                        const availability = editStaffAvailability[String(s.id)] || editFallbackStaffAvailability[String(s.id)];
+                                                        return <option key={s.id} value={s.id} disabled={Boolean(availability?.busy)}>{s.name} {availability ? `(${availability.label})` : ''}</option>;
+                                                    })}
                                                 </select>
                                             </div>
                                         );
                                     })}
                                 </div>
+                                <p className="mt-2 text-xs text-slate-500">Staff marked busy already have an overlapping appointment in the current schedule view.</p>
                                 {fieldError(editForm, 'staff_assignments')}
                             </div>
                         ) : null}
