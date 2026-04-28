@@ -343,19 +343,29 @@ class MembershipCardService
             ->lockForUpdate()
             ->first();
 
+        $candidate = self::FIRST_ISSUABLE_NUMBER;
+
         if (! $row) {
+            while (CustomerMembershipCard::query()->where('card_number', (string) $candidate)->exists()) {
+                $candidate++;
+            }
+
             MembershipCardSequence::create([
                 'membership_card_type_id' => $type->id,
-                'next_number' => self::FIRST_ISSUABLE_NUMBER + 1,
+                'next_number' => $candidate + 1,
             ]);
 
-            return (string) self::FIRST_ISSUABLE_NUMBER;
+            return (string) $candidate;
         }
 
-        $issued = (int) $row->next_number;
-        $row->update(['next_number' => $issued + 1]);
+        $candidate = max((int) $row->next_number, self::FIRST_ISSUABLE_NUMBER);
+        while (CustomerMembershipCard::query()->where('card_number', (string) $candidate)->exists()) {
+            $candidate++;
+        }
 
-        return (string) $issued;
+        $row->update(['next_number' => $candidate + 1]);
+
+        return (string) $candidate;
     }
 
     private function normalizeNfcUid(?string $nfcUid): ?string

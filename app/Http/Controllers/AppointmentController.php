@@ -126,7 +126,7 @@ class AppointmentController extends Controller
         $start = Carbon::parse($data['scheduled_start']);
         $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null);
 
-        if ($windowError = $availabilityService->validateAdvanceWindow($start, enforceSlotInterval: false)) {
+        if ($windowError = $availabilityService->validateAdvanceWindow($start, enforceSlotInterval: false, enforceMinAdvance: false)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
         }
 
@@ -834,13 +834,17 @@ class AppointmentController extends Controller
     private function attachStaffAssignments(array $servicePlans, ?int $selectedStaffId, BookingAvailabilityService $availabilityService, ?int $firstPlanIgnoreAppointmentId = null, array $perServiceStaffMap = []): array
     {
         $plansWithStaff = [];
+        $serviceIds = array_map(static fn (array $plan): int => (int) $plan['service']->id, $servicePlans);
+        $allServicesAssignedIndividually = $serviceIds !== []
+            && count(array_intersect($serviceIds, array_keys($perServiceStaffMap))) === count($serviceIds);
 
         foreach ($servicePlans as $index => $plan) {
             $ignoreAppointmentId = $index === 0 ? $firstPlanIgnoreAppointmentId : null;
             $serviceSpecificStaffId = $perServiceStaffMap[(int) $plan['service']->id] ?? null;
+            $fallbackSelectedStaffId = $allServicesAssignedIndividually ? null : $selectedStaffId;
 
-            if ($serviceSpecificStaffId !== null || $selectedStaffId !== null) {
-                $resolvedStaffId = $serviceSpecificStaffId ?? $selectedStaffId;
+            if ($serviceSpecificStaffId !== null || $fallbackSelectedStaffId !== null) {
+                $resolvedStaffId = $serviceSpecificStaffId ?? $fallbackSelectedStaffId;
                 $availabilityError = $availabilityService->validateStaffAvailability((int) $resolvedStaffId, $plan['start'], $plan['end'], $ignoreAppointmentId);
                 if ($availabilityError) {
                     throw ValidationException::withMessages(['staff_profile_id' => $availabilityError]);

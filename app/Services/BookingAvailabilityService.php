@@ -13,12 +13,13 @@ class BookingAvailabilityService
 {
     /**
      * @param  bool  $enforceSlotInterval  When false (e.g. staff booking in admin), minute-of-hour may fall between slot steps; public booking keeps this true.
+     * @param  bool  $enforceMinAdvance  When false, internal staff can create walk-ins immediately without waiting for the customer-facing advance window.
      */
-    public function validateAdvanceWindow(Carbon $start, bool $enforceSlotInterval = true): ?string
+    public function validateAdvanceWindow(Carbon $start, bool $enforceSlotInterval = true, bool $enforceMinAdvance = true): ?string
     {
         $rules = BookingRule::current();
 
-        if ($start->lt(now()->addMinutes((int) $rules->min_advance_minutes))) {
+        if ($enforceMinAdvance && $start->lt(now()->addMinutes((int) $rules->min_advance_minutes))) {
             return 'Selected slot is too soon based on booking policy.';
         }
 

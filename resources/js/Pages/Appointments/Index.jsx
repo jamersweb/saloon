@@ -45,6 +45,19 @@ const formatHourLabel = (hour) => {
 };
 const formatMoney = (value, currencyCode = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2 }).format(Number(value || 0));
+const serviceMatchesSearch = (service, query) => {
+    const needle = String(query || '').trim().toLowerCase();
+    if (!needle) return true;
+
+    const haystack = `${service?.name || ''} ${service?.category || ''}`.toLowerCase();
+    return haystack.includes(needle);
+};
+const hasAssignmentsForAllServices = (serviceIds, staffAssignments) => {
+    const selected = (serviceIds || []).map((id) => String(id));
+    if (selected.length === 0) return false;
+
+    return selected.every((serviceId) => String(staffAssignments?.[serviceId] || '').trim() !== '');
+};
 const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const sameLocalDate = (a, ymd) => {
     if (!a || !ymd) return false;
@@ -254,13 +267,19 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     };
 
     const handleCreateServiceChange = (nextIds) => {
-        createForm.clearErrors('service_id', 'service_ids');
+        createForm.clearErrors('service_id', 'service_ids', 'staff_profile_id', 'staff_assignments');
         const startVal = createStartRef.current?.value || createForm.data.scheduled_start || '';
         createForm.setData((prev) => ({
             ...prev,
-            staff_assignments: Object.fromEntries(
+            ...(() => {
+                const nextAssignments = Object.fromEntries(
                 Object.entries(prev.staff_assignments || {}).filter(([serviceId]) => nextIds.includes(String(serviceId))),
-            ),
+                );
+                return {
+                    staff_assignments: nextAssignments,
+                    staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
+                };
+            })(),
             package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
@@ -311,13 +330,19 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     };
 
     const handleEditServiceChange = (nextIds) => {
-        editForm.clearErrors('service_id', 'service_ids');
+        editForm.clearErrors('service_id', 'service_ids', 'staff_profile_id', 'staff_assignments');
         const startVal = editStartRef.current?.value || editForm.data.scheduled_start || '';
         editForm.setData((prev) => ({
             ...prev,
-            staff_assignments: Object.fromEntries(
+            ...(() => {
+                const nextAssignments = Object.fromEntries(
                 Object.entries(prev.staff_assignments || {}).filter(([serviceId]) => nextIds.includes(String(serviceId))),
-            ),
+                );
+                return {
+                    staff_assignments: nextAssignments,
+                    staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
+                };
+            })(),
             package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
@@ -470,8 +495,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editPackageCoverageMap = Object.fromEntries((editSelectedPackage?.services || []).map((service) => [String(service.id), service]));
     const createAvailableServices = services.filter((s) => !createSelectedServices.includes(String(s.id)));
     const editAvailableServices = services.filter((s) => !editSelectedServices.includes(String(s.id)));
-    const createFilteredServices = createAvailableServices.filter((s) => s.name.toLowerCase().includes(createServiceSearch.toLowerCase()));
-    const editFilteredServices = editAvailableServices.filter((s) => s.name.toLowerCase().includes(editServiceSearch.toLowerCase()));
+    const createFilteredServices = createAvailableServices.filter((s) => serviceMatchesSearch(s, createServiceSearch));
+    const editFilteredServices = editAvailableServices.filter((s) => serviceMatchesSearch(s, editServiceSearch));
 
     const updateProductRow = (index, field, value) => {
         completeForm.setData('products', completeForm.data.products.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
@@ -527,9 +552,11 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                 const endMinutes = end.getHours() * 60 + end.getMinutes();
                 const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
                 const height = Math.max(7, (((Math.max(endMinutes, startMinutes + 30)) - startMinutes) / boardTotalMinutes) * 100);
+                const isPaid = appt.status === 'completed' && !appt.awaiting_checkout;
 
                 return {
                     ...appt,
+                    isPaid,
                     top,
                     height,
                     timeLabel: `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
@@ -716,7 +743,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         </div>
                         <div>
                             <label className="ta-field-label">Services</label>
-                            <input className="ta-input" value={createServiceSearch} onChange={(e) => setCreateServiceSearch(e.target.value)} placeholder="Search and add service" />
+                            <input className="ta-input" value={createServiceSearch} onChange={(e) => setCreateServiceSearch(e.target.value)} placeholder="Search by service or category" />
                             <div className="mt-2 max-h-36 overflow-auto rounded-lg border border-slate-200 bg-white">
                                 {createFilteredServices.map((s) => (
                                     <button
@@ -725,7 +752,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
                                         onClick={() => handleCreateServiceChange([...createSelectedServices, String(s.id)])}
                                     >
-                                        {s.name} ({s.duration_minutes}m) - {formatMoney(s.price, currencyCode)}
+                                        <div className="font-medium text-slate-700">{s.name}</div>
+                                        <div className="mt-0.5 text-[11px] text-slate-500">{s.category || 'Uncategorized'} • {s.duration_minutes}m • {formatMoney(s.price, currencyCode)}</div>
                                     </button>
                                 ))}
                                 {createFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
@@ -783,10 +811,20 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 <select
                                                     className="ta-input"
                                                     value={createForm.data.staff_assignments?.[assignmentKey] || ''}
-                                                    onChange={(e) => createForm.setData('staff_assignments', {
-                                                        ...(createForm.data.staff_assignments || {}),
-                                                        [assignmentKey]: e.target.value,
-                                                    })}
+                                                    onChange={(e) => {
+                                                        createForm.clearErrors('staff_profile_id', 'staff_assignments');
+                                                        const nextAssignments = {
+                                                            ...(createForm.data.staff_assignments || {}),
+                                                            [assignmentKey]: e.target.value,
+                                                        };
+                                                        createForm.setData({
+                                                            ...createForm.data,
+                                                            staff_assignments: nextAssignments,
+                                                            staff_profile_id: hasAssignmentsForAllServices(createSelectedServices, nextAssignments)
+                                                                ? ''
+                                                                : createForm.data.staff_profile_id,
+                                                        });
+                                                    }}
                                                 >
                                                     <option value="">Use default / auto</option>
                                                     {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -1290,7 +1328,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         <div><label className="ta-field-label">Email</label><input className="ta-input" type="email" value={editForm.data.customer_email} onChange={(e) => editForm.setData('customer_email', e.target.value)} />{fieldError(editForm, 'customer_email')}</div>
                         <div>
                             <label className="ta-field-label">Services</label>
-                            <input className="ta-input" value={editServiceSearch} onChange={(e) => setEditServiceSearch(e.target.value)} placeholder="Search and add service" />
+                            <input className="ta-input" value={editServiceSearch} onChange={(e) => setEditServiceSearch(e.target.value)} placeholder="Search by service or category" />
                             <div className="mt-2 max-h-36 overflow-auto rounded-lg border border-slate-200 bg-white">
                                 {editFilteredServices.map((s) => (
                                     <button
@@ -1299,7 +1337,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
                                         onClick={() => handleEditServiceChange([...editSelectedServices, String(s.id)])}
                                     >
-                                        {s.name} ({s.duration_minutes}m) - {formatMoney(s.price, currencyCode)}
+                                        <div className="font-medium text-slate-700">{s.name}</div>
+                                        <div className="mt-0.5 text-[11px] text-slate-500">{s.category || 'Uncategorized'} • {s.duration_minutes}m • {formatMoney(s.price, currencyCode)}</div>
                                     </button>
                                 ))}
                                 {editFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
@@ -1340,10 +1379,20 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 <select
                                                     className="ta-input"
                                                     value={editForm.data.staff_assignments?.[assignmentKey] || ''}
-                                                    onChange={(e) => editForm.setData('staff_assignments', {
-                                                        ...(editForm.data.staff_assignments || {}),
-                                                        [assignmentKey]: e.target.value,
-                                                    })}
+                                                    onChange={(e) => {
+                                                        editForm.clearErrors('staff_profile_id', 'staff_assignments');
+                                                        const nextAssignments = {
+                                                            ...(editForm.data.staff_assignments || {}),
+                                                            [assignmentKey]: e.target.value,
+                                                        };
+                                                        editForm.setData({
+                                                            ...editForm.data,
+                                                            staff_assignments: nextAssignments,
+                                                            staff_profile_id: hasAssignmentsForAllServices(editSelectedServices, nextAssignments)
+                                                                ? ''
+                                                                : editForm.data.staff_profile_id,
+                                                        });
+                                                    }}
                                                 >
                                                     <option value="">Use default / auto</option>
                                                     {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -1490,13 +1539,18 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                     else if (appt.status === 'in_progress' || appt.status === 'completed') openCompleteService(appt);
                                                     else startEdit(appt);
                                                 }}
-                                                className="absolute left-2 right-2 overflow-hidden rounded-xl border border-white/20 bg-slate-100 p-2 text-left text-slate-900 shadow-lg transition hover:scale-[1.01]"
+                                                className={`absolute left-2 right-2 overflow-hidden rounded-xl p-2 text-left shadow-lg transition hover:scale-[1.01] ${
+                                                    appt.isPaid
+                                                        ? 'border border-white bg-white text-slate-900'
+                                                        : 'border border-[#e6ddd2] bg-[#f1ebe3] text-slate-900'
+                                                }`}
                                                 style={{ top: `${appt.top}%`, height: `${appt.height}%` }}
                                             >
                                                 <div className="text-[11px] font-semibold text-slate-600">{appt.timeLabel}</div>
                                                 <div className="mt-1 text-sm font-semibold">{appt.customer_name}</div>
                                                 <div className="text-xs text-slate-700">{appt.service_name}</div>
                                                 {appt.customer_package_id ? <div className="mt-1 text-[11px] font-medium text-emerald-700">Package session</div> : null}
+                                                {appt.isPaid ? <div className="mt-1 text-[11px] font-medium text-emerald-700">Paid</div> : null}
                                                 {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-medium text-amber-700">Needs payment</div> : null}
                                             </button>
                                         ))}
