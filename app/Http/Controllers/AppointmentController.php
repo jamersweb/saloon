@@ -136,6 +136,7 @@ class AppointmentController extends Controller
                 ->with([
                     'packages.package.salonServices',
                     'packages.usages',
+                    'giftCards',
                 ])
                 ->where('is_active', true)
                 ->orderBy('name')
@@ -1099,12 +1100,23 @@ class AppointmentController extends Controller
             })
             ->values();
 
+        $activeGiftCards = $customer->giftCards
+            ->where('status', 'active')
+            ->filter(fn (GiftCard $card) => (float) $card->remaining_value > 0)
+            ->values();
+
         return [
             'id' => $customer->id,
             'name' => $customer->name,
             'phone' => (string) ($customer->phone ?? ''),
             'email' => (string) ($customer->email ?? ''),
             'active_packages' => $activePackages,
+            'gift_card_balance' => round((float) $activeGiftCards->sum('remaining_value'), 2),
+            'active_gift_cards' => $activeGiftCards->map(fn (GiftCard $card) => [
+                'id' => $card->id,
+                'code' => $card->code,
+                'remaining_value' => (float) $card->remaining_value,
+            ])->all(),
         ];
     }
 

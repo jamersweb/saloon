@@ -61,6 +61,17 @@ const normalizeServiceQuantities = (serviceIds, serviceQuantities) => {
 
     return next;
 };
+const estimateSelectedServicesTotal = (serviceIds, serviceQuantities, services, coveredServiceIds = []) => {
+    const covered = new Set((coveredServiceIds || []).map((id) => String(id)));
+
+    return (serviceIds || []).reduce((sum, serviceId) => {
+        const service = services.find((item) => String(item.id) === String(serviceId));
+        if (!service) return sum;
+        if (covered.has(String(serviceId))) return sum;
+        const quantity = Math.max(1, Number(serviceQuantities?.[String(serviceId)] || 1));
+        return sum + (Number(service.price || 0) * quantity);
+    }, 0);
+};
 const hasAssignmentsForAllServices = (serviceIds, staffAssignments) => {
     const selected = (serviceIds || []).map((id) => String(id));
     if (selected.length === 0) return false;
@@ -421,8 +432,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         const startStr = toDateTimeLocal(appt.scheduled_start);
         setEditStartYmd(startStr.split('T')[0] || localYmd(new Date()));
         setEditingId(appt.id);
-        setEditCustomerMode('new');
-        setEditSelectedCustomerId('');
+        setEditCustomerMode(appt.customer_id ? 'existing' : 'new');
+        setEditSelectedCustomerId(appt.customer_id ? String(appt.customer_id) : '');
         setEditSelectedPackageId(appt.customer_package_id ? String(appt.customer_package_id) : '');
         setEditServiceSearch('');
         setEditEndManuallySet(Boolean(appt.scheduled_end));
@@ -511,10 +522,18 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editSelectedPackage = editAvailablePackages.find((pkg) => String(pkg.id) === String(editSelectedPackageId)) || null;
     const createPackageCoverageMap = Object.fromEntries((createSelectedPackage?.services || []).map((service) => [String(service.id), service]));
     const editPackageCoverageMap = Object.fromEntries((editSelectedPackage?.services || []).map((service) => [String(service.id), service]));
+    const createCoveredServiceIds = createForm.data.package_service_ids || [];
+    const editCoveredServiceIds = editForm.data.package_service_ids || [];
     const createAvailableServices = services.filter((s) => !createSelectedServices.includes(String(s.id)));
     const editAvailableServices = services.filter((s) => !editSelectedServices.includes(String(s.id)));
     const createFilteredServices = createAvailableServices.filter((s) => serviceMatchesSearch(s, createServiceSearch));
     const editFilteredServices = editAvailableServices.filter((s) => serviceMatchesSearch(s, editServiceSearch));
+    const createEstimatedServicesTotal = estimateSelectedServicesTotal(createSelectedServices, createForm.data.service_quantities, services, createCoveredServiceIds);
+    const editEstimatedServicesTotal = estimateSelectedServicesTotal(editSelectedServices, editForm.data.service_quantities, services, editCoveredServiceIds);
+    const createCustomerGiftBalance = Number(createSelectedCustomer?.gift_card_balance || 0);
+    const editCustomerGiftBalance = Number(editSelectedCustomer?.gift_card_balance || 0);
+    const createGiftCardShortfall = Math.max(0, createEstimatedServicesTotal - createCustomerGiftBalance);
+    const editGiftCardShortfall = Math.max(0, editEstimatedServicesTotal - editCustomerGiftBalance);
     const createStartForAvailability = createStartRef.current?.value || createForm.data.scheduled_start || '';
     const createEndForAvailability = createForm.data.scheduled_end || calculateSuggestedEnd(createStartForAvailability, createSelectedServices);
     const editStartForAvailability = editStartRef.current?.value || editForm.data.scheduled_start || '';
@@ -635,6 +654,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editStartDefault = editingAppt ? toDateTimeLocal(editingAppt.scheduled_start) : (editForm.data.scheduled_start || '');
     const completingAppt = appointments.find((a) => String(a.id) === String(completeServiceId));
     const completingService = services.find((s) => String(s.id) === String(completingAppt?.service_id));
+    const completingCustomer = customers.find((customer) => String(customer.id) === String(completingAppt?.customer_id));
     const completingServiceQuantity = Math.max(1, Number(completingAppt?.service_quantity || 1));
     const completingServiceAmount = completingAppt?.customer_package_id ? 0 : (Number(completingService?.price || 0) * completingServiceQuantity);
     const selectedProductLines = (completeForm.data.products || [])
@@ -655,6 +675,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         .filter((line) => String(line.inventory_item_id || '') !== '');
     const selectedProductsAmount = selectedProductLines.reduce((sum, line) => sum + line.lineTotal, 0);
     const previewTotalAmount = completingServiceAmount + selectedProductsAmount;
+    const completingCustomerGiftBalance = Number(completingCustomer?.gift_card_balance || 0);
+    const completingGiftCardShortfall = Math.max(0, previewTotalAmount - completingCustomerGiftBalance);
     const boardOpen = salonClockBoundary(bookingRules, 'opening_time', '09:00');
     const boardClose = salonClockBoundary(bookingRules, 'closing_time', '22:00');
     const boardStartMinutes = boardOpen.h * 60 + boardOpen.m;
@@ -951,6 +973,21 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(createForm, 'service_id')}
                             {fieldError(createForm, 'service_ids')}
                         </div>
+                        {createSelectedCustomer ? (
+                            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gift Card Check</p>
+                                <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-700">
+                                    <span>Gift card balance: <strong>{formatMoney(createCustomerGiftBalance, currencyCode)}</strong></span>
+                                    <span>Estimated services total: <strong>{formatMoney(createEstimatedServicesTotal, currencyCode)}</strong></span>
+                                </div>
+                                {createGiftCardShortfall > 0 ? (
+                                    <p className="mt-2 text-sm font-semibold text-red-600">Warning: selected services exceed gift card balance by {formatMoney(createGiftCardShortfall, currencyCode)}.</p>
+                                ) : null}
+                                {!createGiftCardShortfall && createCustomerGiftBalance > 0 && createSelectedServices.length > 0 ? (
+                                    <p className="mt-2 text-xs text-emerald-700">Selected services fit within the current gift card balance.</p>
+                                ) : null}
+                            </div>
+                        ) : null}
                         {createHasMultipleServices ? (
                             <div>
                                 <label className="ta-field-label">Default Staff Profile</label>
@@ -1308,6 +1345,17 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 <span>Estimated total</span>
                                                 <span>{formatMoney(previewTotalAmount, currencyCode)}</span>
                                             </div>
+                                            {completingCustomer ? (
+                                                <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+                                                    <span>Customer gift card balance</span>
+                                                    <span>{formatMoney(completingCustomerGiftBalance, currencyCode)}</span>
+                                                </div>
+                                            ) : null}
+                                            {completingGiftCardShortfall > 0 ? (
+                                                <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                                                    Warning: gift card balance is short by {formatMoney(completingGiftCardShortfall, currencyCode)}.
+                                                </div>
+                                            ) : null}
                                         </div>
                                         {checkoutFlow === 'pay' ? (
                                             <>
@@ -1361,6 +1409,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                     ))}
                                                 </select>
                                                 <p className="mt-1 text-xs text-slate-500">Balance must cover the full invoice total. Cards assigned to another customer are hidden.</p>
+                                                <p className="mt-1 text-xs text-slate-500">Available balance: {formatMoney(completingCustomerGiftBalance, currencyCode)}. Invoice estimate: {formatMoney(previewTotalAmount, currencyCode)}.</p>
+                                                {completingGiftCardShortfall > 0 ? <p className="mt-1 text-xs font-semibold text-red-600">This gift card does not fully cover the visit total.</p> : null}
                                                 {fieldError(completeForm, 'checkout_gift_card_id')}
                                             </div>
                                         ) : null}
@@ -1554,6 +1604,21 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(editForm, 'service_id')}
                             {fieldError(editForm, 'service_ids')}
                         </div>
+                        {editSelectedCustomer ? (
+                            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gift Card Check</p>
+                                <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-700">
+                                    <span>Gift card balance: <strong>{formatMoney(editCustomerGiftBalance, currencyCode)}</strong></span>
+                                    <span>Estimated services total: <strong>{formatMoney(editEstimatedServicesTotal, currencyCode)}</strong></span>
+                                </div>
+                                {editGiftCardShortfall > 0 ? (
+                                    <p className="mt-2 text-sm font-semibold text-red-600">Warning: selected services exceed gift card balance by {formatMoney(editGiftCardShortfall, currencyCode)}.</p>
+                                ) : null}
+                                {!editGiftCardShortfall && editCustomerGiftBalance > 0 && editSelectedServices.length > 0 ? (
+                                    <p className="mt-2 text-xs text-emerald-700">Selected services fit within the current gift card balance.</p>
+                                ) : null}
+                            </div>
+                        ) : null}
                         {editHasMultipleServices ? (
                             <div>
                                 <label className="ta-field-label">Default Staff Profile</label>
