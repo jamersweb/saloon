@@ -93,21 +93,13 @@ export default function FinanceInvoicesShow({
             return;
         }
         const cust = customers.find((c) => c.id === ap.customer_id);
-        if (ap.service_id && serviceById[String(ap.service_id)]) {
-            const s = serviceById[String(ap.service_id)];
+        if (Array.isArray(ap.visit_items) && ap.visit_items.length) {
             editForm.setData({
                 ...editForm.data,
                 appointment_id: id,
                 customer_id: ap.customer_id ? String(ap.customer_id) : '',
                 customer_display_name: cust ? cust.name : editForm.data.customer_display_name,
-                items: [
-                    {
-                        salon_service_id: String(ap.service_id),
-                        description: s.name,
-                        quantity: '1',
-                        unit_price: String(s.price),
-                    },
-                ],
+                items: ap.visit_items,
             });
             return;
         }

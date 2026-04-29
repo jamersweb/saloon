@@ -12,6 +12,7 @@ use App\Models\ServicePackage;
 use App\Models\TaxInvoice;
 use App\Models\User;
 use App\Services\PackageBalanceService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -171,5 +172,211 @@ class FinanceAppointmentInvoiceDraftTest extends TestCase
             'salon_service_id' => $service->id,
             'sessions_used' => 1,
         ]);
+    }
+
+    public function test_multi_service_visit_creates_invoice_with_all_visit_services(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $owner = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $staffProfile = StaffProfile::create([
+            'user_id' => $owner->id,
+            'employee_code' => 'OWN-FIN-3',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-APT-3',
+            'name' => 'Teresa',
+            'phone' => '5559992222',
+            'is_active' => true,
+        ]);
+
+        $threading = SalonService::create([
+            'name' => 'Threading Eyebrow',
+            'category' => 'Threading',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 60,
+            'is_active' => true,
+        ]);
+
+        $manicure = SalonService::create([
+            'name' => 'Basic Manicure',
+            'category' => 'Nails',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 75,
+            'is_active' => true,
+        ]);
+
+        $createdAt = Carbon::parse('2026-04-29 13:00:00');
+
+        $first = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $threading->id,
+            'staff_profile_id' => $staffProfile->id,
+            'booked_by' => $owner->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_IN_PROGRESS,
+            'scheduled_start' => now()->subHour(),
+            'scheduled_end' => now()->subMinutes(30),
+            'arrival_time' => now()->subHour(),
+            'service_start_time' => now()->subMinutes(50),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+
+        $second = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $manicure->id,
+            'staff_profile_id' => $staffProfile->id,
+            'booked_by' => $owner->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => now()->subMinutes(30),
+            'scheduled_end' => now(),
+            'arrival_time' => now()->subHour(),
+            'service_start_time' => now()->subMinutes(35),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('appointments.service-complete', $first), [
+                'service_report' => 'Visit finished.',
+                'create_tax_invoice_draft' => true,
+                'products' => [],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->where('appointment_id', $first->id)->firstOrFail();
+
+        $this->assertCount(2, $invoice->items);
+        $this->assertSame(
+            ['Threading Eyebrow', 'Basic Manicure'],
+            $invoice->items()->orderBy('id')->pluck('description')->all()
+        );
+        $this->assertSame('Created from visit appointments #'.$first->id.', #'.$second->id, $invoice->notes);
+    }
+
+    public function test_second_service_completion_reuses_same_draft_and_syncs_all_visit_lines(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $owner = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $staffProfile = StaffProfile::create([
+            'user_id' => $owner->id,
+            'employee_code' => 'OWN-FIN-4',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-APT-4',
+            'name' => 'Nadia',
+            'phone' => '5559993333',
+            'is_active' => true,
+        ]);
+
+        $serviceOne = SalonService::create([
+            'name' => 'Eyelash Refill',
+            'category' => 'Lashes',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 120,
+            'is_active' => true,
+        ]);
+
+        $serviceTwo = SalonService::create([
+            'name' => 'Acrylic Gel Refill',
+            'category' => 'Nails',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 180,
+            'is_active' => true,
+        ]);
+
+        $visitId = (string) \Illuminate\Support\Str::uuid();
+
+        $first = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $serviceOne->id,
+            'staff_profile_id' => $staffProfile->id,
+            'visit_id' => $visitId,
+            'booked_by' => $owner->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_IN_PROGRESS,
+            'scheduled_start' => now()->subHours(2),
+            'scheduled_end' => now()->subHour(),
+            'arrival_time' => now()->subHours(2),
+            'service_start_time' => now()->subHours(2),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $second = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $serviceTwo->id,
+            'staff_profile_id' => $staffProfile->id,
+            'visit_id' => $visitId,
+            'booked_by' => $owner->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_IN_PROGRESS,
+            'scheduled_start' => now()->subHour(),
+            'scheduled_end' => now(),
+            'arrival_time' => now()->subHours(2),
+            'service_start_time' => now()->subMinutes(50),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('appointments.service-complete', $first), [
+                'service_report' => 'First service done.',
+                'create_tax_invoice_draft' => true,
+                'products' => [],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $firstInvoice = TaxInvoice::query()->where('appointment_id', $first->id)->firstOrFail();
+        $this->assertCount(2, $firstInvoice->items);
+
+        $this->actingAs($owner)
+            ->post(route('appointments.service-complete', $second), [
+                'service_report' => 'Second service done.',
+                'create_tax_invoice_draft' => true,
+                'products' => [],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(1, TaxInvoice::query()->count());
+
+        $invoice = TaxInvoice::query()->firstOrFail();
+        $this->assertSame($firstInvoice->id, $invoice->id);
+        $this->assertEqualsCanonicalizing(
+            ['Eyelash Refill', 'Acrylic Gel Refill'],
+            $invoice->items()->pluck('description')->all()
+        );
+        $this->assertSame(315.0, (float) $invoice->total);
     }
 }

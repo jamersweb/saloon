@@ -11,6 +11,7 @@ use App\Models\InvoicePayment;
 use App\Models\SalonService;
 use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
+use App\Services\AppointmentVisitService;
 use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoiceLineCalculator;
 use App\Services\TaxInvoicePaymentService;
@@ -27,6 +28,8 @@ use Inertia\Response as InertiaResponse;
 
 class TaxInvoiceController extends Controller
 {
+    public function __construct(private readonly AppointmentVisitService $appointmentVisitService) {}
+
     protected function authorizeInvoiceAccess(Request $request, TaxInvoice $invoice): void
     {
         $user = $request->user();
@@ -98,12 +101,7 @@ class TaxInvoiceController extends Controller
                 ->latest('scheduled_start')
                 ->limit(40)
                 ->get()
-                ->map(fn (Appointment $a) => [
-                    'id' => $a->id,
-                    'label' => '#'.$a->id.' · '.($a->customer?->name ?? $a->customer_name).' · '.optional($a->scheduled_start)?->format('M j, H:i'),
-                    'customer_id' => $a->customer_id,
-                    'service_id' => $a->service_id,
-                ]),
+                ->map(fn (Appointment $a) => $this->serializeInvoiceAppointmentOption($a)),
             'vat_rate_percent' => (float) $settings->vat_rate_percent,
             'currency_code' => $settings->currency_code,
         ]);
@@ -188,12 +186,7 @@ class TaxInvoiceController extends Controller
                 ->latest('scheduled_start')
                 ->limit(40)
                 ->get()
-                ->map(fn (Appointment $a) => [
-                    'id' => $a->id,
-                    'label' => '#'.$a->id.' · '.($a->customer?->name ?? $a->customer_name).' · '.optional($a->scheduled_start)?->format('M j, H:i'),
-                    'customer_id' => $a->customer_id,
-                    'service_id' => $a->service_id,
-                ])
+                ->map(fn (Appointment $a) => $this->serializeInvoiceAppointmentOption($a))
                 ->values()
                 ->all()
             : [];
@@ -460,5 +453,34 @@ class TaxInvoiceController extends Controller
             'vat_amount' => round($invoice->items->sum('line_tax'), 2),
             'total' => round($invoice->items->sum('line_total'), 2),
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeInvoiceAppointmentOption(Appointment $appointment): array
+    {
+        $visitItems = $this->appointmentVisitService
+            ->forAppointment($appointment)
+            ->loadMissing('service:id,name,price')
+            ->filter(fn (Appointment $item) => $item->service !== null)
+            ->map(fn (Appointment $item) => [
+                'salon_service_id' => $item->service_id ? (string) $item->service_id : '',
+                'description' => $item->customer_package_id
+                    ? $item->service->name.' (package session)'
+                    : $item->service->name,
+                'quantity' => '1',
+                'unit_price' => (string) ($item->customer_package_id ? 0 : $item->service->price),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'id' => $appointment->id,
+            'label' => '#'.$appointment->id.' · '.($appointment->customer?->name ?? $appointment->customer_name).' · '.optional($appointment->scheduled_start)?->format('M j, H:i'),
+            'customer_id' => $appointment->customer_id,
+            'service_id' => $appointment->service_id,
+            'visit_items' => $visitItems,
+        ];
     }
 }

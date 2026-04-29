@@ -29,6 +29,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -202,6 +203,7 @@ class AppointmentController extends Controller
 
         $created = [];
         DB::transaction(function () use ($request, $data, $customer, $servicePlans, $packageSelection, &$created): void {
+            $visitId = (string) Str::uuid();
             foreach ($servicePlans as $plan) {
                 $isPackageCovered = in_array((int) $plan['service']->id, $packageSelection['covered_service_ids'], true);
                 $created[] = Appointment::create([
@@ -210,6 +212,7 @@ class AppointmentController extends Controller
                     'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                     'customer_id' => $customer->id,
                     'customer_package_id' => $isPackageCovered ? $packageSelection['customer_package']?->id : null,
+                    'visit_id' => $visitId,
                     'booked_by' => $request->user()?->id,
                     'scheduled_start' => $plan['start'],
                     'scheduled_end' => $plan['end'],
@@ -272,6 +275,7 @@ class AppointmentController extends Controller
         $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer->id, $appointment->id);
 
         DB::transaction(function () use ($appointment, $data, $customer, $servicePlans, $packageSelection): void {
+            $visitId = $appointment->visit_id ?: (string) Str::uuid();
             $first = $servicePlans[0];
             $firstCovered = in_array((int) $first['service']->id, $packageSelection['covered_service_ids'], true);
             $appointment->update([
@@ -280,6 +284,7 @@ class AppointmentController extends Controller
                 'staff_profile_id' => $first['staff_profile_id'] ?? null,
                 'customer_id' => $customer->id,
                 'customer_package_id' => $firstCovered ? $packageSelection['customer_package']?->id : null,
+                'visit_id' => $visitId,
                 'scheduled_start' => $first['start'],
                 'scheduled_end' => $first['end'],
             ]);
@@ -294,6 +299,7 @@ class AppointmentController extends Controller
                         'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                         'customer_id' => $customer->id,
                         'customer_package_id' => $covered ? $packageSelection['customer_package']?->id : null,
+                        'visit_id' => $visitId,
                         'booked_by' => $appointment->booked_by ?? request()->user()?->id,
                         'scheduled_start' => $plan['start'],
                         'scheduled_end' => $plan['end'],
