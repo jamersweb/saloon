@@ -39,6 +39,7 @@ class Appointment extends Model
         'customer_package_id',
         'visit_id',
         'service_id',
+        'service_quantity',
         'staff_profile_id',
         'booked_by',
         'source',
@@ -63,6 +64,7 @@ class Appointment extends Model
             'scheduled_end' => 'datetime',
             'arrival_time' => 'datetime',
             'service_start_time' => 'datetime',
+            'service_quantity' => 'integer',
             'exclude_loyalty_earn' => 'boolean',
             'package_session_applied' => 'boolean',
         ];

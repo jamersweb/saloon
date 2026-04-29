@@ -39,6 +39,7 @@ export default function LoyaltyIndex({
     const [editingCardTypeId, setEditingCardTypeId] = useState(null);
     const [editingRewardId, setEditingRewardId] = useState(null);
     const [editingPackageId, setEditingPackageId] = useState(null);
+    const [editingMembershipCardId, setEditingMembershipCardId] = useState(null);
     const [nfcBridgeStatus, setNfcBridgeStatus] = useState('');
     const [nfcBridgeLoadingTarget, setNfcBridgeLoadingTarget] = useState(null);
     const [nfcBridgeOnline, setNfcBridgeOnline] = useState(null);
@@ -51,6 +52,7 @@ export default function LoyaltyIndex({
     const createCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
     const editCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
     const assignCardForm = useForm({ customer_id: '', membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'active', notes: '' });
+    const editMembershipCardForm = useForm({ membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'pending', notes: '' });
     const memberRegistrationForm = useForm({
         customer_id: '',
         registration_date: new Date().toISOString().slice(0, 10),
@@ -215,6 +217,18 @@ export default function LoyaltyIndex({
         editPackageForm.clearErrors();
     };
 
+    const startEditMembershipCard = (card) => {
+        setEditingMembershipCardId(card.id);
+        editMembershipCardForm.setData({
+            membership_card_type_id: card.membership_card_type_id ? String(card.membership_card_type_id) : '',
+            card_number: card.card_number || '',
+            nfc_uid: card.nfc_uid || '',
+            status: card.status || 'pending',
+            notes: card.notes || '',
+        });
+        editMembershipCardForm.clearErrors();
+    };
+
     const setNfcUidForTarget = (target, uid) => {
         if (target === 'assign') {
             assignCardForm.setData('nfc_uid', uid);
@@ -377,6 +391,10 @@ export default function LoyaltyIndex({
                         issueInventoryForm={issueInventoryForm}
                         linkInventoryForm={linkInventoryForm}
                         assignCardForm={assignCardForm}
+                        editingMembershipCardId={editingMembershipCardId}
+                        editMembershipCardForm={editMembershipCardForm}
+                        setEditingMembershipCardId={setEditingMembershipCardId}
+                        startEditMembershipCard={startEditMembershipCard}
                         memberRegistrationForm={memberRegistrationForm}
                         nfcLookupForm={nfcLookupForm}
                         nfcBindForm={nfcBindForm}

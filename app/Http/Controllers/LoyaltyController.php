@@ -838,6 +838,61 @@ class LoyaltyController extends Controller
         return back()->with('status', 'NFC UID linked to membership card.');
     }
 
+    public function updateMembershipCard(Request $request, CustomerMembershipCard $card, MembershipCardService $membershipCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $this->prepareNfcUidField($request, 'nfc_uid');
+
+        $data = $request->validate([
+            'membership_card_type_id' => ['required', 'exists:membership_card_types,id'],
+            ...$this->rulesOptionalDigitsCardNumber(),
+            'nfc_uid' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('customer_membership_cards', 'nfc_uid')->ignore($card->id),
+                Rule::unique('gift_cards', 'nfc_uid'),
+            ],
+            'status' => ['required', Rule::in(['pending', 'active', 'inactive', 'expired'])],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $cardType = MembershipCardType::findOrFail((int) $data['membership_card_type_id']);
+
+        $card = $membershipCardService->updateCard($card, $cardType, [
+            'card_number' => $data['card_number'] ?? null,
+            'nfc_uid' => $data['nfc_uid'] ?? null,
+            'status' => $data['status'],
+            'notes' => $data['notes'] ?? null,
+        ], $request->user()?->id);
+
+        Audit::log($request->user()?->id, 'loyalty.card_updated', 'CustomerMembershipCard', $card->id, [
+            'customer_id' => $card->customer_id,
+            'card_type_id' => $card->membership_card_type_id,
+        ]);
+
+        return back()->with('status', 'Membership card updated.');
+    }
+
+    public function destroyMembershipCard(Request $request, CustomerMembershipCard $card): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        if ($card->registrations()->exists()) {
+            return back()->withErrors([
+                'membership_cards' => 'This membership card is linked to a registration record. Update it instead of deleting it.',
+            ]);
+        }
+
+        $cardId = $card->id;
+        $card->delete();
+
+        Audit::log($request->user()?->id, 'loyalty.card_deleted', 'CustomerMembershipCard', $cardId);
+
+        return back()->with('status', 'Membership card deleted.');
+    }
+
     public function lookupGiftCardByNfc(Request $request, GiftCardService $giftCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');

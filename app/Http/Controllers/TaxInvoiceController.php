@@ -469,7 +469,7 @@ class TaxInvoiceController extends Controller
                 'description' => $item->customer_package_id
                     ? $item->service->name.' (package session)'
                     : $item->service->name,
-                'quantity' => '1',
+                'quantity' => (string) max(1, (int) ($item->service_quantity ?? 1)),
                 'unit_price' => (string) ($item->customer_package_id ? 0 : $item->service->price),
             ])
             ->values()

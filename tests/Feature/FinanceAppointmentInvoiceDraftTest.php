@@ -379,4 +379,71 @@ class FinanceAppointmentInvoiceDraftTest extends TestCase
         );
         $this->assertSame(315.0, (float) $invoice->total);
     }
+
+    public function test_per_piece_service_uses_service_quantity_in_invoice_draft(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $owner = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $staffProfile = StaffProfile::create([
+            'user_id' => $owner->id,
+            'employee_code' => 'OWN-FIN-5',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-APT-5',
+            'name' => 'Hair Extension Client',
+            'phone' => '5559994444',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Fix & Remove Hair extension',
+            'category' => 'Hair',
+            'duration_minutes' => 120,
+            'buffer_minutes' => 0,
+            'price' => 100,
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'service_quantity' => 6,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_IN_PROGRESS,
+            'scheduled_start' => now()->subHour(),
+            'scheduled_end' => now(),
+            'arrival_time' => now()->subHour(),
+            'service_start_time' => now()->subMinutes(30),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('appointments.service-complete', $appointment), [
+                'service_report' => 'Per-piece service done.',
+                'create_tax_invoice_draft' => true,
+                'products' => [],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->where('appointment_id', $appointment->id)->firstOrFail();
+        $line = $invoice->items()->firstOrFail();
+
+        $this->assertSame('6.00', $line->quantity);
+        $this->assertSame('100.00', $line->unit_price);
+        $this->assertSame('600.00', $line->line_subtotal);
+        $this->assertSame('630.00', $line->line_total);
+    }
 }

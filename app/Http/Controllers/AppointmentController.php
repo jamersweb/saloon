@@ -167,9 +167,10 @@ class AppointmentController extends Controller
             return back()->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
         }
         $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
+        $serviceQuantities = $this->resolveServiceQuantitiesFromPayload($data, $serviceIds);
 
         $start = Carbon::parse($data['scheduled_start']);
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities);
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start, enforceSlotInterval: false, enforceMinAdvance: false)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
@@ -209,6 +210,7 @@ class AppointmentController extends Controller
                 $created[] = Appointment::create([
                     ...$data,
                     'service_id' => $plan['service']->id,
+                    'service_quantity' => $plan['service_quantity'],
                     'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                     'customer_id' => $customer->id,
                     'customer_package_id' => $isPackageCovered ? $packageSelection['customer_package']?->id : null,
@@ -244,9 +246,10 @@ class AppointmentController extends Controller
             return back()->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
         }
         $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
+        $serviceQuantities = $this->resolveServiceQuantitiesFromPayload($data, $serviceIds);
 
         $start = Carbon::parse($data['scheduled_start']);
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities);
 
         foreach ($servicePlans as $idx => $plan) {
             if ($timeRangeError = $this->validateTimeRange($plan['start'], $plan['end'])) {
@@ -281,6 +284,7 @@ class AppointmentController extends Controller
             $appointment->update([
                 ...$data,
                 'service_id' => $first['service']->id,
+                'service_quantity' => $first['service_quantity'],
                 'staff_profile_id' => $first['staff_profile_id'] ?? null,
                 'customer_id' => $customer->id,
                 'customer_package_id' => $firstCovered ? $packageSelection['customer_package']?->id : null,
@@ -296,6 +300,7 @@ class AppointmentController extends Controller
                     Appointment::create([
                         ...$data,
                         'service_id' => $plan['service']->id,
+                        'service_quantity' => $plan['service_quantity'],
                         'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                         'customer_id' => $customer->id,
                         'customer_package_id' => $covered ? $packageSelection['customer_package']?->id : null,
@@ -695,6 +700,8 @@ class AppointmentController extends Controller
             'service_id' => ['nullable', 'exists:salon_services,id'],
             'service_ids' => ['nullable', 'array', 'min:1'],
             'service_ids.*' => ['integer', 'exists:salon_services,id'],
+            'service_quantities' => ['nullable', 'array'],
+            'service_quantities.*' => ['nullable', 'integer', 'min:1', 'max:999'],
             'customer_package_id' => ['nullable', 'exists:customer_packages,id'],
             'package_service_ids' => ['nullable', 'array'],
             'package_service_ids.*' => ['integer', 'exists:salon_services,id'],
@@ -720,6 +727,32 @@ class AppointmentController extends Controller
             'notes' => ['nullable', 'string'],
             'cancellation_reason' => ['nullable', 'string'],
         ]);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<int, int>
+     */
+    private function resolveServiceQuantitiesFromPayload(array $data, array $serviceIds): array
+    {
+        $raw = $data['service_quantities'] ?? [];
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $allowedServiceIds = array_fill_keys($serviceIds, true);
+        $map = [];
+
+        foreach ($raw as $serviceId => $quantity) {
+            $sid = (int) $serviceId;
+            if (! isset($allowedServiceIds[$sid])) {
+                continue;
+            }
+
+            $map[$sid] = max(1, (int) $quantity);
+        }
+
+        return $map;
     }
 
     /**
@@ -833,9 +866,10 @@ class AppointmentController extends Controller
 
     /**
      * @param array<int, int> $serviceIds
-     * @return array<int, array{service: SalonService, start: Carbon, end: Carbon}>
+     * @param array<int, int> $serviceQuantities
+     * @return array<int, array{service: SalonService, service_quantity: int, start: Carbon, end: Carbon}>
      */
-    private function buildServicePlans(array $serviceIds, Carbon $start, ?string $requestedEnd): array
+    private function buildServicePlans(array $serviceIds, Carbon $start, ?string $requestedEnd, array $serviceQuantities = []): array
     {
         $services = SalonService::query()->whereIn('id', $serviceIds)->get()->keyBy('id');
         $plans = [];
@@ -857,6 +891,7 @@ class AppointmentController extends Controller
 
             $plans[] = [
                 'service' => $service,
+                'service_quantity' => max(1, (int) ($serviceQuantities[$serviceId] ?? 1)),
                 'start' => $itemStart,
                 'end' => $itemEnd,
             ];
@@ -1086,8 +1121,10 @@ class AppointmentController extends Controller
             'id' => $appointment->id,
             'customer_id' => $appointment->customer_id,
             'customer_package_id' => $appointment->customer_package_id,
+            'visit_id' => $appointment->visit_id,
             'package_session_applied' => (bool) $appointment->package_session_applied,
             'service_id' => $appointment->service_id,
+            'service_quantity' => (int) ($appointment->service_quantity ?? 1),
             'staff_profile_id' => $appointment->staff_profile_id,
             'scheduled_start' => $appointment->scheduled_start,
             'scheduled_end' => $appointment->scheduled_end,

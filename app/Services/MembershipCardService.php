@@ -184,6 +184,73 @@ class MembershipCardService
         });
     }
 
+    public function updateCard(CustomerMembershipCard $card, MembershipCardType $type, array $attributes = [], ?int $assignedBy = null): CustomerMembershipCard
+    {
+        return DB::transaction(function () use ($card, $type, $attributes, $assignedBy) {
+            $card->refresh();
+
+            $nfc = array_key_exists('nfc_uid', $attributes)
+                ? $this->normalizeNfcUid($attributes['nfc_uid'])
+                : $card->nfc_uid;
+
+            if ($nfc !== null && $nfc !== $card->nfc_uid) {
+                $duplicateNfc = CustomerMembershipCard::query()
+                    ->where('nfc_uid', $nfc)
+                    ->whereKeyNot($card->id)
+                    ->exists();
+                if ($duplicateNfc) {
+                    throw ValidationException::withMessages([
+                        'nfc_uid' => 'This NFC UID is already linked to another membership card.',
+                    ]);
+                }
+                $this->assertNfcAvailableForMembership($nfc);
+            }
+
+            $cardNumber = $card->card_number;
+            if (array_key_exists('card_number', $attributes)) {
+                $trimmed = trim((string) ($attributes['card_number'] ?? ''));
+                if ($trimmed === '' || ! ctype_digit($trimmed)) {
+                    throw ValidationException::withMessages([
+                        'card_number' => 'Card number must contain digits only.',
+                    ]);
+                }
+                $duplicateCardNumber = CustomerMembershipCard::query()
+                    ->where('card_number', $trimmed)
+                    ->whereKeyNot($card->id)
+                    ->exists();
+                if ($duplicateCardNumber) {
+                    throw ValidationException::withMessages([
+                        'card_number' => 'This card number is already in use.',
+                    ]);
+                }
+                $cardNumber = $trimmed;
+                if ($this->seriesStartForType($type) === null) {
+                    $this->alignSequenceAfterExplicitIssue($type, $trimmed);
+                }
+            }
+
+            $status = $attributes['status'] ?? $card->status;
+            if ($card->customer_id !== null && $type->kind !== 'gift' && $status === 'active') {
+                CustomerMembershipCard::query()
+                    ->where('customer_id', $card->customer_id)
+                    ->where('status', 'active')
+                    ->whereKeyNot($card->id)
+                    ->update(['status' => 'inactive']);
+            }
+
+            $card->update([
+                'membership_card_type_id' => $type->id,
+                'card_number' => $cardNumber,
+                'nfc_uid' => $nfc,
+                'status' => $status,
+                'assigned_by' => $assignedBy ?? $card->assigned_by,
+                'notes' => array_key_exists('notes', $attributes) ? $attributes['notes'] : $card->notes,
+            ]);
+
+            return $card->fresh(['customer', 'type']);
+        });
+    }
+
     private function assertNfcAvailableForMembership(?string $nfc): void
     {
         if ($nfc === null) {

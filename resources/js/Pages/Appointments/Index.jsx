@@ -52,6 +52,15 @@ const serviceMatchesSearch = (service, query) => {
     const haystack = `${service?.name || ''} ${service?.category || ''}`.toLowerCase();
     return haystack.includes(needle);
 };
+const normalizeServiceQuantities = (serviceIds, serviceQuantities) => {
+    const next = {};
+    (serviceIds || []).forEach((serviceId) => {
+        const key = String(serviceId);
+        next[key] = Math.max(1, Number(serviceQuantities?.[key] || 1));
+    });
+
+    return next;
+};
 const hasAssignmentsForAllServices = (serviceIds, staffAssignments) => {
     const selected = (serviceIds || []).map((id) => String(id));
     if (selected.length === 0) return false;
@@ -197,8 +206,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [editStartYmd, setEditStartYmd] = useState(() => localYmd(new Date()));
     const [editStartMountKey, setEditStartMountKey] = useState(0);
 
-    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
-    const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
     const startForm = useForm({ intake_notes: '', service_notes: '', before_photo: null });
     const completeForm = useForm({
         service_report: '',
@@ -284,6 +293,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                     staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
                 };
             })(),
+            service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
             package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
@@ -347,6 +357,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                     staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
                 };
             })(),
+            service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
             package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
@@ -422,6 +433,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             customer_email: appt.customer_email || '',
             service_id: appt.service_id || '',
             service_ids: appt.service_id ? [String(appt.service_id)] : [],
+            service_quantities: appt.service_id ? { [String(appt.service_id)]: String(appt.service_quantity || 1) } : {},
             customer_package_id: appt.customer_package_id ? String(appt.customer_package_id) : '',
             package_service_ids: appt.customer_package_id && appt.service_id ? [String(appt.service_id)] : [],
             staff_profile_id: appt.staff_profile_id || '',
@@ -623,7 +635,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editStartDefault = editingAppt ? toDateTimeLocal(editingAppt.scheduled_start) : (editForm.data.scheduled_start || '');
     const completingAppt = appointments.find((a) => String(a.id) === String(completeServiceId));
     const completingService = services.find((s) => String(s.id) === String(completingAppt?.service_id));
-    const completingServiceAmount = completingAppt?.customer_package_id ? 0 : Number(completingService?.price || 0);
+    const completingServiceQuantity = Math.max(1, Number(completingAppt?.service_quantity || 1));
+    const completingServiceAmount = completingAppt?.customer_package_id ? 0 : (Number(completingService?.price || 0) * completingServiceQuantity);
     const selectedProductLines = (completeForm.data.products || [])
         .map((row) => {
             const item = inventoryItems.find((inv) => String(inv.id) === String(row.inventory_item_id));
@@ -674,6 +687,45 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             });
 
         return { staff, cards };
+    });
+    const appointmentQueueRows = Array.from(appointments.reduce((map, appt) => {
+        const groupKey = String(appt.visit_id || appt.id);
+        const existing = map.get(groupKey);
+        if (!existing) {
+            map.set(groupKey, { key: groupKey, appointments: [appt] });
+            return map;
+        }
+
+        existing.appointments.push(appt);
+        return map;
+    }, new Map()).values()).map((group) => {
+        const rows = [...group.appointments].sort((a, b) => new Date(a.scheduled_start) - new Date(b.scheduled_start));
+        const actionAppointment = rows.find((row) => row.status === 'in_progress')
+            || rows.find((row) => row.status === 'confirmed')
+            || rows[0];
+        const staffNames = [...new Set(rows.map((row) => row.staff_name || 'Unassigned'))];
+        const photos = rows.flatMap((row) => row.photos || []);
+        const productUsages = rows.flatMap((row) => row.product_usages || []);
+        const serviceSummary = rows.map((row) => `${row.service_name}${Number(row.service_quantity || 1) > 1 ? ` x${row.service_quantity}` : ''}`);
+
+        return {
+            ...actionAppointment,
+            key: group.key,
+            scheduled_start: rows[0]?.scheduled_start,
+            service_name: serviceSummary.join(', '),
+            staff_name: staffNames.join(', '),
+            photos,
+            product_usages: productUsages,
+            grouped_services: rows.map((row) => ({
+                id: row.id,
+                name: row.service_name,
+                quantity: row.service_quantity || 1,
+                status: row.status,
+                staff_name: row.staff_name || 'Unassigned',
+            })),
+            awaiting_checkout: rows.some((row) => row.awaiting_checkout),
+            checkout_invoice_id: rows.find((row) => row.checkout_invoice_id)?.checkout_invoice_id || null,
+        };
     });
 
     return (
@@ -877,7 +929,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                     return (
                                         <div key={id} className="flex items-center gap-2">
                                             <button type="button" className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => handleCreateServiceChange(createSelectedServices.filter((x) => x !== id))}>
-                                                {s.name} ✕
+                                                {s.name}{Number(createForm.data.service_quantities?.[String(id)] || 1) > 1 ? ` x${createForm.data.service_quantities?.[String(id)]}` : ''} ✕
                                             </button>
                                             {createCustomerMode === 'package' && createSelectedPackage && packageCoverage ? (
                                                 <label className="inline-flex items-center gap-1 text-xs text-emerald-700">
@@ -925,6 +977,19 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         return (
                                             <div key={`create-staff-${serviceId}`}>
                                                 <label className="ta-field-label">{service?.name || `Service #${serviceId}`}</label>
+                                                <div className="mb-2">
+                                                    <label className="ta-field-label">Qty</label>
+                                                    <input
+                                                        className="ta-input"
+                                                        type="number"
+                                                        min="1"
+                                                        value={createForm.data.service_quantities?.[assignmentKey] || 1}
+                                                        onChange={(e) => createForm.setData('service_quantities', {
+                                                            ...(createForm.data.service_quantities || {}),
+                                                            [assignmentKey]: e.target.value,
+                                                        })}
+                                                    />
+                                                </div>
                                                 <select
                                                     className="ta-input"
                                                     value={createForm.data.staff_assignments?.[assignmentKey] || ''}
@@ -1021,8 +1086,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 </tr>
                             </thead>
                             <tbody>
-                                {appointments.map((a) => (
-                                    <tr key={a.id} className="border-t border-slate-100 align-top">
+                                {appointmentQueueRows.map((a) => (
+                                    <tr key={a.key} className="border-t border-slate-100 align-top">
                                         <td className="px-5 py-3 text-slate-600">{formatDateTime(a.scheduled_start)}</td>
                                         <td className="px-5 py-3">
                                             <div className="flex flex-wrap items-center gap-2">
@@ -1034,10 +1099,21 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                             <div className="text-xs text-slate-500">{a.customer_phone}</div>
                                             {a.customer_email && <div className="text-xs text-slate-500">{a.customer_email}</div>}
                                         </td>
-                                        <td className="px-5 py-3 text-slate-600">{a.service_name}</td>
+                                        <td className="px-5 py-3 text-slate-600">
+                                            <div className="space-y-1">
+                                                {(a.grouped_services || []).map((serviceRow) => (
+                                                    <div key={serviceRow.id}>
+                                                        <span className="font-medium text-slate-700">{serviceRow.name}</span>
+                                                        {Number(serviceRow.quantity || 1) > 1 ? <span className="ml-1 text-xs text-slate-500">x{serviceRow.quantity}</span> : null}
+                                                        <span className="ml-2 text-xs text-slate-400">({serviceRow.staff_name})</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </td>
                                         <td className="px-5 py-3 text-slate-600">{a.staff_name || 'Unassigned'}</td>
                                         <td className="px-5 py-3 text-xs text-slate-600">
                                             <div className="mb-1"><span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">{a.status}</span></div>
+                                            {(a.grouped_services || []).length > 1 && <div className="mb-1 text-slate-500">{a.grouped_services.map((serviceRow) => `${serviceRow.name}: ${serviceRow.status}`).join(' · ')}</div>}
                                             {a.service_execution?.started_at && <div>Started: {formatDateTime(a.service_execution.started_at)}</div>}
                                             {a.service_execution?.completed_at && <div>Finished: {formatDateTime(a.service_execution.completed_at)}</div>}
                                             {a.service_execution?.materials_used && <div className="mt-1">Materials: {a.service_execution.materials_used}</div>}
@@ -1213,7 +1289,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
                                             <div className="flex items-center justify-between">
                                                 <span>
-                                                    Service ({completingService?.name || 'Selected service'})
+                                                    Service ({completingService?.name || 'Selected service'}{completingServiceQuantity > 1 ? ` x ${completingServiceQuantity}` : ''})
                                                     {completingAppt?.customer_package_id ? ` - ${completingAppt?.package_name || 'Package session'}` : ''}
                                                 </span>
                                                 <span className="font-medium">{formatMoney(completingServiceAmount, currencyCode)}</span>
@@ -1470,7 +1546,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                     if (!s) return null;
                                     return (
                                         <button key={id} type="button" className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => handleEditServiceChange(editSelectedServices.filter((x) => x !== id))}>
-                                            {s.name} ✕
+                                            {s.name}{Number(editForm.data.service_quantities?.[String(id)] || 1) > 1 ? ` x${editForm.data.service_quantities?.[String(id)]}` : ''} ✕
                                         </button>
                                     );
                                 })}
@@ -1504,6 +1580,19 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         return (
                                             <div key={`edit-staff-${serviceId}`}>
                                                 <label className="ta-field-label">{service?.name || `Service #${serviceId}`}</label>
+                                                <div className="mb-2">
+                                                    <label className="ta-field-label">Qty</label>
+                                                    <input
+                                                        className="ta-input"
+                                                        type="number"
+                                                        min="1"
+                                                        value={editForm.data.service_quantities?.[assignmentKey] || 1}
+                                                        onChange={(e) => editForm.setData('service_quantities', {
+                                                            ...(editForm.data.service_quantities || {}),
+                                                            [assignmentKey]: e.target.value,
+                                                        })}
+                                                    />
+                                                </div>
                                                 <select
                                                     className="ta-input"
                                                     value={editForm.data.staff_assignments?.[assignmentKey] || ''}

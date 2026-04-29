@@ -1,5 +1,6 @@
 import Modal from '@/Components/Modal';
 import { Transition } from '@headlessui/react';
+import { router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 export default function MembershipCardsSection({
@@ -21,6 +22,10 @@ export default function MembershipCardsSection({
     issueInventoryForm,
     linkInventoryForm,
     assignCardForm,
+    editingMembershipCardId,
+    editMembershipCardForm,
+    setEditingMembershipCardId,
+    startEditMembershipCard,
     memberRegistrationForm,
     nfcLookupForm,
     nfcBindForm,
@@ -41,6 +46,9 @@ export default function MembershipCardsSection({
     const [nfcRegistryPage, setNfcRegistryPage] = useState(1);
     const [membershipCustomersPage, setMembershipCustomersPage] = useState(1);
     const [registrationPage, setRegistrationPage] = useState(1);
+    const [registrySearch, setRegistrySearch] = useState('');
+    const [registryStatusFilter, setRegistryStatusFilter] = useState('');
+    const [registryTypeFilter, setRegistryTypeFilter] = useState('');
 
     const REGISTRATION_STEPS = [
         { id: 'customer', label: 'Customer' },
@@ -66,7 +74,40 @@ export default function MembershipCardsSection({
     }, [membershipCards, membershipCardTypeFilter]);
 
     const cardTypesTotalPages = Math.max(1, Math.ceil((cardTypes || []).length / ROWS_PER_PAGE));
-    const nfcRegistryTotalPages = Math.max(1, Math.ceil((membershipCards || []).length / ROWS_PER_PAGE));
+    const filteredRegistryCards = useMemo(() => {
+        const term = registrySearch.trim().toLowerCase();
+
+        return (membershipCards || []).filter((card) => {
+            if (registryStatusFilter && String(card.status) !== String(registryStatusFilter)) {
+                return false;
+            }
+            if (registryTypeFilter && String(card.membership_card_type_id) !== String(registryTypeFilter)) {
+                return false;
+            }
+            if (!term) {
+                return true;
+            }
+
+            const haystack = [
+                card.customer_name,
+                card.customer_phone,
+                card.customer_email,
+                card.card_number,
+                card.card_type_name,
+                card.nfc_uid,
+                card.status,
+                card.notes,
+                card.customer_id == null ? 'inventory unassigned' : '',
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+
+            return haystack.includes(term);
+        });
+    }, [membershipCards, registrySearch, registryStatusFilter, registryTypeFilter]);
+
+    const nfcRegistryTotalPages = Math.max(1, Math.ceil(filteredRegistryCards.length / ROWS_PER_PAGE));
     const membershipCustomersTotalPages = Math.max(1, Math.ceil(membershipCustomers.length / ROWS_PER_PAGE));
     const registrationTotalPages = Math.max(1, Math.ceil((membershipRegistrations || []).length / ROWS_PER_PAGE));
 
@@ -75,8 +116,8 @@ export default function MembershipCardsSection({
         [cardTypes, cardTypesPage],
     );
     const nfcRegistryPageRows = useMemo(
-        () => (membershipCards || []).slice((nfcRegistryPage - 1) * ROWS_PER_PAGE, nfcRegistryPage * ROWS_PER_PAGE),
-        [membershipCards, nfcRegistryPage],
+        () => filteredRegistryCards.slice((nfcRegistryPage - 1) * ROWS_PER_PAGE, nfcRegistryPage * ROWS_PER_PAGE),
+        [filteredRegistryCards, nfcRegistryPage],
     );
     const membershipCustomersPageRows = useMemo(
         () => membershipCustomers.slice((membershipCustomersPage - 1) * ROWS_PER_PAGE, membershipCustomersPage * ROWS_PER_PAGE),
@@ -102,6 +143,10 @@ export default function MembershipCardsSection({
             setNfcRegistryPage(nfcRegistryTotalPages);
         }
     }, [nfcRegistryPage, nfcRegistryTotalPages]);
+
+    useEffect(() => {
+        setNfcRegistryPage(1);
+    }, [registrySearch, registryStatusFilter, registryTypeFilter]);
 
     useEffect(() => {
         if (membershipCustomersPage > membershipCustomersTotalPages) {
@@ -766,11 +811,32 @@ export default function MembershipCardsSection({
             </section>
 
             <section className="ta-card overflow-hidden">
-                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">NFC card registry</h3></div>
+                <div className="border-b border-slate-200 px-5 py-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <h3 className="text-sm font-semibold text-slate-700">NFC card registry</h3>
+                        <div className="grid gap-2 md:grid-cols-3">
+                            <input className="ta-input" value={registrySearch} onChange={(e) => setRegistrySearch(e.target.value)} placeholder="Search customer, card, UID" />
+                            <select className="ta-input" value={registryTypeFilter} onChange={(e) => setRegistryTypeFilter(e.target.value)}>
+                                <option value="">All card types</option>
+                                {cardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}
+                            </select>
+                            <select className="ta-input" value={registryStatusFilter} onChange={(e) => setRegistryStatusFilter(e.target.value)}>
+                                <option value="">All statuses</option>
+                                <option value="pending">pending</option>
+                                <option value="active">active</option>
+                                <option value="inactive">inactive</option>
+                                <option value="expired">expired</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Card</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">NFC UID</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
-                        <tbody>{nfcRegistryPageRows.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.customer_id == null ? <span className="text-amber-700">Inventory (unassigned)</span> : card.customer_name}<div className="text-xs text-slate-500">{card.customer_id == null ? '—' : card.customer_phone || 'No phone'}</div></td><td className="px-5 py-3 text-slate-600">{card.card_number || '—'}</td><td className="px-5 py-3 text-slate-600">{card.card_type_name}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex gap-2"><button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => copyNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Copy NFC URL</button><button type="button" className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => openNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Open NFC URL</button></div></td></tr>)}</tbody>
+                        <tbody>
+                            {nfcRegistryPageRows.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="6">No NFC cards match the current filters.</td></tr>}
+                            {nfcRegistryPageRows.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.customer_id == null ? <span className="text-amber-700">Inventory (unassigned)</span> : card.customer_name}<div className="text-xs text-slate-500">{card.customer_id == null ? '—' : card.customer_phone || 'No phone'}</div></td><td className="px-5 py-3 text-slate-600">{card.card_number || '—'}</td><td className="px-5 py-3 text-slate-600">{card.card_type_name}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEditMembershipCard(card)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => { if (window.confirm(`Delete card ${card.card_number || card.id}?`)) { router.delete(route('loyalty.cards.destroy', card.id), { preserveScroll: true }); } }}>Delete</button><button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => copyNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Copy NFC URL</button><button type="button" className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => openNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Open NFC URL</button></div></td></tr>)}
+                        </tbody>
                     </table>
                 </div>
                 {renderPager(nfcRegistryPage, nfcRegistryTotalPages, setNfcRegistryPage)}
@@ -792,6 +858,45 @@ export default function MembershipCardsSection({
                 </div>
                 {renderPager(registrationPage, registrationTotalPages, setRegistrationPage)}
             </section>
+
+            <Modal show={Boolean(editingMembershipCardId)} onClose={() => !editMembershipCardForm.processing && setEditingMembershipCardId(null)} maxWidth="3xl">
+                <div className="p-6">
+                    <h3 className="mb-4 text-base font-semibold text-slate-800">Edit membership card #{editingMembershipCardId}</h3>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            editMembershipCardForm.put(route('loyalty.cards.update', editingMembershipCardId), {
+                                preserveScroll: true,
+                                onSuccess: () => setEditingMembershipCardId(null),
+                            });
+                        }}
+                        className="grid gap-3 md:grid-cols-2"
+                    >
+                        <div><label className="ta-field-label">Card type</label><select className="ta-input" value={editMembershipCardForm.data.membership_card_type_id} onChange={(e) => editMembershipCardForm.setData('membership_card_type_id', e.target.value)} required><option value="">Select card type</option>{cardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}</select>{fieldError(editMembershipCardForm, 'membership_card_type_id')}</div>
+                        <div><label className="ta-field-label">Status</label><select className="ta-input" value={editMembershipCardForm.data.status} onChange={(e) => editMembershipCardForm.setData('status', e.target.value)} required><option value="pending">pending</option><option value="active">active</option><option value="inactive">inactive</option><option value="expired">expired</option></select>{fieldError(editMembershipCardForm, 'status')}</div>
+                        <div><label className="ta-field-label">Card number</label><input className="ta-input" value={editMembershipCardForm.data.card_number} onChange={(e) => editMembershipCardForm.setData('card_number', e.target.value)} required />{fieldError(editMembershipCardForm, 'card_number')}</div>
+                        <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={editMembershipCardForm.data.nfc_uid} onChange={(e) => editMembershipCardForm.setData('nfc_uid', e.target.value)} />{fieldError(editMembershipCardForm, 'nfc_uid')}</div>
+                        <div className="md:col-span-2"><label className="ta-field-label">Notes</label><textarea className="ta-input min-h-[96px]" value={editMembershipCardForm.data.notes} onChange={(e) => editMembershipCardForm.setData('notes', e.target.value)} />{fieldError(editMembershipCardForm, 'notes')}</div>
+                        <div className="md:col-span-2 flex gap-2">
+                            <button className="ta-btn-primary" disabled={editMembershipCardForm.processing || !canManage}>Save</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingMembershipCardId(null)}>Cancel</button>
+                            <button
+                                type="button"
+                                className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
+                                onClick={() => {
+                                    if (!window.confirm('Delete this membership card?')) return;
+                                    router.delete(route('loyalty.cards.destroy', editingMembershipCardId), {
+                                        preserveScroll: true,
+                                        onSuccess: () => setEditingMembershipCardId(null),
+                                    });
+                                }}
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </Modal>
 
             <section className="ta-card overflow-hidden">
                 <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
