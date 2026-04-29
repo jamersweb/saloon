@@ -13,8 +13,8 @@ use Illuminate\Validation\ValidationException;
 
 class MembershipCardService
 {
-    /** @var int First auto-issued number (12-digit block). Sequence table stores the *next* number to issue. */
-    private const FIRST_ISSUABLE_NUMBER = 100_000_000_001;
+    /** @var string First auto-issued number (12-digit block). Sequence table stores the next number to issue. */
+    private const FIRST_ISSUABLE_NUMBER = '100000000001';
 
     private static bool $ensuredSequenceColumnWidth = false;
 
@@ -28,7 +28,7 @@ class MembershipCardService
             return;
         }
 
-        MembershipCardSequence::ensureNextNumberColumnIsBigInt();
+        MembershipCardSequence::ensureNextNumberColumnSupportsLongCardNumbers();
         self::$ensuredSequenceColumnWidth = true;
     }
 
@@ -251,7 +251,7 @@ class MembershipCardService
     private function allocateNextSeriesCardNumber(string $seriesStart): string
     {
         $prefix = substr($seriesStart, 0, 12);
-        $nextNumber = (int) $seriesStart;
+        $nextNumber = $seriesStart;
 
         $existingNumbers = CustomerMembershipCard::query()
             ->whereNotNull('card_number')
@@ -263,30 +263,28 @@ class MembershipCardService
                 continue;
             }
 
-            $numeric = (int) $digits;
-            if ($numeric >= $nextNumber) {
-                $nextNumber = $numeric + 1;
+            if ($this->compareNumericStrings($digits, $nextNumber) >= 0) {
+                $nextNumber = $this->incrementNumericString($digits);
             }
         }
 
         while (CustomerMembershipCard::query()
             ->whereIn('card_number', [
-                (string) $nextNumber,
-                trim(chunk_split((string) $nextNumber, 4, ' ')),
+                $nextNumber,
+                trim(chunk_split($nextNumber, 4, ' ')),
             ])
             ->exists()) {
-            $nextNumber++;
+            $nextNumber = $this->incrementNumericString($nextNumber);
         }
 
-        return (string) $nextNumber;
+        return $nextNumber;
     }
 
     private function alignSequenceAfterExplicitIssue(MembershipCardType $type, string $trimmedDigits): void
     {
         $this->ensureSequenceColumnSupportsIssuedCardNumbers();
 
-        $n = (int) $trimmedDigits;
-        $mustBeAtLeast = $n + 1;
+        $mustBeAtLeast = $this->incrementNumericString($trimmedDigits);
 
         for ($attempt = 0; $attempt < 5; $attempt++) {
             try {
@@ -298,13 +296,13 @@ class MembershipCardService
                 if (! $row) {
                     MembershipCardSequence::create([
                         'membership_card_type_id' => $type->id,
-                        'next_number' => max(self::FIRST_ISSUABLE_NUMBER, $mustBeAtLeast),
+                        'next_number' => $this->maxNumericString(self::FIRST_ISSUABLE_NUMBER, $mustBeAtLeast),
                     ]);
 
                     return;
                 }
 
-                if ((int) $row->next_number <= $n) {
+                if ($this->compareNumericStrings((string) $row->next_number, $trimmedDigits) <= 0) {
                     $row->update(['next_number' => $mustBeAtLeast]);
                 }
 
@@ -346,26 +344,26 @@ class MembershipCardService
         $candidate = self::FIRST_ISSUABLE_NUMBER;
 
         if (! $row) {
-            while (CustomerMembershipCard::query()->where('card_number', (string) $candidate)->exists()) {
-                $candidate++;
+            while (CustomerMembershipCard::query()->where('card_number', $candidate)->exists()) {
+                $candidate = $this->incrementNumericString($candidate);
             }
 
             MembershipCardSequence::create([
                 'membership_card_type_id' => $type->id,
-                'next_number' => $candidate + 1,
+                'next_number' => $this->incrementNumericString($candidate),
             ]);
 
-            return (string) $candidate;
+            return $candidate;
         }
 
-        $candidate = max((int) $row->next_number, self::FIRST_ISSUABLE_NUMBER);
-        while (CustomerMembershipCard::query()->where('card_number', (string) $candidate)->exists()) {
-            $candidate++;
+        $candidate = $this->maxNumericString((string) $row->next_number, self::FIRST_ISSUABLE_NUMBER);
+        while (CustomerMembershipCard::query()->where('card_number', $candidate)->exists()) {
+            $candidate = $this->incrementNumericString($candidate);
         }
 
-        $row->update(['next_number' => $candidate + 1]);
+        $row->update(['next_number' => $this->incrementNumericString($candidate)]);
 
-        return (string) $candidate;
+        return $candidate;
     }
 
     private function normalizeNfcUid(?string $nfcUid): ?string
@@ -377,5 +375,47 @@ class MembershipCardService
         $normalized = strtoupper(trim($nfcUid));
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    private function compareNumericStrings(string $left, string $right): int
+    {
+        $left = ltrim($left, '0');
+        $right = ltrim($right, '0');
+
+        $left = $left === '' ? '0' : $left;
+        $right = $right === '' ? '0' : $right;
+
+        $lengthCompare = strlen($left) <=> strlen($right);
+        if ($lengthCompare !== 0) {
+            return $lengthCompare;
+        }
+
+        return strcmp($left, $right) <=> 0;
+    }
+
+    private function maxNumericString(string $left, string $right): string
+    {
+        return $this->compareNumericStrings($left, $right) >= 0 ? $left : $right;
+    }
+
+    private function incrementNumericString(string $value): string
+    {
+        $digits = str_split($value === '' ? '0' : $value);
+        $carry = 1;
+
+        for ($i = count($digits) - 1; $i >= 0; $i--) {
+            $sum = ((int) $digits[$i]) + $carry;
+            $digits[$i] = (string) ($sum % 10);
+            $carry = intdiv($sum, 10);
+            if ($carry === 0) {
+                break;
+            }
+        }
+
+        if ($carry > 0) {
+            array_unshift($digits, (string) $carry);
+        }
+
+        return implode('', $digits);
     }
 }

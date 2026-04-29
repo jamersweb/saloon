@@ -15,10 +15,10 @@ class MembershipCardSequence extends Model
     ];
 
     /**
-     * Older deployments may still have INT next_number; 16-digit membership card values exceed that.
-     * Idempotent widen to BIGINT UNSIGNED (matches create migration). No-op on sqlite / non-MySQL.
+     * Older deployments may still have INT/BIGINT next_number; keep it wide enough for long card ranges.
+     * Idempotent widen to DECIMAL(20,0). No-op on sqlite / non-MySQL.
      */
-    public static function ensureNextNumberColumnIsBigInt(): void
+    public static function ensureNextNumberColumnSupportsLongCardNumbers(): void
     {
         if (! Schema::hasTable('membership_card_sequences')) {
             return;
@@ -40,11 +40,18 @@ class MembershipCardSequence extends Model
             [$database, $table, 'next_number']
         );
 
-        if ($column && strtolower((string) $column->DATA_TYPE) === 'bigint') {
+        if ($column && strtolower((string) $column->DATA_TYPE) === 'decimal') {
             return;
         }
 
-        DB::statement('ALTER TABLE `'.$table.'` MODIFY `next_number` BIGINT UNSIGNED NOT NULL');
+        DB::statement('ALTER TABLE `'.$table.'` MODIFY `next_number` DECIMAL(20,0) NOT NULL');
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'next_number' => 'string',
+        ];
     }
 
     public function type(): BelongsTo

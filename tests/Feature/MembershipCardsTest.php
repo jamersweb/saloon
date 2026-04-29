@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\CustomerMembershipCard;
+use App\Models\MembershipCardSequence;
 use App\Models\MembershipCardType;
 use App\Models\Role;
 use App\Models\User;
@@ -339,6 +340,46 @@ class MembershipCardsTest extends TestCase
             ->all();
 
         $this->assertSame(['100000000001', '100000000002'], $numbers);
+    }
+
+    public function test_explicit_long_card_number_updates_sequence_without_overflow(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-LONGNUM-001',
+            'name' => 'Long Number',
+            'phone' => '5550003333',
+            'is_active' => true,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Gift Card',
+            'slug' => 'gift-card-manual',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.assign'), [
+                'customer_id' => $customer->id,
+                'membership_card_type_id' => $cardType->id,
+                'card_number' => '3602567010010010',
+                'status' => 'active',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $sequence = MembershipCardSequence::query()
+            ->where('membership_card_type_id', $cardType->id)
+            ->firstOrFail();
+
+        $this->assertSame('3602567010010011', (string) $sequence->next_number);
     }
 
     public function test_link_inventory_card_assigns_customer_and_sets_validity(): void
