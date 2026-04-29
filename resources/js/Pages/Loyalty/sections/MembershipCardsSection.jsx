@@ -666,21 +666,35 @@ export default function MembershipCardsSection({
                 {renderPager(cardTypesPage, cardTypesTotalPages, setCardTypesPage)}
             </section>
 
-            {editingCardTypeId && (
-                <section className="ta-card p-5">
-                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Edit card type #{editingCardTypeId}</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); editCardTypeForm.put(route('loyalty.card-types.update', editingCardTypeId), { onSuccess: () => setEditingCardTypeId(null) }); }} className="grid gap-3 md:grid-cols-6">
+            <Modal show={Boolean(editingCardTypeId)} onClose={() => !editCardTypeForm.processing && setEditingCardTypeId(null)} maxWidth="3xl">
+                <div className="p-6">
+                    <h3 className="mb-4 text-base font-semibold text-slate-800">Edit card type #{editingCardTypeId}</h3>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            editCardTypeForm.put(route('loyalty.card-types.update', editingCardTypeId), {
+                                preserveScroll: true,
+                                onSuccess: () => setEditingCardTypeId(null),
+                            });
+                        }}
+                        className="grid gap-3 md:grid-cols-2"
+                    >
                         <div><label className="ta-field-label">Name</label><input className="ta-input" value={editCardTypeForm.data.name} onChange={(e) => editCardTypeForm.setData('name', e.target.value)} required />{fieldError(editCardTypeForm, 'name')}</div>
                         <div><label className="ta-field-label">Kind</label><select className="ta-input" value={editCardTypeForm.data.kind} onChange={(e) => editCardTypeForm.setData('kind', e.target.value)}><option value="physical">Physical</option><option value="virtual">Virtual</option><option value="gift">Gift</option></select>{fieldError(editCardTypeForm, 'kind')}</div>
                         <div><label className="ta-field-label">Min points</label><input className="ta-input" type="number" min="0" value={editCardTypeForm.data.min_points} onChange={(e) => editCardTypeForm.setData('min_points', e.target.value)} required />{fieldError(editCardTypeForm, 'min_points')}</div>
                         <div><label className="ta-field-label">Direct price</label><input className="ta-input" type="number" min="0" step="0.01" value={editCardTypeForm.data.direct_purchase_price ?? ''} onChange={(e) => editCardTypeForm.setData('direct_purchase_price', e.target.value)} />{fieldError(editCardTypeForm, 'direct_purchase_price')}</div>
                         <div><label className="ta-field-label">Validity days</label><input className="ta-input" type="number" min="1" value={editCardTypeForm.data.validity_days ?? ''} onChange={(e) => editCardTypeForm.setData('validity_days', e.target.value)} />{fieldError(editCardTypeForm, 'validity_days')}</div>
-                        <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={editCardTypeForm.data.is_active} onChange={(e) => editCardTypeForm.setData('is_active', e.target.checked)} />Active</label>
-                        <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={editCardTypeForm.data.is_transferable} onChange={(e) => editCardTypeForm.setData('is_transferable', e.target.checked)} />Transferable</label>
-                        <div className="md:col-span-6 flex gap-2"><button className="ta-btn-primary" disabled={editCardTypeForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingCardTypeId(null)}>Cancel</button></div>
+                        <div className="flex items-center gap-6 pt-7">
+                            <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={editCardTypeForm.data.is_active} onChange={(e) => editCardTypeForm.setData('is_active', e.target.checked)} />Active</label>
+                            <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={editCardTypeForm.data.is_transferable} onChange={(e) => editCardTypeForm.setData('is_transferable', e.target.checked)} />Transferable</label>
+                        </div>
+                        <div className="md:col-span-2 flex gap-2 pt-2">
+                            <button className="ta-btn-primary" disabled={editCardTypeForm.processing || !canManage}>Save</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingCardTypeId(null)}>Cancel</button>
+                        </div>
                     </form>
-                </section>
-            )}
+                </div>
+            </Modal>
 
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Pre-issue card (inventory / printing)</h3>
