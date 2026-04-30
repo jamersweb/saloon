@@ -879,6 +879,9 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                     ))}
                                 </select>
                                 <p className="mt-1 text-xs text-slate-500">Full name, phone, and email fill in automatically. You can still edit them before saving.</p>
+                                {createCustomerHasGiftCards ? (
+                                    <p className="mt-2 text-sm font-semibold text-emerald-800">Gift card remaining balance: {formatMoney(createCustomerGiftBalance, currencyCode)}</p>
+                                ) : null}
                             </div>
                         ) : null}
                         {createCustomerMode === 'package' && createSelectedCustomerId ? (
@@ -1541,6 +1544,9 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         </option>
                                     ))}
                                 </select>
+                                {editCustomerHasGiftCards ? (
+                                    <p className="mt-2 text-sm font-semibold text-emerald-800">Gift card remaining balance: {formatMoney(editCustomerGiftBalance, currencyCode)}</p>
+                                ) : null}
                             </div>
                         ) : null}
                         {editCustomerMode === 'package' && editSelectedCustomerId ? (
