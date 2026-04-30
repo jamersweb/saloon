@@ -17,6 +17,7 @@ use App\Models\StaffProfile;
 use App\Models\TaxInvoice;
 use App\Services\BookingAvailabilityService;
 use App\Services\DueServiceManager;
+use App\Services\GiftCardService;
 use App\Services\LoyaltyService;
 use App\Services\PackageBalanceService;
 use App\Services\TaxInvoiceDraftFromAppointmentService;
@@ -108,6 +109,13 @@ class AppointmentController extends Controller
 
         $appointments = $appointmentRows->map(fn (Appointment $appointment) => $this->serializeAppointment($appointment, $request));
 
+        if ($customerIds !== []) {
+            $giftCardService = app(GiftCardService::class);
+            foreach ($customerIds as $customerId) {
+                $giftCardService->backfillGiftCardsForCustomer((int) $customerId, $request->user()?->id);
+            }
+        }
+
         $giftCardsForCheckout = $customerIds === []
             ? []
             : GiftCard::query()
@@ -142,6 +150,8 @@ class AppointmentController extends Controller
                 ->orderBy('name')
                 ->limit(750)
                 ->get()
+                ->each(fn (Customer $customer) => app(GiftCardService::class)->backfillGiftCardsForCustomer((int) $customer->id, $request->user()?->id))
+                ->load('giftCards')
                 ->map(fn (Customer $customer) => $this->serializeCustomerForAppointments($customer)),
             'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
