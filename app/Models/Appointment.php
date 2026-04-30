@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
 
 class Appointment extends Model
 {
@@ -140,9 +141,7 @@ class Appointment extends Model
             return ['awaiting_checkout' => false, 'checkout_invoice_id' => null];
         }
 
-        $this->loadMissing('taxInvoices.payments');
-
-        $active = $this->taxInvoices->where('status', '!=', TaxInvoice::STATUS_VOID);
+        $active = $this->activeVisitInvoices();
 
         if ($active->isEmpty()) {
             return ['awaiting_checkout' => true, 'checkout_invoice_id' => null];
@@ -167,5 +166,24 @@ class Appointment extends Model
         }
 
         return ['awaiting_checkout' => false, 'checkout_invoice_id' => null];
+    }
+
+    private function activeVisitInvoices(): Collection
+    {
+        if (! empty($this->visit_id)) {
+            $visitAppointmentIds = self::query()
+                ->where('visit_id', $this->visit_id)
+                ->pluck('id');
+
+            return TaxInvoice::query()
+                ->with('payments')
+                ->whereIn('appointment_id', $visitAppointmentIds)
+                ->where('status', '!=', TaxInvoice::STATUS_VOID)
+                ->get();
+        }
+
+        $this->loadMissing('taxInvoices.payments');
+
+        return $this->taxInvoices->where('status', '!=', TaxInvoice::STATUS_VOID)->values();
     }
 }
