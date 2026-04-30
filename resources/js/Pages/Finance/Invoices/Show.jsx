@@ -59,6 +59,7 @@ export default function FinanceInvoicesShow({
 
     const assignedGiftCards = gift_cards_for_payment || [];
     const singleAssignedGiftCard = assignedGiftCards.length === 1 ? assignedGiftCards[0] : null;
+    const totalAssignedGiftCardBalance = assignedGiftCards.reduce((sum, card) => sum + Number(card.remaining_value || 0), 0);
 
     const serviceById = Object.fromEntries(services.map((s) => [String(s.id), s]));
 
@@ -193,6 +194,25 @@ export default function FinanceInvoicesShow({
                     <p className="mt-4 text-sm text-slate-600">
                         Customer: <strong>{invoice.customer_display_name}</strong>
                     </p>
+                    {assignedGiftCards.length > 0 && (
+                        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                            <p className="font-medium">
+                                Gift card balance available: <strong>{money(totalAssignedGiftCardBalance, currency_code)}</strong>
+                            </p>
+                            <p className="mt-1 text-emerald-800">
+                                {assignedGiftCards.length === 1
+                                    ? `Assigned card: ${assignedGiftCards[0].code}`
+                                    : `${assignedGiftCards.length} assigned gift cards are available for this customer.`}
+                            </p>
+                            {invoice.total > totalAssignedGiftCardBalance ? (
+                                <p className="mt-1 font-medium text-red-700">
+                                    Services total is short by {money(invoice.total - totalAssignedGiftCardBalance, currency_code)}.
+                                </p>
+                            ) : (
+                                <p className="mt-1 text-emerald-800">Gift card balance is enough to cover these services.</p>
+                            )}
+                        </div>
+                    )}
                     {invoice.cashier_name && (
                         <p className="text-sm text-slate-600">
                             Cashier: <strong>{invoice.cashier_name}</strong>

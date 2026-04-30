@@ -196,10 +196,8 @@ class TaxInvoiceController extends Controller
             && ($invoice->isEditable() || $invoice->balanceDue() > 0.009)) {
             $giftCardsForPayment = GiftCard::query()
                 ->where('status', 'active')
-                ->where(function ($query) use ($invoice): void {
-                    $query->whereNull('assigned_customer_id')
-                        ->orWhere('assigned_customer_id', $invoice->customer_id);
-                })
+                ->where('assigned_customer_id', $invoice->customer_id)
+                ->where('remaining_value', '>', 0)
                 ->orderBy('code')
                 ->get(['id', 'code', 'remaining_value'])
                 ->map(fn (GiftCard $card) => [
