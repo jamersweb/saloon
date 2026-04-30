@@ -530,6 +530,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editFilteredServices = editAvailableServices.filter((s) => serviceMatchesSearch(s, editServiceSearch));
     const createEstimatedServicesTotal = estimateSelectedServicesTotal(createSelectedServices, createForm.data.service_quantities, services, createCoveredServiceIds);
     const editEstimatedServicesTotal = estimateSelectedServicesTotal(editSelectedServices, editForm.data.service_quantities, services, editCoveredServiceIds);
+    const createCustomerHasGiftCards = (createSelectedCustomer?.active_gift_cards || []).length > 0;
+    const editCustomerHasGiftCards = (editSelectedCustomer?.active_gift_cards || []).length > 0;
     const createCustomerGiftBalance = Number(createSelectedCustomer?.gift_card_balance || 0);
     const editCustomerGiftBalance = Number(editSelectedCustomer?.gift_card_balance || 0);
     const createGiftCardShortfall = Math.max(0, createEstimatedServicesTotal - createCustomerGiftBalance);
@@ -973,7 +975,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(createForm, 'service_id')}
                             {fieldError(createForm, 'service_ids')}
                         </div>
-                        {createSelectedCustomer ? (
+                        {createSelectedCustomer && createCustomerHasGiftCards ? (
                             <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gift Card Check</p>
                                 <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-700">
@@ -1604,7 +1606,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(editForm, 'service_id')}
                             {fieldError(editForm, 'service_ids')}
                         </div>
-                        {editSelectedCustomer ? (
+                        {editSelectedCustomer && editCustomerHasGiftCards ? (
                             <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gift Card Check</p>
                                 <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-700">
