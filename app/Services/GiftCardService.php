@@ -45,7 +45,7 @@ class GiftCardService
     {
         $membershipCard->loadMissing(['customer', 'type']);
 
-        if ($membershipCard->type?->kind !== 'gift') {
+        if (! $this->membershipCardActsAsGiftCard($membershipCard)) {
             return null;
         }
 
@@ -123,9 +123,30 @@ class GiftCardService
             ->with('type')
             ->where('customer_id', $customerId)
             ->where('status', 'active')
-            ->whereHas('type', fn ($query) => $query->where('kind', 'gift')->where('is_active', true))
             ->get()
             ->each(fn (CustomerMembershipCard $card) => $this->ensureGiftCardFromMembershipCard($card, $issuedBy));
+    }
+
+    private function membershipCardActsAsGiftCard(CustomerMembershipCard $membershipCard): bool
+    {
+        $type = $membershipCard->type;
+        if (! $type || ! $type->is_active) {
+            return false;
+        }
+
+        if ($type->kind === 'gift') {
+            return true;
+        }
+
+        $value = round((float) ($type->direct_purchase_price ?? 0), 2);
+        if ($value <= 0) {
+            return false;
+        }
+
+        $name = strtolower((string) ($type->name ?? ''));
+        $slug = strtolower((string) ($type->slug ?? ''));
+
+        return str_contains($name, 'gift') || str_contains($slug, 'gift');
     }
 
     public function bindNfcUid(GiftCard $giftCard, string $nfcUid, ?int $issuedBy = null, bool $replaceExisting = false): GiftCard
