@@ -385,14 +385,23 @@ class TaxInvoiceController extends Controller
             'method' => ['required', Rule::in(array_keys(InvoicePayment::methodLabels()))],
             'paid_at' => ['required', 'date'],
             'reference_note' => ['nullable', 'string', 'max:255'],
-            'gift_card_id' => [
-                'nullable',
-                Rule::requiredIf((string) $request->input('method') === InvoicePayment::METHOD_GIFT_CARD),
-                'exists:gift_cards,id',
-            ],
+            'gift_card_id' => ['nullable', 'exists:gift_cards,id'],
         ]);
 
         $invoice->refresh();
+
+        if (($data['method'] ?? null) === InvoicePayment::METHOD_GIFT_CARD && empty($data['gift_card_id']) && $invoice->customer_id) {
+            $eligibleAssignedCards = GiftCard::query()
+                ->where('status', 'active')
+                ->where('assigned_customer_id', $invoice->customer_id)
+                ->where('remaining_value', '>', 0)
+                ->orderBy('code')
+                ->get(['id']);
+
+            if ($eligibleAssignedCards->count() === 1) {
+                $data['gift_card_id'] = (int) $eligibleAssignedCards->first()->id;
+            }
+        }
 
         app(TaxInvoicePaymentService::class)->record($invoice, [
             'amount' => $data['amount'],

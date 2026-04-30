@@ -57,6 +57,9 @@ export default function FinanceInvoicesShow({
         recipient_email: invoice.customer_email || '',
     });
 
+    const assignedGiftCards = gift_cards_for_payment || [];
+    const singleAssignedGiftCard = assignedGiftCards.length === 1 ? assignedGiftCards[0] : null;
+
     const serviceById = Object.fromEntries(services.map((s) => [String(s.id), s]));
 
     const addRow = () => editForm.setData('items', [...editForm.data.items, blankItem()]);
@@ -411,7 +414,9 @@ export default function FinanceInvoicesShow({
                                             onChange={(e) => {
                                                 const method = e.target.value;
                                                 payForm.setData('method', method);
-                                                if (method !== 'gift_card') {
+                                                if (method === 'gift_card') {
+                                                    payForm.setData('gift_card_id', singleAssignedGiftCard ? String(singleAssignedGiftCard.id) : '');
+                                                } else {
                                                     payForm.setData('gift_card_id', '');
                                                 }
                                             }}
@@ -437,6 +442,36 @@ export default function FinanceInvoicesShow({
                                         <label className="ta-field-label">Reference</label>
                                         <input className="ta-input" value={payForm.data.reference_note} onChange={(e) => payForm.setData('reference_note', e.target.value)} />
                                     </div>
+                                    {payForm.data.method === 'gift_card' ? (
+                                        <div className="md:col-span-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                                            {assignedGiftCards.length === 0 ? (
+                                                <p className="text-sm font-medium text-red-700">No active gift card with remaining balance is assigned to this customer.</p>
+                                            ) : singleAssignedGiftCard ? (
+                                                <>
+                                                    <p className="text-sm font-medium text-emerald-900">Assigned gift card: <strong>{singleAssignedGiftCard.code}</strong></p>
+                                                    <p className="mt-1 text-sm text-emerald-800">Remaining balance: {money(singleAssignedGiftCard.remaining_value, currency_code)}</p>
+                                                </>
+                                            ) : (
+                                                <div>
+                                                    <label className="ta-field-label">Assigned gift card</label>
+                                                    <select
+                                                        className="ta-input"
+                                                        value={payForm.data.gift_card_id}
+                                                        onChange={(e) => payForm.setData('gift_card_id', e.target.value)}
+                                                        required
+                                                    >
+                                                        <option value="">Select gift card</option>
+                                                        {assignedGiftCards.map((card) => (
+                                                            <option key={card.id} value={card.id}>
+                                                                {card.code} ({money(card.remaining_value, currency_code)})
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    {payForm.errors.gift_card_id && <p className="mt-1 text-xs text-red-600">{payForm.errors.gift_card_id}</p>}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : null}
                                     <button type="submit" className="ta-btn-primary md:col-span-4" disabled={payForm.processing}>
                                         Add payment
                                     </button>
