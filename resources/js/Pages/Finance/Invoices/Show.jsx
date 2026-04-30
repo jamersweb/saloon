@@ -435,8 +435,14 @@ export default function FinanceInvoicesShow({
                                                 const method = e.target.value;
                                                 payForm.setData('method', method);
                                                 if (method === 'gift_card') {
+                                                    if (Number(invoice.amount_paid || 0) < 0.01) {
+                                                        payForm.setData('amount', String(Number(invoice.subtotal || 0)));
+                                                    }
                                                     payForm.setData('gift_card_id', singleAssignedGiftCard ? String(singleAssignedGiftCard.id) : '');
                                                 } else {
+                                                    if (Number(invoice.balance || 0) > 0) {
+                                                        payForm.setData('amount', String(Number(invoice.balance || 0)));
+                                                    }
                                                     payForm.setData('gift_card_id', '');
                                                 }
                                             }}

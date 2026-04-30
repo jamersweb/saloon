@@ -593,6 +593,7 @@ class AppointmentController extends Controller
                     : now();
 
                 if ($method === InvoicePayment::METHOD_GIFT_CARD) {
+                    $invoice = app(TaxInvoicePaymentService::class)->prepareGiftCardInvoice($invoice);
                     $card = GiftCard::query()->findOrFail((int) $data['checkout_gift_card_id']);
                     if ((float) $card->remaining_value + 0.009 < (float) $invoice->total) {
                         throw ValidationException::withMessages([

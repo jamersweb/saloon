@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyLedger;
 use App\Models\CustomerMembershipCard;
+use App\Models\Appointment;
 use App\Services\CustomerPortalService;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -54,6 +55,11 @@ class CustomerPortalController extends Controller
     {
         $currentCard = $customer->membershipCards->firstWhere('status', 'active') ?? $customer->membershipCards->first();
         $appointments = $customer->appointments
+            ->filter(fn ($appointment) => in_array($appointment->status, [
+                Appointment::STATUS_PENDING,
+                Appointment::STATUS_CONFIRMED,
+                Appointment::STATUS_IN_PROGRESS,
+            ], true))
             ->sortByDesc('scheduled_start')
             ->take(20)
             ->values();

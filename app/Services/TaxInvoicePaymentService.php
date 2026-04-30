@@ -26,8 +26,15 @@ class TaxInvoicePaymentService
             ]);
         }
 
+        if ($data['method'] === InvoicePayment::METHOD_GIFT_CARD) {
+            $invoice = $this->prepareGiftCardInvoice($invoice);
+        }
+
         $amount = (float) $data['amount'];
         $balance = $invoice->balanceDue();
+        if ($data['method'] === InvoicePayment::METHOD_GIFT_CARD && $amount > $balance && $balance > 0) {
+            $amount = $balance;
+        }
         if ($amount > $balance + 0.009) {
             throw ValidationException::withMessages([
                 'amount' => 'Amount exceeds balance due ('.number_format($balance, 2).').',
@@ -86,5 +93,39 @@ class TaxInvoicePaymentService
                 'created_by' => $user->id,
             ]);
         });
+    }
+
+    public function prepareGiftCardInvoice(TaxInvoice $invoice): TaxInvoice
+    {
+        $invoice->loadMissing('items', 'payments');
+
+        if ($invoice->payments->isNotEmpty()) {
+            return $invoice;
+        }
+
+        $hasVat = $invoice->items->contains(fn ($item) => (float) $item->line_tax > 0 || (float) $item->tax_rate_percent > 0);
+        if (! $hasVat) {
+            return $invoice;
+        }
+
+        DB::transaction(function () use ($invoice): void {
+            $invoice->items()->get()->each(function ($item): void {
+                $item->update([
+                    'tax_rate_percent' => 0,
+                    'line_tax' => 0,
+                    'line_total' => (float) $item->line_subtotal,
+                ]);
+            });
+
+            $invoice->refresh();
+            $invoice->load('items');
+            $invoice->update([
+                'subtotal' => round($invoice->items->sum('line_subtotal'), 2),
+                'vat_amount' => 0,
+                'total' => round($invoice->items->sum('line_subtotal'), 2),
+            ]);
+        });
+
+        return $invoice->fresh(['items', 'payments']);
     }
 }
