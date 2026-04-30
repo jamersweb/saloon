@@ -530,8 +530,10 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editFilteredServices = editAvailableServices.filter((s) => serviceMatchesSearch(s, editServiceSearch));
     const createEstimatedServicesTotal = estimateSelectedServicesTotal(createSelectedServices, createForm.data.service_quantities, services, createCoveredServiceIds);
     const editEstimatedServicesTotal = estimateSelectedServicesTotal(editSelectedServices, editForm.data.service_quantities, services, editCoveredServiceIds);
-    const createCustomerHasGiftCards = (createSelectedCustomer?.active_gift_cards || []).length > 0;
-    const editCustomerHasGiftCards = (editSelectedCustomer?.active_gift_cards || []).length > 0;
+    const createCustomerHasGiftCards = (createSelectedCustomer?.active_gift_cards || []).length > 0
+        && Number(createSelectedCustomer?.gift_card_balance || 0) > 0;
+    const editCustomerHasGiftCards = (editSelectedCustomer?.active_gift_cards || []).length > 0
+        && Number(editSelectedCustomer?.gift_card_balance || 0) > 0;
     const createCustomerGiftBalance = Number(createSelectedCustomer?.gift_card_balance || 0);
     const editCustomerGiftBalance = Number(editSelectedCustomer?.gift_card_balance || 0);
     const createGiftCardShortfall = Math.max(0, createEstimatedServicesTotal - createCustomerGiftBalance);
