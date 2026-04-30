@@ -53,6 +53,7 @@ export default function LoyaltyIndex({
     const editCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
     const assignCardForm = useForm({ customer_id: '', membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'active', notes: '' });
     const editMembershipCardForm = useForm({ membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'pending', notes: '' });
+    const refillMembershipCardForm = useForm({ amount: '', notes: '' });
     const memberRegistrationForm = useForm({
         customer_id: '',
         registration_date: new Date().toISOString().slice(0, 10),
@@ -227,6 +228,8 @@ export default function LoyaltyIndex({
             notes: card.notes || '',
         });
         editMembershipCardForm.clearErrors();
+        refillMembershipCardForm.reset();
+        refillMembershipCardForm.clearErrors();
     };
 
     const setNfcUidForTarget = (target, uid) => {
@@ -393,6 +396,7 @@ export default function LoyaltyIndex({
                         assignCardForm={assignCardForm}
                         editingMembershipCardId={editingMembershipCardId}
                         editMembershipCardForm={editMembershipCardForm}
+                        refillMembershipCardForm={refillMembershipCardForm}
                         setEditingMembershipCardId={setEditingMembershipCardId}
                         startEditMembershipCard={startEditMembershipCard}
                         memberRegistrationForm={memberRegistrationForm}

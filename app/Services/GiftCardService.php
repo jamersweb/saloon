@@ -315,4 +315,41 @@ class GiftCardService
             ]);
         });
     }
+
+    public function topUpFromMembershipCard(CustomerMembershipCard $membershipCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null): GiftCardTransaction
+    {
+        if ($amount <= 0) {
+            throw ValidationException::withMessages(['amount' => 'Amount must be greater than zero.']);
+        }
+
+        $giftCard = $this->ensureGiftCardFromMembershipCard($membershipCard, $createdBy);
+        if (! $giftCard) {
+            throw ValidationException::withMessages([
+                'membership_card' => 'This membership card is not configured as a gift card.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($giftCard, $amount, $reason, $createdBy, $notes) {
+            $giftCard->refresh();
+
+            $nextInitial = round((float) $giftCard->initial_value + $amount, 2);
+            $nextBalance = round((float) $giftCard->remaining_value + $amount, 2);
+
+            $giftCard->update([
+                'initial_value' => $nextInitial,
+                'remaining_value' => $nextBalance,
+                'status' => 'active',
+            ]);
+
+            return GiftCardTransaction::create([
+                'gift_card_id' => $giftCard->id,
+                'appointment_id' => null,
+                'amount_change' => $amount,
+                'balance_after' => $nextBalance,
+                'reason' => $reason,
+                'notes' => $notes,
+                'created_by' => $createdBy,
+            ]);
+        });
+    }
 }

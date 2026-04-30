@@ -142,6 +142,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/loyalty/cards/nfc-lookup', [LoyaltyController::class, 'lookupCardByNfc'])->name('loyalty.cards.nfc-lookup');
         Route::post('/loyalty/cards/nfc-bind', [LoyaltyController::class, 'bindCardNfc'])->name('loyalty.cards.nfc-bind');
         Route::put('/loyalty/cards/{card}', [LoyaltyController::class, 'updateMembershipCard'])->name('loyalty.cards.update');
+        Route::post('/loyalty/cards/{card}/refill', [LoyaltyController::class, 'refillMembershipCard'])->name('loyalty.cards.refill');
         Route::delete('/loyalty/cards/{card}', [LoyaltyController::class, 'destroyMembershipCard'])->name('loyalty.cards.destroy');
         Route::post('/loyalty/packages', [LoyaltyController::class, 'storePackage'])->name('loyalty.packages.store');
         Route::put('/loyalty/packages/{package}', [LoyaltyController::class, 'updatePackage'])->name('loyalty.packages.update');

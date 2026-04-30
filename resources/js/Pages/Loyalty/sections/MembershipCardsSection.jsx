@@ -24,6 +24,7 @@ export default function MembershipCardsSection({
     assignCardForm,
     editingMembershipCardId,
     editMembershipCardForm,
+    refillMembershipCardForm,
     setEditingMembershipCardId,
     startEditMembershipCard,
     memberRegistrationForm,
@@ -347,6 +348,18 @@ export default function MembershipCardsSection({
 
     const selectedRegistrationCardType = (cardTypes || []).find(
         (cardType) => String(cardType.id) === String(memberRegistrationForm.data.membership_card_type_id),
+    );
+    const editingMembershipCardType = (cardTypes || []).find(
+        (cardType) => String(cardType.id) === String(editMembershipCardForm.data.membership_card_type_id),
+    );
+    const editingMembershipCardActsAsGift = Boolean(
+        editingMembershipCardType
+        && Number(editingMembershipCardType.direct_purchase_price || 0) > 0
+        && (
+            String(editingMembershipCardType.kind || '').toLowerCase() === 'gift'
+            || String(editingMembershipCardType.name || '').toLowerCase().includes('gift')
+            || String(editingMembershipCardType.slug || '').toLowerCase().includes('gift')
+        )
     );
 
     return (
@@ -877,6 +890,52 @@ export default function MembershipCardsSection({
                         <div><label className="ta-field-label">Card number</label><input className="ta-input" value={editMembershipCardForm.data.card_number} onChange={(e) => editMembershipCardForm.setData('card_number', e.target.value)} required />{fieldError(editMembershipCardForm, 'card_number')}</div>
                         <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={editMembershipCardForm.data.nfc_uid} onChange={(e) => editMembershipCardForm.setData('nfc_uid', e.target.value)} />{fieldError(editMembershipCardForm, 'nfc_uid')}</div>
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><textarea className="ta-input min-h-[96px]" value={editMembershipCardForm.data.notes} onChange={(e) => editMembershipCardForm.setData('notes', e.target.value)} />{fieldError(editMembershipCardForm, 'notes')}</div>
+                        {editingMembershipCardActsAsGift ? (
+                            <div className="md:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                                <p className="text-sm font-semibold text-emerald-900">Refill gift card balance</p>
+                                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                    <div>
+                                        <label className="ta-field-label">Refill amount</label>
+                                        <input
+                                            className="ta-input"
+                                            type="number"
+                                            min="0.01"
+                                            step="0.01"
+                                            value={refillMembershipCardForm.data.amount}
+                                            onChange={(e) => refillMembershipCardForm.setData('amount', e.target.value)}
+                                            placeholder="300"
+                                        />
+                                        {fieldError(refillMembershipCardForm, 'amount')}
+                                    </div>
+                                    <div>
+                                        <label className="ta-field-label">Refill notes</label>
+                                        <input
+                                            className="ta-input"
+                                            value={refillMembershipCardForm.data.notes}
+                                            onChange={(e) => refillMembershipCardForm.setData('notes', e.target.value)}
+                                            placeholder="Top up for customer"
+                                        />
+                                        {fieldError(refillMembershipCardForm, 'notes')}
+                                    </div>
+                                </div>
+                                {fieldError(refillMembershipCardForm, 'membership_card')}
+                                <div className="mt-3">
+                                    <button
+                                        type="button"
+                                        className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800"
+                                        disabled={refillMembershipCardForm.processing || !canManage}
+                                        onClick={() => {
+                                            refillMembershipCardForm.post(route('loyalty.cards.refill', editingMembershipCardId), {
+                                                preserveScroll: true,
+                                                onSuccess: () => refillMembershipCardForm.reset(),
+                                            });
+                                        }}
+                                    >
+                                        Refill
+                                    </button>
+                                </div>
+                            </div>
+                        ) : null}
                         <div className="md:col-span-2 flex gap-2">
                             <button className="ta-btn-primary" disabled={editMembershipCardForm.processing || !canManage}>Save</button>
                             <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingMembershipCardId(null)}>Cancel</button>

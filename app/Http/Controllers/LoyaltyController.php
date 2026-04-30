@@ -881,6 +881,31 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card updated.');
     }
 
+    public function refillMembershipCard(Request $request, CustomerMembershipCard $card, GiftCardService $giftCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $transaction = $giftCardService->topUpFromMembershipCard(
+            $card,
+            (float) $data['amount'],
+            'Membership card refill',
+            $request->user()?->id,
+            $data['notes'] ?? null,
+        );
+
+        Audit::log($request->user()?->id, 'gift_card.refilled_from_membership', 'GiftCardTransaction', $transaction->id, [
+            'membership_card_id' => $card->id,
+            'amount' => (float) $data['amount'],
+        ]);
+
+        return back()->with('status', 'Gift card refilled.');
+    }
+
     public function destroyMembershipCard(Request $request, CustomerMembershipCard $card): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
