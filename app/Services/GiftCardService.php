@@ -41,12 +41,91 @@ class GiftCardService
         });
     }
 
+    public function ensureGiftCardFromMembershipCard(CustomerMembershipCard $membershipCard, ?int $issuedBy = null): ?GiftCard
+    {
+        $membershipCard->loadMissing(['customer', 'type']);
+
+        if ($membershipCard->type?->kind !== 'gift') {
+            return null;
+        }
+
+        $value = round((float) ($membershipCard->type?->direct_purchase_price ?? 0), 2);
+        if ($value <= 0) {
+            return null;
+        }
+
+        $normalizedCode = $this->formatCardNumber((string) $membershipCard->card_number);
+        $normalizedNfc = $this->normalizeNfcUid($membershipCard->nfc_uid);
+
+        return DB::transaction(function () use ($membershipCard, $issuedBy, $value, $normalizedCode, $normalizedNfc): GiftCard {
+            $existing = GiftCard::query()
+                ->when($membershipCard->card_number, function ($query) use ($membershipCard, $normalizedCode) {
+                    $query->where('code', $membershipCard->card_number)
+                        ->orWhere('code', $normalizedCode);
+                })
+                ->when($normalizedNfc, function ($query) use ($normalizedNfc) {
+                    $query->orWhere('nfc_uid', $normalizedNfc);
+                })
+                ->first();
+
+            if (! $existing) {
+                return GiftCard::create([
+                    'code' => $normalizedCode,
+                    'nfc_uid' => $normalizedNfc,
+                    'assigned_customer_id' => $membershipCard->customer_id,
+                    'initial_value' => $value,
+                    'remaining_value' => $value,
+                    'status' => $membershipCard->status === 'active' ? 'active' : 'inactive',
+                    'issued_by' => $issuedBy,
+                    'notes' => $membershipCard->notes,
+                ]);
+            }
+
+            $updates = [
+                'code' => $normalizedCode,
+                'assigned_customer_id' => $membershipCard->customer_id,
+                'issued_by' => $issuedBy ?? $existing->issued_by,
+            ];
+
+            if ($normalizedNfc !== null) {
+                $updates['nfc_uid'] = $normalizedNfc;
+            }
+
+            if ((float) $existing->initial_value <= 0) {
+                $updates['initial_value'] = $value;
+            }
+
+            if ((float) $existing->remaining_value <= 0 && (float) $existing->initial_value <= 0) {
+                $updates['remaining_value'] = $value;
+            }
+
+            if ($existing->status !== 'redeemed') {
+                $updates['status'] = $membershipCard->status === 'active' ? 'active' : 'inactive';
+            }
+
+            $existing->update($updates);
+
+            return $existing->fresh();
+        });
+    }
+
     public function findByNfcUid(string $nfcUid): ?GiftCard
     {
         return GiftCard::query()
             ->with(['customer:id,name,phone,email'])
             ->where('nfc_uid', $this->normalizeNfcUid($nfcUid))
             ->first();
+    }
+
+    public function backfillGiftCardsForCustomer(int $customerId, ?int $issuedBy = null): void
+    {
+        CustomerMembershipCard::query()
+            ->with('type')
+            ->where('customer_id', $customerId)
+            ->where('status', 'active')
+            ->whereHas('type', fn ($query) => $query->where('kind', 'gift')->where('is_active', true))
+            ->get()
+            ->each(fn (CustomerMembershipCard $card) => $this->ensureGiftCardFromMembershipCard($card, $issuedBy));
     }
 
     public function bindNfcUid(GiftCard $giftCard, string $nfcUid, ?int $issuedBy = null, bool $replaceExisting = false): GiftCard

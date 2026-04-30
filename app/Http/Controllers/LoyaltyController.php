@@ -540,7 +540,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card type updated.');
     }
 
-    public function assignCard(Request $request, MembershipCardService $membershipCardService): RedirectResponse
+    public function assignCard(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -576,6 +576,8 @@ class LoyaltyController extends Controller
             ],
         );
 
+        $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
+
         Audit::log($request->user()?->id, 'loyalty.card_assigned', 'CustomerMembershipCard', $card->id, [
             'customer_id' => $customer->id,
             'card_type_id' => $cardType->id,
@@ -584,7 +586,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card assigned.');
     }
 
-    public function registerMember(Request $request, MembershipCardService $membershipCardService): RedirectResponse
+    public function registerMember(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff', 'reception');
 
@@ -661,6 +663,8 @@ class LoyaltyController extends Controller
                     'notes' => $data['card_notes'] ?? null,
                 ],
             );
+
+            $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
 
             MembershipRegistration::create([
                 'customer_id' => $customer->id,
@@ -742,7 +746,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card pre-issued (not assigned to a customer yet). Card # '.$card->card_number);
     }
 
-    public function linkInventoryCardToCustomer(Request $request, MembershipCardService $membershipCardService): RedirectResponse
+    public function linkInventoryCardToCustomer(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -769,6 +773,8 @@ class LoyaltyController extends Controller
             assignedBy: $request->user()?->id,
             attributes: $linkAttributes,
         );
+
+        $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
 
         Audit::log($request->user()?->id, 'loyalty.card_inventory_linked', 'CustomerMembershipCard', $card->id, [
             'customer_id' => $customer->id,

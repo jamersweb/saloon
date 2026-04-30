@@ -12,6 +12,7 @@ use App\Models\SalonService;
 use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
 use App\Services\AppointmentVisitService;
+use App\Services\GiftCardService;
 use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoiceLineCalculator;
 use App\Services\TaxInvoicePaymentService;
@@ -194,6 +195,7 @@ class TaxInvoiceController extends Controller
         $giftCardsForPayment = [];
         if ($invoice->customer_id && ($invoice->status !== TaxInvoice::STATUS_VOID)
             && ($invoice->isEditable() || $invoice->balanceDue() > 0.009)) {
+            app(GiftCardService::class)->backfillGiftCardsForCustomer((int) $invoice->customer_id, $request->user()?->id);
             $giftCardsForPayment = GiftCard::query()
                 ->where('status', 'active')
                 ->where('assigned_customer_id', $invoice->customer_id)
@@ -389,6 +391,7 @@ class TaxInvoiceController extends Controller
         $invoice->refresh();
 
         if (($data['method'] ?? null) === InvoicePayment::METHOD_GIFT_CARD && empty($data['gift_card_id']) && $invoice->customer_id) {
+            app(GiftCardService::class)->backfillGiftCardsForCustomer((int) $invoice->customer_id, $request->user()?->id);
             $eligibleAssignedCards = GiftCard::query()
                 ->where('status', 'active')
                 ->where('assigned_customer_id', $invoice->customer_id)
