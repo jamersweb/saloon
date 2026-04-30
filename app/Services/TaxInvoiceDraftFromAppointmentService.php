@@ -39,6 +39,16 @@ class TaxInvoiceDraftFromAppointmentService
             ->orderBy('id')
             ->first();
 
+        $existingActiveInvoice = TaxInvoice::query()
+            ->where('status', '!=', TaxInvoice::STATUS_VOID)
+            ->whereIn('appointment_id', $visitAppointments->pluck('id'))
+            ->orderBy('id')
+            ->first();
+
+        if ($existingActiveInvoice && $existingActiveInvoice->status !== TaxInvoice::STATUS_DRAFT) {
+            return $existingActiveInvoice->fresh();
+        }
+
         if ($existingDraft) {
             $invoice = tap($existingDraft)->update([
                 'customer_id' => $primaryAppointment->customer_id,

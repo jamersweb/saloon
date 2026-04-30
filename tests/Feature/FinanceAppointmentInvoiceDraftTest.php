@@ -12,6 +12,7 @@ use App\Models\ServicePackage;
 use App\Models\TaxInvoice;
 use App\Models\User;
 use App\Services\PackageBalanceService;
+use App\Services\TaxInvoicePaymentService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -23,8 +24,8 @@ class FinanceAppointmentInvoiceDraftTest extends TestCase
     public function test_completing_visit_with_option_creates_linked_tax_invoice_draft(): void
     {
         $ownerRole = Role::create([
-            'name' => 'owner',
-            'label' => 'Owner',
+            'name' => 'manager',
+            'label' => 'Manager',
         ]);
 
         $owner = User::factory()->create([
@@ -91,8 +92,8 @@ class FinanceAppointmentInvoiceDraftTest extends TestCase
     public function test_package_covered_appointment_creates_zero_priced_service_line_and_consumes_session(): void
     {
         $ownerRole = Role::create([
-            'name' => 'owner',
-            'label' => 'Owner',
+            'name' => 'manager',
+            'label' => 'Manager',
         ]);
 
         $owner = User::factory()->create([
@@ -445,5 +446,108 @@ class FinanceAppointmentInvoiceDraftTest extends TestCase
         $this->assertSame('100.00', $line->unit_price);
         $this->assertSame('600.00', $line->line_subtotal);
         $this->assertSame('630.00', $line->line_total);
+    }
+
+    public function test_second_service_completion_after_finish_and_pay_does_not_create_second_invoice(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+        ]);
+
+        $owner = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+        FinanceSetting::current();
+
+        $staffProfile = StaffProfile::create([
+            'user_id' => $owner->id,
+            'employee_code' => 'OWN-FIN-6',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-APT-6',
+            'name' => 'Multi Service Paid',
+            'phone' => '5559995555',
+            'is_active' => true,
+        ]);
+
+        $serviceOne = SalonService::create([
+            'name' => 'Service One',
+            'category' => 'Hair',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 100,
+            'is_active' => true,
+        ]);
+
+        $serviceTwo = SalonService::create([
+            'name' => 'Service Two',
+            'category' => 'Nails',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 150,
+            'is_active' => true,
+        ]);
+
+        $visitId = (string) \Illuminate\Support\Str::uuid();
+
+        $first = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $serviceOne->id,
+            'staff_profile_id' => $staffProfile->id,
+            'visit_id' => $visitId,
+            'booked_by' => $owner->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_IN_PROGRESS,
+            'scheduled_start' => now()->subHours(2),
+            'scheduled_end' => now()->subHour(),
+            'arrival_time' => now()->subHours(2),
+            'service_start_time' => now()->subHours(2),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $second = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $serviceTwo->id,
+            'staff_profile_id' => $staffProfile->id,
+            'visit_id' => $visitId,
+            'booked_by' => $owner->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_IN_PROGRESS,
+            'scheduled_start' => now()->subHour(),
+            'scheduled_end' => now(),
+            'arrival_time' => now()->subHours(2),
+            'service_start_time' => now()->subMinutes(50),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('appointments.service-complete', $first), [
+                'service_report' => 'First service done.',
+                'finish_and_pay' => true,
+                'checkout_payment_method' => 'cash',
+                'products' => [],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->firstOrFail();
+        $this->assertSame(TaxInvoice::STATUS_FINALIZED, $invoice->status);
+        $this->assertEquals(0.0, $invoice->balanceDue());
+
+        $this->actingAs($owner)
+            ->post(route('appointments.service-complete', $second), [
+                'service_report' => 'Second service done.',
+                'finish_and_pay' => true,
+                'checkout_payment_method' => 'cash',
+                'products' => [],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(1, TaxInvoice::query()->count());
+        $this->assertSame(1, $invoice->fresh()->payments()->count());
     }
 }

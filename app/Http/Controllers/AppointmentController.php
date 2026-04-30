@@ -570,6 +570,10 @@ class AppointmentController extends Controller
                 }
 
                 $invoice = TaxInvoice::query()->findOrFail($createdTaxInvoiceId);
+                if ($invoice->status === TaxInvoice::STATUS_FINALIZED && $invoice->balanceDue() <= 0.009) {
+                    return;
+                }
+
                 $invoice = app(TaxInvoiceFinalizeService::class)->finalize($invoice);
                 $invoice->refresh();
 
