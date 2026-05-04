@@ -45,6 +45,37 @@ const formatHourLabel = (hour) => {
 };
 const formatMoney = (value, currencyCode = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2 }).format(Number(value || 0));
+const appointmentCategoryCardPalettes = [
+    'border-rose-200 bg-rose-50 text-rose-950',
+    'border-orange-200 bg-orange-50 text-orange-950',
+    'border-amber-200 bg-amber-50 text-amber-950',
+    'border-lime-200 bg-lime-50 text-lime-950',
+    'border-emerald-200 bg-emerald-50 text-emerald-950',
+    'border-cyan-200 bg-cyan-50 text-cyan-950',
+    'border-sky-200 bg-sky-50 text-sky-950',
+    'border-blue-200 bg-blue-50 text-blue-950',
+    'border-violet-200 bg-violet-50 text-violet-950',
+    'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950',
+];
+const stringToPaletteIndex = (value) => {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text) return 0;
+
+    let hash = 0;
+    for (let index = 0; index < text.length; index += 1) {
+        hash = ((hash << 5) - hash) + text.charCodeAt(index);
+        hash |= 0;
+    }
+
+    return Math.abs(hash) % appointmentCategoryCardPalettes.length;
+};
+const getAppointmentCardClasses = (category, isCompleted) => {
+    if (isCompleted) {
+        return 'border border-white bg-white text-slate-900';
+    }
+
+    return `border ${appointmentCategoryCardPalettes[stringToPaletteIndex(category)]}`;
+};
 const serviceMatchesSearch = (service, query) => {
     const needle = String(query || '').trim().toLowerCase();
     if (!needle) return true;
@@ -181,6 +212,10 @@ const clampStaffStartDatetimeLocal = (value, bookingRules, slotIntervalMinutes =
 export default function AppointmentsIndex({ appointments, services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
     const { app_currency_code: currencyCode = 'AED' } = usePage().props;
     const { flash, auth } = usePage().props;
+    const serviceCategoryMap = useMemo(
+        () => Object.fromEntries((services || []).map((service) => [String(service.id), service.category || 'Uncategorized'])),
+        [services],
+    );
     const roleName = String(auth?.user?.role?.name || '').toLowerCase();
     const canManageFinance = Boolean(auth?.permissions?.can_manage_finance);
     const canCollectPayments = Boolean(auth?.permissions?.can_collect_payments);
@@ -702,9 +737,14 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                 const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
                 const height = Math.max(7, (((Math.max(endMinutes, startMinutes + 30)) - startMinutes) / boardTotalMinutes) * 100);
                 const isPaid = appt.status === 'completed' && !appt.awaiting_checkout;
+                const isCompleted = appt.status === 'completed';
+                const category = serviceCategoryMap[String(appt.service_id)] || 'Uncategorized';
 
                 return {
                     ...appt,
+                    cardClasses: getAppointmentCardClasses(category, isCompleted),
+                    category,
+                    isCompleted,
                     isPaid,
                     top,
                     height,
@@ -1835,16 +1875,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                     else if (appt.status === 'in_progress' || appt.status === 'completed') openCompleteService(appt);
                                                     else startEdit(appt);
                                                 }}
-                                                className={`absolute left-2 right-2 overflow-hidden rounded-xl p-2 text-left shadow-lg transition hover:scale-[1.01] ${
-                                                    appt.isPaid
-                                                        ? 'border border-white bg-white text-slate-900'
-                                                        : 'border border-[#e6ddd2] bg-[#f1ebe3] text-slate-900'
-                                                }`}
+                                                className={`absolute left-2 right-2 overflow-hidden rounded-xl p-2 text-left shadow-lg transition hover:scale-[1.01] ${appt.cardClasses}`}
                                                 style={{ top: `${appt.top}%`, height: `${appt.height}%` }}
                                             >
                                                 <div className="text-[11px] font-semibold text-slate-600">{appt.timeLabel}</div>
                                                 <div className="mt-1 text-sm font-semibold">{appt.customer_name}</div>
                                                 <div className="text-xs text-slate-700">{appt.service_name}</div>
+                                                {!appt.isCompleted ? <div className="mt-1 text-[11px] font-medium text-slate-600">{appt.category}</div> : null}
                                                 {appt.customer_package_id ? <div className="mt-1 text-[11px] font-medium text-emerald-700">Package session</div> : null}
                                                 {appt.isPaid ? <div className="mt-1 text-[11px] font-medium text-emerald-700">Paid</div> : null}
                                                 {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-medium text-amber-700">Needs payment</div> : null}
