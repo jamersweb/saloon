@@ -69,8 +69,8 @@ const stringToPaletteIndex = (value) => {
 
     return Math.abs(hash) % appointmentCategoryCardPalettes.length;
 };
-const getAppointmentCardClasses = (category, isCompleted) => {
-    if (isCompleted) {
+const getAppointmentCardClasses = (category, isPaid) => {
+    if (isPaid) {
         return 'border border-white bg-white text-slate-900';
     }
 
@@ -737,14 +737,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                 const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
                 const height = Math.max(7, (((Math.max(endMinutes, startMinutes + 30)) - startMinutes) / boardTotalMinutes) * 100);
                 const isPaid = appt.status === 'completed' && !appt.awaiting_checkout;
-                const isCompleted = appt.status === 'completed';
                 const category = serviceCategoryMap[String(appt.service_id)] || 'Uncategorized';
 
                 return {
                     ...appt,
-                    cardClasses: getAppointmentCardClasses(category, isCompleted),
+                    cardClasses: getAppointmentCardClasses(category, isPaid),
                     category,
-                    isCompleted,
                     isPaid,
                     top,
                     height,
@@ -1881,7 +1879,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 <div className="text-[11px] font-semibold text-slate-600">{appt.timeLabel}</div>
                                                 <div className="mt-1 text-sm font-semibold">{appt.customer_name}</div>
                                                 <div className="text-xs text-slate-700">{appt.service_name}</div>
-                                                {!appt.isCompleted ? <div className="mt-1 text-[11px] font-medium text-slate-600">{appt.category}</div> : null}
+                                                {!appt.isPaid ? <div className="mt-1 text-[11px] font-medium text-slate-600">{appt.category}</div> : null}
                                                 {appt.customer_package_id ? <div className="mt-1 text-[11px] font-medium text-emerald-700">Package session</div> : null}
                                                 {appt.isPaid ? <div className="mt-1 text-[11px] font-medium text-emerald-700">Paid</div> : null}
                                                 {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-medium text-amber-700">Needs payment</div> : null}
