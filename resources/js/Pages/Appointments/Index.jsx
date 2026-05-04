@@ -46,16 +46,16 @@ const formatHourLabel = (hour) => {
 const formatMoney = (value, currencyCode = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2 }).format(Number(value || 0));
 const appointmentCategoryCardPalettes = [
-    'border-rose-200 bg-rose-50 text-rose-950',
-    'border-orange-200 bg-orange-50 text-orange-950',
-    'border-amber-200 bg-amber-50 text-amber-950',
-    'border-lime-200 bg-lime-50 text-lime-950',
-    'border-emerald-200 bg-emerald-50 text-emerald-950',
-    'border-cyan-200 bg-cyan-50 text-cyan-950',
-    'border-sky-200 bg-sky-50 text-sky-950',
-    'border-blue-200 bg-blue-50 text-blue-950',
-    'border-violet-200 bg-violet-50 text-violet-950',
-    'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950',
+    { backgroundColor: '#fff1f2', borderColor: '#fecdd3', color: '#881337' },
+    { backgroundColor: '#fff7ed', borderColor: '#fed7aa', color: '#9a3412' },
+    { backgroundColor: '#fffbeb', borderColor: '#fde68a', color: '#92400e' },
+    { backgroundColor: '#f7fee7', borderColor: '#bef264', color: '#3f6212' },
+    { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0', color: '#065f46' },
+    { backgroundColor: '#ecfeff', borderColor: '#a5f3fc', color: '#155e75' },
+    { backgroundColor: '#f0f9ff', borderColor: '#bae6fd', color: '#0c4a6e' },
+    { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', color: '#1d4ed8' },
+    { backgroundColor: '#f5f3ff', borderColor: '#ddd6fe', color: '#5b21b6' },
+    { backgroundColor: '#fdf4ff', borderColor: '#f5d0fe', color: '#a21caf' },
 ];
 const stringToPaletteIndex = (value) => {
     const text = String(value || '').trim().toLowerCase();
@@ -69,12 +69,55 @@ const stringToPaletteIndex = (value) => {
 
     return Math.abs(hash) % appointmentCategoryCardPalettes.length;
 };
-const getAppointmentCardClasses = (category, isPaid) => {
+const getAppointmentCardStyle = (category, isPaid) => {
     if (isPaid) {
-        return 'border border-white bg-white text-slate-900';
+        return { backgroundColor: '#ffffff', borderColor: '#ffffff', color: '#0f172a' };
     }
 
-    return `border ${appointmentCategoryCardPalettes[stringToPaletteIndex(category)]}`;
+    return appointmentCategoryCardPalettes[stringToPaletteIndex(category)];
+};
+const layoutOverlappingAppointments = (cards) => {
+    const sortedCards = [...cards].sort((a, b) => {
+        if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
+        if (a.endMinutes !== b.endMinutes) return a.endMinutes - b.endMinutes;
+        return String(a.id).localeCompare(String(b.id));
+    });
+    const active = [];
+    const groups = [];
+
+    sortedCards.forEach((card) => {
+        for (let index = active.length - 1; index >= 0; index -= 1) {
+            if (active[index].endMinutes <= card.startMinutes) {
+                active.splice(index, 1);
+            }
+        }
+
+        const usedLanes = new Set(active.map((item) => item.lane));
+        let lane = 0;
+        while (usedLanes.has(lane)) lane += 1;
+
+        const overlappingGroupIds = new Set(active.map((item) => item.groupId));
+        const groupId = overlappingGroupIds.size > 0 ? Math.min(...overlappingGroupIds) : groups.length;
+
+        if (!groups[groupId]) groups[groupId] = [];
+
+        const nextCard = { ...card, lane, groupId };
+        groups[groupId].push(nextCard);
+        active.push(nextCard);
+    });
+
+    return groups.flatMap((groupCards) => {
+        const laneCount = Math.max(1, ...groupCards.map((card) => card.lane + 1));
+        const width = 100 / laneCount;
+
+        return groupCards.map((card) => ({
+            ...card,
+            laneCount,
+            width,
+            left: card.lane * width,
+            zIndex: 20 + card.lane,
+        }));
+    });
 };
 const serviceMatchesSearch = (service, query) => {
     const needle = String(query || '').trim().toLowerCase();
@@ -727,28 +770,30 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         : staffProfiles.filter((staff) => String(staff.id) === String(boardStaffFilter));
     const boardAppointments = appointments.filter((appt) => sameLocalDate(appt.scheduled_start, boardDate));
     const boardCardsByStaff = boardStaffList.map((staff) => {
-        const cards = boardAppointments
+        const cards = layoutOverlappingAppointments(boardAppointments
             .filter((appt) => String(appt.staff_profile_id || '') === String(staff.id))
             .map((appt) => {
                 const start = new Date(appt.scheduled_start);
                 const end = new Date(appt.scheduled_end || appt.scheduled_start);
                 const startMinutes = start.getHours() * 60 + start.getMinutes();
-                const endMinutes = end.getHours() * 60 + end.getMinutes();
+                const endMinutes = Math.max(startMinutes + 30, end.getHours() * 60 + end.getMinutes());
                 const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
-                const height = Math.max(7, (((Math.max(endMinutes, startMinutes + 30)) - startMinutes) / boardTotalMinutes) * 100);
+                const height = Math.max(7, (((endMinutes) - startMinutes) / boardTotalMinutes) * 100);
                 const isPaid = appt.status === 'completed' && !appt.awaiting_checkout;
                 const category = serviceCategoryMap[String(appt.service_id)] || 'Uncategorized';
 
                 return {
                     ...appt,
-                    cardClasses: getAppointmentCardClasses(category, isPaid),
+                    cardStyle: getAppointmentCardStyle(category, isPaid),
                     category,
+                    endMinutes,
                     isPaid,
+                    startMinutes,
                     top,
                     height,
                     timeLabel: `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
                 };
-            });
+            }));
 
         return { staff, cards };
     });
@@ -1873,8 +1918,15 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                     else if (appt.status === 'in_progress' || appt.status === 'completed') openCompleteService(appt);
                                                     else startEdit(appt);
                                                 }}
-                                                className={`absolute left-2 right-2 overflow-hidden rounded-xl p-2 text-left shadow-lg transition hover:scale-[1.01] ${appt.cardClasses}`}
-                                                style={{ top: `${appt.top}%`, height: `${appt.height}%` }}
+                                                className="absolute overflow-hidden rounded-xl border p-2 text-left shadow-lg transition hover:scale-[1.01]"
+                                                style={{
+                                                    ...appt.cardStyle,
+                                                    top: `${appt.top}%`,
+                                                    height: `${appt.height}%`,
+                                                    left: `calc(${appt.left}% + 0.5rem)`,
+                                                    width: `calc(${appt.width}% - 0.75rem)`,
+                                                    zIndex: appt.zIndex,
+                                                }}
                                             >
                                                 <div className="text-[11px] font-semibold text-slate-600">{appt.timeLabel}</div>
                                                 <div className="mt-1 text-sm font-semibold">{appt.customer_name}</div>
