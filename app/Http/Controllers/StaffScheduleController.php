@@ -23,9 +23,12 @@ class StaffScheduleController extends Controller
         $this->staffScheduleGenerator->fillRollingWeek();
 
         $rules = BookingRule::current();
-        $visibleRangeStart = Carbon::today()->copy()->startOfMonth()->toDateString();
+        $today = Carbon::today();
+        $visibleRangeStart = $today->copy()->startOfMonth()->toDateString();
         $visibleHorizonDays = max(90, (int) $rules->max_advance_days);
-        $visibleRangeEnd = Carbon::today()->copy()->addDays($visibleHorizonDays - 1)->toDateString();
+        $visibleRangeEnd = $today->copy()->addDays($visibleHorizonDays - 1)->toDateString();
+        $currentMonthStart = $today->copy()->startOfMonth()->toDateString();
+        $nextMonthStart = $today->copy()->addMonthNoOverflow()->startOfMonth()->toDateString();
 
         return Inertia::render('Schedules/Index', [
             'bookingRules' => [
@@ -50,7 +53,11 @@ class StaffScheduleController extends Controller
                 ->with('staffProfile.user')
                 ->whereDate('schedule_date', '>=', $visibleRangeStart)
                 ->whereDate('schedule_date', '<=', $visibleRangeEnd)
-                ->orderBy('schedule_date')
+                ->orderByRaw(
+                    'CASE WHEN schedule_date >= ? AND schedule_date < ? THEN 0 ELSE 1 END ASC',
+                    [$currentMonthStart, $nextMonthStart]
+                )
+                ->orderByDesc('schedule_date')
                 ->orderBy('staff_profile_id')
                 ->get()
                 ->map(fn (StaffSchedule $schedule) => [
