@@ -757,8 +757,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         .filter((line) => String(line.inventory_item_id || '') !== '');
     const selectedProductsAmount = selectedProductLines.reduce((sum, line) => sum + line.lineTotal, 0);
     const previewTotalAmount = completingServiceAmount + selectedProductsAmount;
+    const completingCustomerHasGiftCards = (completingCustomer?.active_gift_cards || []).length > 0
+        && Number(completingCustomer?.gift_card_balance || 0) > 0;
     const completingCustomerGiftBalance = Number(completingCustomer?.gift_card_balance || 0);
-    const completingGiftCardShortfall = Math.max(0, previewTotalAmount - completingCustomerGiftBalance);
+    const completingGiftCardShortfall = completingCustomerHasGiftCards
+        ? Math.max(0, previewTotalAmount - completingCustomerGiftBalance)
+        : 0;
     const boardOpen = salonClockBoundary(bookingRules, 'opening_time', '09:00');
     const boardClose = salonClockBoundary(bookingRules, 'closing_time', '22:00');
     const boardStartMinutes = boardOpen.h * 60 + boardOpen.m;
@@ -1435,7 +1439,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 <span>Estimated total</span>
                                                 <span>{formatMoney(previewTotalAmount, currencyCode)}</span>
                                             </div>
-                                            {completingCustomer ? (
+                                            {completingCustomer && completingCustomerHasGiftCards ? (
                                                 <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
                                                     <span>Customer gift card balance</span>
                                                     <span>{formatMoney(completingCustomerGiftBalance, currencyCode)}</span>
