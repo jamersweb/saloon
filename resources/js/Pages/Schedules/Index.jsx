@@ -30,7 +30,7 @@ const formatYmdForDisplay = (value) => {
 };
 
 export default function SchedulesIndex({ staffProfiles, schedules, bookingRules, defaultShiftStart = '09:00', defaultShiftEnd = '22:00', salonHoursLabel }) {
-    const ROWS_PER_PAGE = 10;
+    const ROWS_PER_PAGE = 30;
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
     const [deleteScheduleId, setDeleteScheduleId] = useState(null);
@@ -283,9 +283,6 @@ export default function SchedulesIndex({ staffProfiles, schedules, bookingRules,
         </AuthenticatedLayout>
     );
 }
-
-
-
 
 
 
