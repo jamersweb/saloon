@@ -1,5 +1,6 @@
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
+import SearchableSelect from '@/Components/SearchableSelect';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { flushSync } from 'react-dom';
@@ -594,10 +595,14 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editHasMultipleServices = editSelectedServices.length > 1;
     const createSelectedCustomer = customers.find((c) => String(c.id) === String(createSelectedCustomerId)) || null;
     const editSelectedCustomer = customers.find((c) => String(c.id) === String(editSelectedCustomerId)) || null;
+    const customerOptions = customers.map((c) => ({ value: String(c.id), label: `${c.name}${c.phone ? ` - ${c.phone}` : ''}` }));
+    const staffOptions = [{ value: '', label: 'Auto / Unassigned' }, ...staffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
     const createAvailablePackages = createSelectedCustomer?.active_packages || [];
     const editAvailablePackages = editSelectedCustomer?.active_packages || [];
     const createSelectedPackage = createAvailablePackages.find((pkg) => String(pkg.id) === String(createSelectedPackageId)) || null;
     const editSelectedPackage = editAvailablePackages.find((pkg) => String(pkg.id) === String(editSelectedPackageId)) || null;
+    const createPackageOptions = createAvailablePackages.map((pkg) => ({ value: String(pkg.id), label: `${pkg.package_name}${pkg.expires_at ? ` - expires ${new Date(pkg.expires_at).toLocaleDateString()}` : ''}` }));
+    const editPackageOptions = editAvailablePackages.map((pkg) => ({ value: String(pkg.id), label: pkg.package_name }));
     const createPackageCoverageMap = Object.fromEntries((createSelectedPackage?.services || []).map((service) => [String(service.id), service]));
     const editPackageCoverageMap = Object.fromEntries((editSelectedPackage?.services || []).map((service) => [String(service.id), service]));
     const createCoveredServiceIds = createForm.data.package_service_ids || [];
@@ -1089,16 +1094,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             </div>
                         ) : (
                             <div>
-                                <label className="ta-field-label">Default Staff Profile</label>
-                                <select className="ta-input" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}>
-                                    <option value="">Auto / Unassigned</option>
-                                    {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
+                                <SearchableSelect label="Default Staff Profile" value={createForm.data.staff_profile_id} onChange={(id) => createForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
                                 <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
                                 {fieldError(createForm, 'staff_profile_id')}
                             </div>
                         )}
-                        {createSelectedServices.length > 0 ? (
+                        {createHasMultipleServices ? (
                             <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Per Service</p>
                                 <div className="grid gap-2 md:grid-cols-2">
@@ -1121,14 +1122,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                         })}
                                                     />
                                                 </div>
-                                                <select
-                                                    className="ta-input"
+                                                <SearchableSelect
                                                     value={createForm.data.staff_assignments?.[assignmentKey] || ''}
-                                                    onChange={(e) => {
+                                                    onChange={(id) => {
                                                         createForm.clearErrors('staff_profile_id', 'staff_assignments');
                                                         const nextAssignments = {
                                                             ...(createForm.data.staff_assignments || {}),
-                                                            [assignmentKey]: e.target.value,
+                                                            [assignmentKey]: id,
                                                         };
                                                         createForm.setData({
                                                             ...createForm.data,
@@ -1138,13 +1138,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                                 : createForm.data.staff_profile_id,
                                                         });
                                                     }}
-                                                >
-                                                    <option value="">Use default / auto</option>
-                                                    {staffProfiles.map((s) => {
+                                                    options={[{ value: '', label: 'Use default / auto' }, ...staffProfiles.map((s) => {
                                                         const availability = createStaffAvailability[String(s.id)] || createFallbackStaffAvailability[String(s.id)];
-                                                        return <option key={s.id} value={s.id} disabled={Boolean(availability?.busy)}>{s.name} {availability ? `(${availability.label})` : ''}</option>;
-                                                    })}
-                                                </select>
+                                                        return { value: String(s.id), label: `${s.name}${availability ? ` (${availability.label})` : ''}` };
+                                                    })]}
+                                                    placeholder="Search staff"
+                                                />
                                             </div>
                                         );
                                     })}
@@ -1723,16 +1722,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             </div>
                         ) : (
                             <div>
-                                <label className="ta-field-label">Default Staff Profile</label>
-                                <select className="ta-input" value={editForm.data.staff_profile_id} onChange={(e) => editForm.setData('staff_profile_id', e.target.value)}>
-                                    <option value="">Auto / Unassigned</option>
-                                    {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
+                                <SearchableSelect label="Default Staff Profile" value={editForm.data.staff_profile_id} onChange={(id) => editForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
                                 <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
                                 {fieldError(editForm, 'staff_profile_id')}
                             </div>
                         )}
-                        {editSelectedServices.length > 0 ? (
+                        {editHasMultipleServices ? (
                             <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Per Service</p>
                                 <div className="grid gap-2 md:grid-cols-2">
@@ -1755,14 +1750,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                         })}
                                                     />
                                                 </div>
-                                                <select
-                                                    className="ta-input"
+                                                <SearchableSelect
                                                     value={editForm.data.staff_assignments?.[assignmentKey] || ''}
-                                                    onChange={(e) => {
+                                                    onChange={(id) => {
                                                         editForm.clearErrors('staff_profile_id', 'staff_assignments');
                                                         const nextAssignments = {
                                                             ...(editForm.data.staff_assignments || {}),
-                                                            [assignmentKey]: e.target.value,
+                                                            [assignmentKey]: id,
                                                         };
                                                         editForm.setData({
                                                             ...editForm.data,
@@ -1772,13 +1766,12 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                                 : editForm.data.staff_profile_id,
                                                         });
                                                     }}
-                                                >
-                                                    <option value="">Use default / auto</option>
-                                                    {staffProfiles.map((s) => {
+                                                    options={[{ value: '', label: 'Use default / auto' }, ...staffProfiles.map((s) => {
                                                         const availability = editStaffAvailability[String(s.id)] || editFallbackStaffAvailability[String(s.id)];
-                                                        return <option key={s.id} value={s.id} disabled={Boolean(availability?.busy)}>{s.name} {availability ? `(${availability.label})` : ''}</option>;
-                                                    })}
-                                                </select>
+                                                        return { value: String(s.id), label: `${s.name}${availability ? ` (${availability.label})` : ''}` };
+                                                    })]}
+                                                    placeholder="Search staff"
+                                                />
                                             </div>
                                         );
                                     })}

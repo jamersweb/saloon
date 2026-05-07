@@ -7,6 +7,7 @@ use App\Models\Appointment;
 use App\Models\Customer;
 use App\Models\FinanceSetting;
 use App\Models\GiftCard;
+use App\Models\InventoryItem;
 use App\Models\InvoicePayment;
 use App\Models\SalonService;
 use App\Models\TaxInvoice;
@@ -96,6 +97,7 @@ class TaxInvoiceController extends Controller
         return Inertia::render('Finance/Invoices/Create', [
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
+            'inventory_items' => InventoryItem::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku', 'selling_price']),
             'appointments' => Appointment::query()
                 ->with(['customer:id,name', 'service:id,name'])
                 ->whereIn('status', [Appointment::STATUS_CONFIRMED, Appointment::STATUS_IN_PROGRESS, Appointment::STATUS_COMPLETED])
@@ -250,6 +252,7 @@ class TaxInvoiceController extends Controller
             ],
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
+            'inventory_items' => InventoryItem::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku', 'selling_price']),
             'vat_rate_percent' => (float) $settings->vat_rate_percent,
             'currency_code' => $settings->currency_code,
             'payment_methods' => InvoicePayment::methodLabels(),

@@ -1,5 +1,6 @@
 import ApplicationLogo from '@/Components/ApplicationLogo';
 import AppFlashPopup from '@/Components/AppFlashPopup';
+import SearchableSelect from '@/Components/SearchableSelect';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
@@ -117,6 +118,7 @@ export default function Booking({ services, staffProfiles, bookingRules, default
     const bookingStartYmd = (data.scheduled_start || defaultStart || '').split('T')[0] || localYmd(new Date());
     const bookingStartBounds = salonSelectableBoundsForYmd(bookingStartYmd, bookingRules, slotIntervalMinutes);
     const selectedServiceIds = data.service_ids || [];
+    const staffOptions = [{ value: '', label: 'Any available staff' }, ...staffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
     const availableServices = useMemo(
         () => services.filter((s) => !selectedServiceIds.includes(String(s.id))),
         [services, selectedServiceIds],
@@ -207,11 +209,13 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                             {errors.service_ids && <div className="mt-1 text-sm text-red-600">{errors.service_ids}</div>}
                         </div>
                         <div>
-                            <label className="ta-field-label">Staff Profile</label>
-                            <select className="ta-input" value={data.staff_profile_id} onChange={(e) => setData('staff_profile_id', e.target.value)}>
-                                <option value="">Any available staff</option>
-                                {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
+                            <SearchableSelect
+                                label="Staff Profile"
+                                value={data.staff_profile_id}
+                                onChange={(id) => setData('staff_profile_id', id)}
+                                options={staffOptions}
+                                placeholder="Search staff"
+                            />
                         </div>
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Scheduled Start</label>

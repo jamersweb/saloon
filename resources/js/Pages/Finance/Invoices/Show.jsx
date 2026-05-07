@@ -1,7 +1,8 @@
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
+import SearchableSelect from '@/Components/SearchableSelect';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 const money = (value, currency = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(value || 0));
@@ -17,6 +18,7 @@ export default function FinanceInvoicesShow({
     invoice,
     customers,
     services,
+    inventory_items = [],
     appointments = [],
     vat_rate_percent,
     currency_code,
@@ -61,7 +63,21 @@ export default function FinanceInvoicesShow({
     const singleAssignedGiftCard = assignedGiftCards.length === 1 ? assignedGiftCards[0] : null;
     const totalAssignedGiftCardBalance = assignedGiftCards.reduce((sum, card) => sum + Number(card.remaining_value || 0), 0);
 
-    const serviceById = Object.fromEntries(services.map((s) => [String(s.id), s]));
+    const serviceById = useMemo(() => Object.fromEntries(services.map((s) => [String(s.id), s])), [services]);
+    const inventoryById = useMemo(() => Object.fromEntries(inventory_items.map((item) => [String(item.id), item])), [inventory_items]);
+    const customerOptions = useMemo(() => ([
+        { value: '', label: 'Walk-in' },
+        ...customers.map((c) => ({ value: String(c.id), label: c.name })),
+    ]), [customers]);
+    const appointmentOptions = useMemo(() => ([
+        { value: '', label: 'None' },
+        ...appointments.map((a) => ({ value: String(a.id), label: a.label })),
+    ]), [appointments]);
+    const serviceOptions = useMemo(() => ([
+        { value: '', label: 'Custom' },
+        ...services.map((s) => ({ value: `service:${s.id}`, label: s.name })),
+        ...inventory_items.map((item) => ({ value: `inventory:${item.id}`, label: `${item.name}${item.sku ? ` (${item.sku})` : ''}` })),
+    ]), [services, inventory_items]);
 
     const addRow = () => editForm.setData('items', [...editForm.data.items, blankItem()]);
     const removeRow = (idx) => {
@@ -69,14 +85,32 @@ export default function FinanceInvoicesShow({
         editForm.setData('items', next.length ? next : [blankItem()]);
     };
 
-    const applyService = (idx, serviceId) => {
-        const s = serviceById[serviceId];
+    const applyService = (idx, selectedValue) => {
         const next = [...editForm.data.items];
+        if (!selectedValue) {
+            next[idx] = {
+                ...next[idx],
+                salon_service_id: '',
+            };
+            editForm.setData('items', next);
+            return;
+        }
+        const [kind, rawId] = String(selectedValue).split(':');
+        const s = kind === 'service' ? serviceById[rawId] : null;
+        const item = kind === 'inventory' ? inventoryById[rawId] : null;
         next[idx] = {
             ...next[idx],
-            salon_service_id: serviceId,
-            description: s ? s.name : next[idx].description,
-            unit_price: s ? String(s.price) : next[idx].unit_price,
+            salon_service_id: s ? String(s.id) : '',
+            description: s
+                ? s.name
+                : item
+                    ? `${item.name}${item.sku ? ` (${item.sku})` : ''}`
+                    : next[idx].description,
+            unit_price: s
+                ? String(s.price)
+                : item
+                    ? String(item.selling_price ?? '')
+                    : next[idx].unit_price,
         };
         editForm.setData('items', next);
     };
@@ -244,15 +278,14 @@ export default function FinanceInvoicesShow({
                         >
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div>
-                                    <label className="ta-field-label">Customer</label>
-                                    <select className="ta-input" value={editForm.data.customer_id} onChange={(e) => onCustomer(e.target.value)}>
-                                        <option value="">Walk-in</option>
-                                        {customers.map((c) => (
-                                            <option key={c.id} value={c.id}>
-                                                {c.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <SearchableSelect
+                                        label="Customer"
+                                        value={editForm.data.customer_id}
+                                        onChange={onCustomer}
+                                        options={customerOptions}
+                                        placeholder="Search customer"
+                                        className="md:col-span-1"
+                                    />
                                 </div>
                                 <div>
                                     <label className="ta-field-label">Name on receipt</label>
@@ -268,15 +301,13 @@ export default function FinanceInvoicesShow({
                                     <input className="ta-input" value={editForm.data.cashier_name} onChange={(e) => editForm.setData('cashier_name', e.target.value)} />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className="ta-field-label">Link visit (optional)</label>
-                                    <select className="ta-input" value={editForm.data.appointment_id} onChange={(e) => onAppointment(e.target.value)}>
-                                        <option value="">None</option>
-                                        {appointments.map((a) => (
-                                            <option key={a.id} value={a.id}>
-                                                {a.label}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <SearchableSelect
+                                        label="Link visit (optional)"
+                                        value={editForm.data.appointment_id}
+                                        onChange={onAppointment}
+                                        options={appointmentOptions}
+                                        placeholder="Search linked visit"
+                                    />
                                 </div>
                             </div>
                             <div className="flex items-center justify-between">
@@ -289,14 +320,12 @@ export default function FinanceInvoicesShow({
                                 {editForm.data.items.map((row, idx) => (
                                     <div key={idx} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-12 md:items-end">
                                         <div className="md:col-span-3">
-                                            <select className="ta-input" value={row.salon_service_id} onChange={(e) => applyService(idx, e.target.value)}>
-                                                <option value="">Custom</option>
-                                                {services.map((s) => (
-                                                    <option key={s.id} value={s.id}>
-                                                        {s.name}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                            <SearchableSelect
+                                                value={row.salon_service_id ? `service:${row.salon_service_id}` : ''}
+                                                onChange={(serviceId) => applyService(idx, serviceId)}
+                                                options={serviceOptions}
+                                                placeholder="Search service or product"
+                                            />
                                         </div>
                                         <div className="md:col-span-4">
                                             <input

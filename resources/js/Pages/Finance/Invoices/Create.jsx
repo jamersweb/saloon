@@ -1,4 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import SearchableSelect from '@/Components/SearchableSelect';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { useMemo } from 'react';
 
@@ -9,7 +10,7 @@ const blankItem = () => ({
     unit_price: '',
 });
 
-export default function FinanceInvoicesCreate({ customers, services, appointments, vat_rate_percent, currency_code }) {
+export default function FinanceInvoicesCreate({ customers, services, inventory_items = [], appointments, vat_rate_percent, currency_code }) {
     const { flash } = usePage().props;
 
     const form = useForm({
@@ -22,6 +23,20 @@ export default function FinanceInvoicesCreate({ customers, services, appointment
     });
 
     const serviceById = useMemo(() => Object.fromEntries(services.map((s) => [String(s.id), s])), [services]);
+    const inventoryById = useMemo(() => Object.fromEntries(inventory_items.map((item) => [String(item.id), item])), [inventory_items]);
+    const customerOptions = useMemo(() => ([
+        { value: '', label: 'Walk-in / manual name' },
+        ...customers.map((c) => ({ value: String(c.id), label: c.name })),
+    ]), [customers]);
+    const appointmentOptions = useMemo(() => ([
+        { value: '', label: 'None' },
+        ...appointments.map((a) => ({ value: String(a.id), label: a.label })),
+    ]), [appointments]);
+    const serviceOptions = useMemo(() => ([
+        { value: '', label: 'Custom line' },
+        ...services.map((s) => ({ value: `service:${s.id}`, label: `${s.name} (${currency_code} ${s.price})` })),
+        ...inventory_items.map((item) => ({ value: `inventory:${item.id}`, label: `${item.name}${item.sku ? ` (${item.sku})` : ''} (${currency_code} ${item.selling_price})` })),
+    ]), [services, inventory_items, currency_code]);
 
     const addRow = () => form.setData('items', [...form.data.items, blankItem()]);
 
@@ -30,14 +45,32 @@ export default function FinanceInvoicesCreate({ customers, services, appointment
         form.setData('items', next.length ? next : [blankItem()]);
     };
 
-    const applyService = (idx, serviceId) => {
-        const s = serviceById[serviceId];
+    const applyService = (idx, selectedValue) => {
         const next = [...form.data.items];
+        if (!selectedValue) {
+            next[idx] = {
+                ...next[idx],
+                salon_service_id: '',
+            };
+            form.setData('items', next);
+            return;
+        }
+        const [kind, rawId] = String(selectedValue).split(':');
+        const s = kind === 'service' ? serviceById[rawId] : null;
+        const item = kind === 'inventory' ? inventoryById[rawId] : null;
         next[idx] = {
             ...next[idx],
-            salon_service_id: serviceId,
-            description: s ? s.name : next[idx].description,
-            unit_price: s ? String(s.price) : next[idx].unit_price,
+            salon_service_id: s ? String(s.id) : '',
+            description: s
+                ? s.name
+                : item
+                    ? `${item.name}${item.sku ? ` (${item.sku})` : ''}`
+                    : next[idx].description,
+            unit_price: s
+                ? String(s.price)
+                : item
+                    ? String(item.selling_price ?? '')
+                    : next[idx].unit_price,
         };
         form.setData('items', next);
     };
@@ -110,15 +143,13 @@ export default function FinanceInvoicesCreate({ customers, services, appointment
                     >
                         <div className="grid gap-4 md:grid-cols-2">
                             <div>
-                                <label className="ta-field-label">Customer (directory)</label>
-                                <select className="ta-input" value={form.data.customer_id} onChange={(e) => onCustomer(e.target.value)}>
-                                    <option value="">Walk-in / manual name</option>
-                                    {customers.map((c) => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                <SearchableSelect
+                                    label="Customer (directory)"
+                                    value={form.data.customer_id}
+                                    onChange={onCustomer}
+                                    options={customerOptions}
+                                    placeholder="Search customer"
+                                />
                             </div>
                             <div>
                                 <label className="ta-field-label">Customer name on receipt</label>
@@ -131,15 +162,13 @@ export default function FinanceInvoicesCreate({ customers, services, appointment
                                 {form.errors.customer_display_name && <p className="mt-1 text-xs text-red-600">{form.errors.customer_display_name}</p>}
                             </div>
                             <div>
-                                <label className="ta-field-label">Link visit (optional)</label>
-                                <select className="ta-input" value={form.data.appointment_id} onChange={(e) => onAppointment(e.target.value)}>
-                                    <option value="">None</option>
-                                    {appointments.map((a) => (
-                                        <option key={a.id} value={a.id}>
-                                            {a.label}
-                                        </option>
-                                    ))}
-                                </select>
+                                <SearchableSelect
+                                    label="Link visit (optional)"
+                                    value={form.data.appointment_id}
+                                    onChange={onAppointment}
+                                    options={appointmentOptions}
+                                    placeholder="Search linked visit"
+                                />
                             </div>
                             <div>
                                 <label className="ta-field-label">Cashier name (optional)</label>
@@ -159,14 +188,13 @@ export default function FinanceInvoicesCreate({ customers, services, appointment
                                     <div key={idx} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-12 md:items-end">
                                         <div className="md:col-span-3">
                                             <label className="text-xs text-slate-500">Service</label>
-                                            <select className="ta-input mt-1" value={row.salon_service_id} onChange={(e) => applyService(idx, e.target.value)}>
-                                                <option value="">Custom line</option>
-                                                {services.map((s) => (
-                                                    <option key={s.id} value={s.id}>
-                                                        {s.name} ({currency_code} {s.price})
-                                                    </option>
-                                                ))}
-                                            </select>
+                                            <SearchableSelect
+                                                className="mt-1"
+                                                value={row.salon_service_id ? `service:${row.salon_service_id}` : ''}
+                                                onChange={(serviceId) => applyService(idx, serviceId)}
+                                                options={serviceOptions}
+                                                placeholder="Search service or product"
+                                            />
                                         </div>
                                         <div className="md:col-span-4">
                                             <label className="text-xs text-slate-500">Description</label>
