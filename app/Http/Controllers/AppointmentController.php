@@ -179,9 +179,10 @@ class AppointmentController extends Controller
         }
         $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
         $serviceQuantities = $this->resolveServiceQuantitiesFromPayload($data, $serviceIds);
+        $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
 
         $start = Carbon::parse($data['scheduled_start']);
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities, $staffAssignments);
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start, enforceSlotInterval: false, enforceMinAdvance: false)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
@@ -256,11 +257,11 @@ class AppointmentController extends Controller
         if ($serviceIds === []) {
             return back()->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
         }
-        $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
         $serviceQuantities = $this->resolveServiceQuantitiesFromPayload($data, $serviceIds);
+        $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
 
         $start = Carbon::parse($data['scheduled_start']);
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities, $staffAssignments);
 
         foreach ($servicePlans as $idx => $plan) {
             if ($timeRangeError = $this->validateTimeRange($plan['start'], $plan['end'])) {
@@ -885,11 +886,16 @@ class AppointmentController extends Controller
      * @param array<int, int> $serviceQuantities
      * @return array<int, array{service: SalonService, service_quantity: int, start: Carbon, end: Carbon}>
      */
-    private function buildServicePlans(array $serviceIds, Carbon $start, ?string $requestedEnd, array $serviceQuantities = []): array
+    private function buildServicePlans(array $serviceIds, Carbon $start, ?string $requestedEnd, array $serviceQuantities = [], array $staffAssignments = []): array
     {
         $services = SalonService::query()->whereIn('id', $serviceIds)->get()->keyBy('id');
         $plans = [];
         $cursor = $start->copy();
+        $assignedStaffIds = array_values(array_unique(array_filter(array_map(
+            static fn ($serviceId) => isset($staffAssignments[$serviceId]) ? (int) $staffAssignments[$serviceId] : null,
+            $serviceIds
+        ))));
+        $runInParallel = count($serviceIds) > 1 && count($assignedStaffIds) > 1;
 
         foreach ($serviceIds as $idx => $serviceId) {
             /** @var SalonService|null $service */
@@ -898,7 +904,7 @@ class AppointmentController extends Controller
                 continue;
             }
 
-            $itemStart = $cursor->copy();
+            $itemStart = $runInParallel ? $start->copy() : $cursor->copy();
             if ($idx === 0 && count($serviceIds) === 1 && ! empty($requestedEnd)) {
                 $itemEnd = Carbon::parse($requestedEnd);
             } else {
@@ -912,7 +918,9 @@ class AppointmentController extends Controller
                 'end' => $itemEnd,
             ];
 
-            $cursor = $itemEnd->copy();
+            if (! $runInParallel) {
+                $cursor = $itemEnd->copy();
+            }
         }
 
         return $plans;
