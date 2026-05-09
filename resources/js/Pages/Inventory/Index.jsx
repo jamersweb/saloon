@@ -1,26 +1,27 @@
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function InventoryIndex({ items, recentTransactions, openAlerts }) {
-    const ROWS_PER_PAGE = 10;
+export default function InventoryIndex({ items, recentTransactions, openAlerts, filters, categories = [] }) {
     const { flash, auth, app_currency_code: currencyCode = 'AED' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_inventory);
     const [editingId, setEditingId] = useState(null);
     const [adjustingId, setAdjustingId] = useState(null);
     const [deactivateItemId, setDeactivateItemId] = useState(null);
     const [deactivateBusy, setDeactivateBusy] = useState(false);
-    const [searchText, setSearchText] = useState('');
-    const [categoryFilter, setCategoryFilter] = useState('');
-    const [stockFilter, setStockFilter] = useState('all');
-    const [minPrice, setMinPrice] = useState('');
-    const [maxPrice, setMaxPrice] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
     const importFileRef = useRef(null);
+    const filterForm = useForm({
+        search: filters?.search || '',
+        category: filters?.category || '',
+        stock_status: filters?.stock_status || 'all',
+        min_price: filters?.min_price ?? '',
+        max_price: filters?.max_price ?? '',
+        per_page: String(filters?.per_page || 10),
+    });
 
     const createForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
     const editForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
@@ -75,59 +76,47 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
         });
     };
 
-    const categories = useMemo(
-        () => Array.from(new Set((items || []).map((item) => String(item.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
-        [items],
-    );
-
-    const filteredItems = useMemo(() => {
-        const q = searchText.trim().toLowerCase();
-        const min = minPrice === '' ? null : Number(minPrice);
-        const max = maxPrice === '' ? null : Number(maxPrice);
-
-        return (items || []).filter((item) => {
-            if (q) {
-                const haystack = `${item.sku || ''} ${item.name || ''} ${item.category || ''}`.toLowerCase();
-                if (!haystack.includes(q)) return false;
-            }
-
-            if (categoryFilter && String(item.category || '').trim() !== categoryFilter) return false;
-
-            if (stockFilter === 'low' && Number(item.stock_quantity) > Number(item.reorder_level)) return false;
-            if (stockFilter === 'in_stock' && Number(item.stock_quantity) <= Number(item.reorder_level)) return false;
-            if (stockFilter === 'active' && !item.is_active) return false;
-            if (stockFilter === 'inactive' && item.is_active) return false;
-
-            const price = Number(item.selling_price || 0);
-            if (min !== null && !Number.isNaN(min) && price < min) return false;
-            if (max !== null && !Number.isNaN(max) && price > max) return false;
-
-            return true;
+    useEffect(() => {
+        filterForm.setData({
+            search: filters?.search || '',
+            category: filters?.category || '',
+            stock_status: filters?.stock_status || 'all',
+            min_price: filters?.min_price ?? '',
+            max_price: filters?.max_price ?? '',
+            per_page: String(filters?.per_page || 10),
         });
-    }, [items, searchText, categoryFilter, stockFilter, minPrice, maxPrice]);
+    }, [filters?.search, filters?.category, filters?.stock_status, filters?.min_price, filters?.max_price, filters?.per_page]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredItems.length / ROWS_PER_PAGE));
-    const pagedItems = useMemo(
-        () => filteredItems.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE),
-        [filteredItems, currentPage],
-    );
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchText, categoryFilter, stockFilter, minPrice, maxPrice]);
-
-    useEffect(() => {
-        if (currentPage > totalPages) {
-            setCurrentPage(totalPages);
-        }
-    }, [currentPage, totalPages]);
+    const applyFilters = () => {
+        router.get(route('inventory.index'), {
+            search: filterForm.data.search || undefined,
+            category: filterForm.data.category || undefined,
+            stock_status: filterForm.data.stock_status,
+            min_price: filterForm.data.min_price || undefined,
+            max_price: filterForm.data.max_price || undefined,
+            per_page: filterForm.data.per_page,
+        }, {
+            preserveState: true,
+            replace: true,
+        });
+    };
 
     const clearFilters = () => {
-        setSearchText('');
-        setCategoryFilter('');
-        setStockFilter('all');
-        setMinPrice('');
-        setMaxPrice('');
+        const defaults = {
+            search: '',
+            category: '',
+            stock_status: 'all',
+            min_price: '',
+            max_price: '',
+            per_page: '10',
+        };
+
+        filterForm.setData(defaults);
+
+        router.get(route('inventory.index'), { stock_status: 'all', per_page: 10 }, {
+            preserveState: true,
+            replace: true,
+        });
     };
 
     return (
@@ -178,7 +167,10 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
 
                 <section className="ta-card overflow-hidden">
                     <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-                        <h3 className="text-sm font-semibold text-slate-700">Stock Catalog</h3>
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-700">Stock Catalog</h3>
+                            <p className="mt-1 text-xs text-slate-500">Showing {items?.from || 0}-{items?.to || 0} of {items?.total || 0} items</p>
+                        </div>
                         <div className="flex items-center gap-2">
                             <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleInventoryImport} />
                             <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => importFileRef.current?.click()}>Import CSV</button>
@@ -189,18 +181,18 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                     <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-6">
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Search</label>
-                            <input className="ta-input" placeholder="SKU, item name, category" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+                            <input className="ta-input" placeholder="SKU, item name, category" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Category</label>
-                            <select className="ta-input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                            <select className="ta-input" value={filterForm.data.category} onChange={(e) => filterForm.setData('category', e.target.value)}>
                                 <option value="">All categories</option>
                                 {categories.map((category) => <option key={category} value={category}>{category}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="ta-field-label">Stock</label>
-                            <select className="ta-input" value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
+                            <select className="ta-input" value={filterForm.data.stock_status} onChange={(e) => filterForm.setData('stock_status', e.target.value)}>
                                 <option value="all">All items</option>
                                 <option value="low">Low stock</option>
                                 <option value="in_stock">In stock</option>
@@ -210,22 +202,27 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                         </div>
                         <div>
                             <label className="ta-field-label">Min price</label>
-                            <input className="ta-input" type="number" min="0" step="0.01" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
+                            <input className="ta-input" type="number" min="0" step="0.01" value={filterForm.data.min_price} onChange={(e) => filterForm.setData('min_price', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Max price</label>
-                            <input className="ta-input" type="number" min="0" step="0.01" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} />
+                            <input className="ta-input" type="number" min="0" step="0.01" value={filterForm.data.max_price} onChange={(e) => filterForm.setData('max_price', e.target.value)} />
                         </div>
-                        <div className="md:col-span-6 flex items-center justify-between">
-                            <p className="text-xs text-slate-500">Showing {filteredItems.length} of {(items || []).length} items</p>
-                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                        <div className="md:col-span-6 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex gap-3">
+                                <select className="ta-input max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                                    {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
+                                </select>
+                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={applyFilters}>Apply Filters</button>
+                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                            </div>
                         </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Stock</th><th className="px-5 py-3">Reorder</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
                             <tbody>
-                                {pagedItems.map((item) => (
+                                {(items?.data || []).map((item) => (
                                     <tr key={item.id} className="border-t border-slate-100">
                                         <td className="px-5 py-3 font-medium text-slate-700">{item.sku}</td>
                                         <td className="px-5 py-3 text-slate-600">{item.name}</td>
@@ -237,15 +234,22 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
                                         <td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEdit(item)}>Edit</button><button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 disabled:opacity-50" disabled={!canManage} onClick={() => startAdjust(item)}>Adjust</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => setDeactivateItemId(item.id)}>Delete</button></div></td>
                                     </tr>
                                 ))}
-                                {filteredItems.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="8">No items match the selected filters.</td></tr>}
+                                {(items?.data || []).length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="8">No items match the selected filters.</td></tr>}
                             </tbody>
                         </table>
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
-                        <span>Page {currentPage} of {totalPages}</span>
-                        <div className="flex gap-2">
-                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage <= 1} onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}>Previous</button>
-                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}>Next</button>
+                        <span>Page {items?.current_page || 1} of {items?.last_page || 1}</span>
+                        <div className="flex flex-wrap gap-2">
+                            {(items?.links || []).map((link) => (
+                                <Link
+                                    key={`${link.label}-${link.url || 'null'}`}
+                                    href={link.url || '#'}
+                                    preserveState
+                                    className={`rounded-lg border px-3 py-1 ${link.active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600'} ${!link.url ? 'pointer-events-none opacity-50' : 'hover:bg-slate-50'}`}
+                                    dangerouslySetInnerHTML={{ __html: link.label }}
+                                />
+                            ))}
                         </div>
                     </div>
                 </section>
@@ -329,6 +333,5 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts }
         </AuthenticatedLayout>
     );
 }
-
 
 

@@ -20,18 +20,57 @@ class StaffProfileController extends Controller
     public function index(Request $request): Response
     {
         $showDeleted = $request->boolean('show_deleted');
+        $filters = [
+            'search' => trim($request->string('search')->toString()),
+            'role_id' => $request->integer('role_id') ?: null,
+            'status' => $request->string('status')->toString() ?: ($showDeleted ? 'removed' : 'all'),
+            'per_page' => (int) $request->integer('per_page', 10),
+        ];
+
+        if (! in_array($filters['status'], ['all', 'active', 'inactive', 'removed'], true)) {
+            $filters['status'] = $showDeleted ? 'removed' : 'all';
+        }
+
+        if (! in_array($filters['per_page'], [10, 25, 50, 100], true)) {
+            $filters['per_page'] = 10;
+        }
 
         $staffQuery = $showDeleted
             ? StaffProfile::query()->onlyTrashed()->with('user.role')->orderByDesc('deleted_at')
             : StaffProfile::query()->with('user.role')->orderByDesc('id');
+
+        $staffQuery
+            ->when($filters['search'] !== '', function ($query) use ($filters): void {
+                $needle = '%' . $filters['search'] . '%';
+                $query->where(function ($staffQuery) use ($needle): void {
+                    $staffQuery
+                        ->where('employee_code', 'like', $needle)
+                        ->orWhere('phone', 'like', $needle)
+                        ->orWhereHas('user', function ($userQuery) use ($needle): void {
+                            $userQuery
+                                ->where('name', 'like', $needle)
+                                ->orWhere('email', 'like', $needle);
+                        });
+                });
+            })
+            ->when($filters['role_id'], fn ($query) => $query->whereHas('user', fn ($userQuery) => $userQuery->where('role_id', $filters['role_id'])));
+
+        if (! $showDeleted) {
+            $staffQuery
+                ->when($filters['status'] === 'active', fn ($query) => $query->where('is_active', true))
+                ->when($filters['status'] === 'inactive', fn ($query) => $query->where('is_active', false));
+        }
 
         return Inertia::render('Staff/Index', [
             'roles' => Role::query()
                 ->where('name', '!=', 'customer')
                 ->orderBy('label')
                 ->get(['id', 'name', 'label']),
-            'staffProfiles' => $staffQuery->get()->map(function (StaffProfile $staff) {
-                return [
+            'staffProfiles' => $staffQuery
+                ->paginate($filters['per_page'])
+                ->withQueryString()
+                ->through(function (StaffProfile $staff) {
+                    return [
                     'id' => $staff->id,
                     'employee_code' => $staff->employee_code,
                     'phone' => $staff->phone,
@@ -46,8 +85,9 @@ class StaffProfileController extends Controller
                         'role_id' => $staff->user?->role_id,
                         'role_label' => $staff->user?->role?->label,
                     ],
-                ];
-            }),
+                    ];
+                }),
+            'filters' => $filters,
             'showDeleted' => $showDeleted,
             'trashedCount' => StaffProfile::onlyTrashed()->count(),
         ]);

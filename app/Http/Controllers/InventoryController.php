@@ -17,13 +17,49 @@ use Inertia\Response;
 
 class InventoryController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $filters = [
+            'search' => trim($request->string('search')->toString()),
+            'category' => trim($request->string('category')->toString()),
+            'stock_status' => $request->string('stock_status')->toString() ?: 'all',
+            'min_price' => $request->input('min_price'),
+            'max_price' => $request->input('max_price'),
+            'per_page' => (int) $request->integer('per_page', 10),
+        ];
+
+        if (! in_array($filters['stock_status'], ['all', 'low', 'in_stock', 'active', 'inactive'], true)) {
+            $filters['stock_status'] = 'all';
+        }
+
+        if (! in_array($filters['per_page'], [10, 25, 50, 100], true)) {
+            $filters['per_page'] = 10;
+        }
+
+        $itemsQuery = InventoryItem::query()
+            ->when($filters['search'] !== '', function ($query) use ($filters): void {
+                $needle = '%' . $filters['search'] . '%';
+                $query->where(function ($itemQuery) use ($needle): void {
+                    $itemQuery
+                        ->where('sku', 'like', $needle)
+                        ->orWhere('name', 'like', $needle)
+                        ->orWhere('category', 'like', $needle);
+                });
+            })
+            ->when($filters['category'] !== '', fn ($query) => $query->where('category', $filters['category']))
+            ->when($filters['stock_status'] === 'active', fn ($query) => $query->where('is_active', true))
+            ->when($filters['stock_status'] === 'inactive', fn ($query) => $query->where('is_active', false))
+            ->when($filters['stock_status'] === 'low', fn ($query) => $query->whereColumn('stock_quantity', '<=', 'reorder_level'))
+            ->when($filters['stock_status'] === 'in_stock', fn ($query) => $query->whereColumn('stock_quantity', '>', 'reorder_level'))
+            ->when(is_numeric($filters['min_price']), fn ($query) => $query->where('selling_price', '>=', (float) $filters['min_price']))
+            ->when(is_numeric($filters['max_price']), fn ($query) => $query->where('selling_price', '<=', (float) $filters['max_price']))
+            ->orderByDesc('is_active')
+            ->orderBy('name');
+
         return Inertia::render('Inventory/Index', [
-            'items' => InventoryItem::query()
-                ->orderByDesc('is_active')
-                ->orderBy('name')
-                ->get(),
+            'items' => $itemsQuery
+                ->paginate($filters['per_page'])
+                ->withQueryString(),
             'recentTransactions' => InventoryTransaction::query()
                 ->with(['item:id,name,sku', 'performedBy:id,name'])
                 ->latest()
@@ -55,6 +91,14 @@ class InventoryController extends Controller
                     'reorder_level' => $alert->reorder_level,
                     'created_at' => $alert->created_at,
                 ]),
+            'filters' => $filters,
+            'categories' => InventoryItem::query()
+                ->whereNotNull('category')
+                ->where('category', '!=', '')
+                ->distinct()
+                ->orderBy('category')
+                ->pluck('category')
+                ->values(),
         ]);
     }
 

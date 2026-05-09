@@ -105,4 +105,58 @@ class CrmAutomationIndexTest extends TestCase
                 ->has('customers.data', 10)
                 ->where('customers.data.0.name', 'Customer 11'));
     }
+
+    public function test_crm_automation_contact_filters_apply_to_paginated_results(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $vipTag = CustomerTag::create([
+            'name' => 'Returning',
+            'color' => '#2563eb',
+            'is_active' => true,
+        ]);
+
+        $readyContact = Customer::create([
+            'customer_code' => 'CUST-CON-001',
+            'name' => 'Fatma Mohebi',
+            'phone' => '971505673366',
+            'email' => 'fatma@example.com',
+            'is_active' => true,
+        ]);
+        $readyContact->tags()->attach($vipTag->id);
+
+        Customer::create([
+            'customer_code' => 'CUST-CON-002',
+            'name' => 'Inactive Contact',
+            'phone' => '',
+            'email' => 'inactive@example.com',
+            'is_active' => false,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('customers.automation.index', [
+                'contact_search' => 'Fatma',
+                'contact_tag_id' => $vipTag->id,
+                'contact_tag_state' => 'tagged',
+                'contact_active_status' => 'active',
+                'contact_per_page' => 10,
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Customers/Automation')
+                ->where('contactFilters.search', 'Fatma')
+                ->where('contactFilters.tag_id', $vipTag->id)
+                ->where('contactFilters.tag_state', 'tagged')
+                ->where('contactFilters.active_status', 'active')
+                ->where('contacts.total', 1)
+                ->has('contacts.data', 1)
+                ->where('contacts.data.0.id', $readyContact->id)
+                ->where('contacts.data.0.whatsapp_ready', true));
+    }
 }

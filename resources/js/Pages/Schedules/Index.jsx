@@ -1,8 +1,8 @@
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useEffect, useMemo, useState } from 'react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
@@ -29,20 +29,21 @@ const formatYmdForDisplay = (value) => {
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
 };
 
-export default function SchedulesIndex({ staffProfiles, schedules, bookingRules, defaultShiftStart = '09:00', defaultShiftEnd = '22:00', salonHoursLabel }) {
-    const ROWS_PER_PAGE = 30;
+export default function SchedulesIndex({ staffProfiles, schedules, filters, bookingRules, defaultShiftStart = '09:00', defaultShiftEnd = '22:00', salonHoursLabel }) {
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
     const [deleteScheduleId, setDeleteScheduleId] = useState(null);
     const [deleteBusy, setDeleteBusy] = useState(false);
     const [fillBusy, setFillBusy] = useState(null);
-    const [searchText, setSearchText] = useState('');
-    const [staffFilter, setStaffFilter] = useState('');
-    const [dateFromFilter, setDateFromFilter] = useState('');
-    const [dateToFilter, setDateToFilter] = useState('');
-    const [dayOffFilter, setDayOffFilter] = useState('all');
-    const [currentPage, setCurrentPage] = useState(1);
     const today = localYmd();
+    const filterForm = useForm({
+        search: filters?.search || '',
+        staff_profile_id: filters?.staff_profile_id ? String(filters.staff_profile_id) : '',
+        date_from: filters?.date_from || '',
+        date_to: filters?.date_to || '',
+        day_off: filters?.day_off || 'all',
+        per_page: String(filters?.per_page || 30),
+    });
 
     const postFillGaps = (horizon) => {
         setFillBusy(horizon);
@@ -87,49 +88,47 @@ export default function SchedulesIndex({ staffProfiles, schedules, bookingRules,
         editForm.clearErrors();
     };
 
-    const filteredSchedules = useMemo(() => {
-        const q = searchText.trim().toLowerCase();
-        return (schedules || []).filter((s) => {
-            if (q) {
-                const haystack = `${s.staff_name || ''} ${s.schedule_date || ''}`.toLowerCase();
-                if (!haystack.includes(q)) return false;
-            }
-
-            if (staffFilter && String(s.staff_profile_id) !== String(staffFilter)) return false;
-
-            const scheduleDate = String(s.schedule_date || '').slice(0, 10);
-            if (dateFromFilter && scheduleDate < dateFromFilter) return false;
-            if (dateToFilter && scheduleDate > dateToFilter) return false;
-
-            if (dayOffFilter === 'day_off' && !s.is_day_off) return false;
-            if (dayOffFilter === 'working' && s.is_day_off) return false;
-
-            return true;
+    useEffect(() => {
+        filterForm.setData({
+            search: filters?.search || '',
+            staff_profile_id: filters?.staff_profile_id ? String(filters.staff_profile_id) : '',
+            date_from: filters?.date_from || '',
+            date_to: filters?.date_to || '',
+            day_off: filters?.day_off || 'all',
+            per_page: String(filters?.per_page || 30),
         });
-    }, [schedules, searchText, staffFilter, dateFromFilter, dateToFilter, dayOffFilter]);
+    }, [filters?.search, filters?.staff_profile_id, filters?.date_from, filters?.date_to, filters?.day_off, filters?.per_page]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredSchedules.length / ROWS_PER_PAGE));
-    const pagedSchedules = useMemo(
-        () => filteredSchedules.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE),
-        [filteredSchedules, currentPage],
-    );
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchText, staffFilter, dateFromFilter, dateToFilter, dayOffFilter]);
-
-    useEffect(() => {
-        if (currentPage > totalPages) {
-            setCurrentPage(totalPages);
-        }
-    }, [currentPage, totalPages]);
+    const applyFilters = () => {
+        router.get(route('schedules.index'), {
+            search: filterForm.data.search || undefined,
+            staff_profile_id: filterForm.data.staff_profile_id || undefined,
+            date_from: filterForm.data.date_from || undefined,
+            date_to: filterForm.data.date_to || undefined,
+            day_off: filterForm.data.day_off,
+            per_page: filterForm.data.per_page,
+        }, {
+            preserveState: true,
+            replace: true,
+        });
+    };
 
     const clearFilters = () => {
-        setSearchText('');
-        setStaffFilter('');
-        setDateFromFilter('');
-        setDateToFilter('');
-        setDayOffFilter('all');
+        const defaults = {
+            search: '',
+            staff_profile_id: '',
+            date_from: '',
+            date_to: '',
+            day_off: 'all',
+            per_page: '30',
+        };
+
+        filterForm.setData(defaults);
+
+        router.get(route('schedules.index'), { day_off: 'all', per_page: 30 }, {
+            preserveState: true,
+            replace: true,
+        });
     };
 
     return (
@@ -202,46 +201,61 @@ export default function SchedulesIndex({ staffProfiles, schedules, bookingRules,
                 </section>
 
                 <section className="ta-card overflow-hidden">
-                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Schedule Calendar Rows</h3></div>
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <h3 className="text-sm font-semibold text-slate-700">Schedule Calendar Rows</h3>
+                        <p className="mt-1 text-xs text-slate-500">Showing {schedules?.from || 0}-{schedules?.to || 0} of {schedules?.total || 0} schedule rows</p>
+                    </div>
                     <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-6">
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Search</label>
-                            <input className="ta-input" placeholder="Staff name or date" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+                            <input className="ta-input" placeholder="Staff name or date" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Staff</label>
-                            <select className="ta-input" value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)}>
+                            <select className="ta-input" value={filterForm.data.staff_profile_id} onChange={(e) => filterForm.setData('staff_profile_id', e.target.value)}>
                                 <option value="">All staff</option>
                                 {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.employee_code} {s.name}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="ta-field-label">From date</label>
-                            <input className="ta-input" type="date" value={dateFromFilter} onChange={(e) => setDateFromFilter(e.target.value)} />
+                            <input className="ta-input" type="date" value={filterForm.data.date_from} onChange={(e) => filterForm.setData('date_from', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">To date</label>
-                            <input className="ta-input" type="date" value={dateToFilter} onChange={(e) => setDateToFilter(e.target.value)} />
+                            <input className="ta-input" type="date" value={filterForm.data.date_to} onChange={(e) => filterForm.setData('date_to', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Day off</label>
-                            <select className="ta-input" value={dayOffFilter} onChange={(e) => setDayOffFilter(e.target.value)}>
+                            <select className="ta-input" value={filterForm.data.day_off} onChange={(e) => filterForm.setData('day_off', e.target.value)}>
                                 <option value="all">All</option>
                                 <option value="working">Working days</option>
                                 <option value="day_off">Day off only</option>
                             </select>
                         </div>
-                        <div className="md:col-span-6 flex items-center justify-between">
-                            <p className="text-xs text-slate-500">Showing {filteredSchedules.length} of {(schedules || []).length} schedule rows</p>
-                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                        <div className="md:col-span-6 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex gap-3">
+                                <select className="ta-input max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                                    {[10, 25, 30, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
+                                </select>
+                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={applyFilters}>Apply Filters</button>
+                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                            </div>
                         </div>
                     </div>
-                    <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Staff</th><th className="px-5 py-3">Shift</th><th className="px-5 py-3">Break</th><th className="px-5 py-3">Day Off</th><th className="px-5 py-3">Actions</th></tr></thead><tbody>{pagedSchedules.map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{formatYmdForDisplay(s.schedule_date)}</td><td className="px-5 py-3 font-medium text-slate-700">{s.staff_name}</td><td className="px-5 py-3 text-slate-600">{s.start_time || '-'} - {s.end_time || '-'}</td><td className="px-5 py-3 text-slate-600">{s.break_start || '-'} - {s.break_end || '-'}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_day_off ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{s.is_day_off ? 'Yes' : 'No'}</span></td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-300 bg-white px-2.5 py-1 text-xs font-semibold text-indigo-800 shadow-sm hover:bg-indigo-50" onClick={() => startEdit(s)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-100" onClick={() => setDeleteScheduleId(s.id)}>Delete</button></div></td></tr>)}{filteredSchedules.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="6">No schedule rows match the selected filters.</td></tr>}</tbody></table></div>
+                    <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Staff</th><th className="px-5 py-3">Shift</th><th className="px-5 py-3">Break</th><th className="px-5 py-3">Day Off</th><th className="px-5 py-3">Actions</th></tr></thead><tbody>{(schedules?.data || []).map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{formatYmdForDisplay(s.schedule_date)}</td><td className="px-5 py-3 font-medium text-slate-700">{s.staff_name}</td><td className="px-5 py-3 text-slate-600">{s.start_time || '-'} - {s.end_time || '-'}</td><td className="px-5 py-3 text-slate-600">{s.break_start || '-'} - {s.break_end || '-'}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_day_off ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{s.is_day_off ? 'Yes' : 'No'}</span></td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-300 bg-white px-2.5 py-1 text-xs font-semibold text-indigo-800 shadow-sm hover:bg-indigo-50" onClick={() => startEdit(s)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-100" onClick={() => setDeleteScheduleId(s.id)}>Delete</button></div></td></tr>)}{(schedules?.data || []).length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="6">No schedule rows match the selected filters.</td></tr>}</tbody></table></div>
                     <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
-                        <span>Page {currentPage} of {totalPages}</span>
-                        <div className="flex gap-2">
-                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage <= 1} onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}>Previous</button>
-                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}>Next</button>
+                        <span>Page {schedules?.current_page || 1} of {schedules?.last_page || 1}</span>
+                        <div className="flex flex-wrap gap-2">
+                            {(schedules?.links || []).map((link) => (
+                                <Link
+                                    key={`${link.label}-${link.url || 'null'}`}
+                                    href={link.url || '#'}
+                                    preserveState
+                                    className={`rounded-lg border px-3 py-1 ${link.active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600'} ${!link.url ? 'pointer-events-none opacity-50' : 'hover:bg-slate-50'}`}
+                                    dangerouslySetInnerHTML={{ __html: link.label }}
+                                />
+                            ))}
                         </div>
                     </div>
                 </section>
@@ -283,6 +297,5 @@ export default function SchedulesIndex({ staffProfiles, schedules, bookingRules,
         </AuthenticatedLayout>
     );
 }
-
 
 

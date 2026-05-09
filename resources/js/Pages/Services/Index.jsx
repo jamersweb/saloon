@@ -1,25 +1,26 @@
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useEffect, useMemo, useState } from 'react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function ServicesIndex({ services }) {
-    const ROWS_PER_PAGE = 10;
+export default function ServicesIndex({ services, filters, categories = [] }) {
     const { flash, app_currency_code: currencyCode = 'AED' } = usePage().props;
     const [editingId, setEditingId] = useState(null);
     const [deactivateId, setDeactivateId] = useState(null);
     const [deactivateBusy, setDeactivateBusy] = useState(false);
-    const [searchText, setSearchText] = useState('');
-    const [categoryFilter, setCategoryFilter] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [minPrice, setMinPrice] = useState('');
-    const [maxPrice, setMaxPrice] = useState('');
-    const [minDuration, setMinDuration] = useState('');
-    const [maxDuration, setMaxDuration] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
+    const filterForm = useForm({
+        search: filters?.search || '',
+        category: filters?.category || '',
+        status: filters?.status || 'all',
+        min_price: filters?.min_price ?? '',
+        max_price: filters?.max_price ?? '',
+        min_duration: filters?.min_duration ?? '',
+        max_duration: filters?.max_duration ?? '',
+        per_page: String(filters?.per_page || 10),
+    });
 
     const createForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', price: '', is_active: true });
     const editForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', price: '', is_active: true });
@@ -43,63 +44,53 @@ export default function ServicesIndex({ services }) {
         editForm.clearErrors();
     };
 
-    const categories = useMemo(
-        () => Array.from(new Set((services || []).map((service) => String(service.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
-        [services],
-    );
-
-    const filteredServices = useMemo(() => {
-        const q = searchText.trim().toLowerCase();
-        const minP = minPrice === '' ? null : Number(minPrice);
-        const maxP = maxPrice === '' ? null : Number(maxPrice);
-        const minD = minDuration === '' ? null : Number(minDuration);
-        const maxD = maxDuration === '' ? null : Number(maxDuration);
-
-        return (services || []).filter((service) => {
-            if (q) {
-                const haystack = `${service.name || ''} ${service.category || ''}`.toLowerCase();
-                if (!haystack.includes(q)) return false;
-            }
-
-            if (categoryFilter && String(service.category || '').trim() !== categoryFilter) return false;
-            if (statusFilter === 'active' && !service.is_active) return false;
-            if (statusFilter === 'inactive' && service.is_active) return false;
-
-            const price = Number(service.price || 0);
-            const duration = Number(service.duration_minutes || 0);
-            if (minP !== null && !Number.isNaN(minP) && price < minP) return false;
-            if (maxP !== null && !Number.isNaN(maxP) && price > maxP) return false;
-            if (minD !== null && !Number.isNaN(minD) && duration < minD) return false;
-            if (maxD !== null && !Number.isNaN(maxD) && duration > maxD) return false;
-
-            return true;
+    useEffect(() => {
+        filterForm.setData({
+            search: filters?.search || '',
+            category: filters?.category || '',
+            status: filters?.status || 'all',
+            min_price: filters?.min_price ?? '',
+            max_price: filters?.max_price ?? '',
+            min_duration: filters?.min_duration ?? '',
+            max_duration: filters?.max_duration ?? '',
+            per_page: String(filters?.per_page || 10),
         });
-    }, [services, searchText, categoryFilter, statusFilter, minPrice, maxPrice, minDuration, maxDuration]);
+    }, [filters?.search, filters?.category, filters?.status, filters?.min_price, filters?.max_price, filters?.min_duration, filters?.max_duration, filters?.per_page]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredServices.length / ROWS_PER_PAGE));
-    const pagedServices = useMemo(
-        () => filteredServices.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE),
-        [filteredServices, currentPage],
-    );
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchText, categoryFilter, statusFilter, minPrice, maxPrice, minDuration, maxDuration]);
-
-    useEffect(() => {
-        if (currentPage > totalPages) {
-            setCurrentPage(totalPages);
-        }
-    }, [currentPage, totalPages]);
+    const applyFilters = () => {
+        router.get(route('services.index'), {
+            search: filterForm.data.search || undefined,
+            category: filterForm.data.category || undefined,
+            status: filterForm.data.status,
+            min_price: filterForm.data.min_price || undefined,
+            max_price: filterForm.data.max_price || undefined,
+            min_duration: filterForm.data.min_duration || undefined,
+            max_duration: filterForm.data.max_duration || undefined,
+            per_page: filterForm.data.per_page,
+        }, {
+            preserveState: true,
+            replace: true,
+        });
+    };
 
     const clearFilters = () => {
-        setSearchText('');
-        setCategoryFilter('');
-        setStatusFilter('all');
-        setMinPrice('');
-        setMaxPrice('');
-        setMinDuration('');
-        setMaxDuration('');
+        const defaults = {
+            search: '',
+            category: '',
+            status: 'all',
+            min_price: '',
+            max_price: '',
+            min_duration: '',
+            max_duration: '',
+            per_page: '10',
+        };
+
+        filterForm.setData(defaults);
+
+        router.get(route('services.index'), { status: 'all', per_page: 10 }, {
+            preserveState: true,
+            replace: true,
+        });
     };
 
     return (
@@ -122,22 +113,25 @@ export default function ServicesIndex({ services }) {
                 </section>
 
                 <section className="ta-card overflow-hidden">
-                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Service Catalog</h3></div>
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <h3 className="text-sm font-semibold text-slate-700">Service Catalog</h3>
+                        <p className="mt-1 text-xs text-slate-500">Showing {services?.from || 0}-{services?.to || 0} of {services?.total || 0} services</p>
+                    </div>
                     <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-6">
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Search</label>
-                            <input className="ta-input" placeholder="Service name or category" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+                            <input className="ta-input" placeholder="Service name or category" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Category</label>
-                            <select className="ta-input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                            <select className="ta-input" value={filterForm.data.category} onChange={(e) => filterForm.setData('category', e.target.value)}>
                                 <option value="">All categories</option>
                                 {categories.map((category) => <option key={category} value={category}>{category}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="ta-field-label">Status</label>
-                            <select className="ta-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                            <select className="ta-input" value={filterForm.data.status} onChange={(e) => filterForm.setData('status', e.target.value)}>
                                 <option value="all">All services</option>
                                 <option value="active">Active only</option>
                                 <option value="inactive">Inactive only</option>
@@ -145,38 +139,50 @@ export default function ServicesIndex({ services }) {
                         </div>
                         <div>
                             <label className="ta-field-label">Min price</label>
-                            <input className="ta-input" type="number" min="0" step="0.01" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
+                            <input className="ta-input" type="number" min="0" step="0.01" value={filterForm.data.min_price} onChange={(e) => filterForm.setData('min_price', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Max price</label>
-                            <input className="ta-input" type="number" min="0" step="0.01" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} />
+                            <input className="ta-input" type="number" min="0" step="0.01" value={filterForm.data.max_price} onChange={(e) => filterForm.setData('max_price', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Min duration</label>
-                            <input className="ta-input" type="number" min="0" value={minDuration} onChange={(e) => setMinDuration(e.target.value)} />
+                            <input className="ta-input" type="number" min="0" value={filterForm.data.min_duration} onChange={(e) => filterForm.setData('min_duration', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Max duration</label>
-                            <input className="ta-input" type="number" min="0" value={maxDuration} onChange={(e) => setMaxDuration(e.target.value)} />
+                            <input className="ta-input" type="number" min="0" value={filterForm.data.max_duration} onChange={(e) => filterForm.setData('max_duration', e.target.value)} />
                         </div>
-                        <div className="md:col-span-6 flex items-center justify-between">
-                            <p className="text-xs text-slate-500">Showing {filteredServices.length} of {(services || []).length} services</p>
-                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                        <div className="md:col-span-6 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex gap-3">
+                                <select className="ta-input max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                                    {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
+                                </select>
+                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={applyFilters}>Apply Filters</button>
+                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                            </div>
                         </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Name</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Duration</th><th className="px-5 py-3">Buffer</th><th className="px-5 py-3">Repeat</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
-                            <tbody>{pagedServices.map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{s.name}</td><td className="px-5 py-3 text-slate-600">{s.category || '-'}</td><td className="px-5 py-3 text-slate-600">{s.duration_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.buffer_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.repeat_after_days ? `${s.repeat_after_days}d` : '-'}</td><td className="px-5 py-3 text-slate-600">{new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(s.price || 0))}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(s)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => setDeactivateId(s.id)}>Delete</button></div></td></tr>)}
-                            {filteredServices.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="8">No services match the selected filters.</td></tr>}
+                            <tbody>{(services?.data || []).map((s) => <tr key={s.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{s.name}</td><td className="px-5 py-3 text-slate-600">{s.category || '-'}</td><td className="px-5 py-3 text-slate-600">{s.duration_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.buffer_minutes}m</td><td className="px-5 py-3 text-slate-600">{s.repeat_after_days ? `${s.repeat_after_days}d` : '-'}</td><td className="px-5 py-3 text-slate-600">{new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(s.price || 0))}</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{s.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(s)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => setDeactivateId(s.id)}>Delete</button></div></td></tr>)}
+                            {(services?.data || []).length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="8">No services match the selected filters.</td></tr>}
                             </tbody>
                         </table>
                     </div>
                     <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
-                        <span>Page {currentPage} of {totalPages}</span>
-                        <div className="flex gap-2">
-                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage <= 1} onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}>Previous</button>
-                            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-50" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}>Next</button>
+                        <span>Page {services?.current_page || 1} of {services?.last_page || 1}</span>
+                        <div className="flex flex-wrap gap-2">
+                            {(services?.links || []).map((link) => (
+                                <Link
+                                    key={`${link.label}-${link.url || 'null'}`}
+                                    href={link.url || '#'}
+                                    preserveState
+                                    className={`rounded-lg border px-3 py-1 ${link.active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600'} ${!link.url ? 'pointer-events-none opacity-50' : 'hover:bg-slate-50'}`}
+                                    dangerouslySetInnerHTML={{ __html: link.label }}
+                                />
+                            ))}
                         </div>
                     </div>
                 </section>
@@ -219,7 +225,6 @@ export default function ServicesIndex({ services }) {
         </AuthenticatedLayout>
     );
 }
-
 
 
 

@@ -11,10 +11,57 @@ use Inertia\Response;
 
 class SalonServiceController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $filters = [
+            'search' => trim($request->string('search')->toString()),
+            'category' => trim($request->string('category')->toString()),
+            'status' => $request->string('status')->toString() ?: 'all',
+            'min_price' => $request->input('min_price'),
+            'max_price' => $request->input('max_price'),
+            'min_duration' => $request->input('min_duration'),
+            'max_duration' => $request->input('max_duration'),
+            'per_page' => (int) $request->integer('per_page', 10),
+        ];
+
+        if (! in_array($filters['status'], ['all', 'active', 'inactive'], true)) {
+            $filters['status'] = 'all';
+        }
+
+        if (! in_array($filters['per_page'], [10, 25, 50, 100], true)) {
+            $filters['per_page'] = 10;
+        }
+
+        $servicesQuery = SalonService::query()
+            ->when($filters['search'] !== '', function ($query) use ($filters): void {
+                $needle = '%' . $filters['search'] . '%';
+                $query->where(function ($serviceQuery) use ($needle): void {
+                    $serviceQuery
+                        ->where('name', 'like', $needle)
+                        ->orWhere('category', 'like', $needle);
+                });
+            })
+            ->when($filters['category'] !== '', fn ($query) => $query->where('category', $filters['category']))
+            ->when($filters['status'] === 'active', fn ($query) => $query->where('is_active', true))
+            ->when($filters['status'] === 'inactive', fn ($query) => $query->where('is_active', false))
+            ->when(is_numeric($filters['min_price']), fn ($query) => $query->where('price', '>=', (float) $filters['min_price']))
+            ->when(is_numeric($filters['max_price']), fn ($query) => $query->where('price', '<=', (float) $filters['max_price']))
+            ->when(is_numeric($filters['min_duration']), fn ($query) => $query->where('duration_minutes', '>=', (int) $filters['min_duration']))
+            ->when(is_numeric($filters['max_duration']), fn ($query) => $query->where('duration_minutes', '<=', (int) $filters['max_duration']))
+            ->latest();
+
         return Inertia::render('Services/Index', [
-            'services' => SalonService::query()->latest()->get(),
+            'services' => $servicesQuery
+                ->paginate($filters['per_page'])
+                ->withQueryString(),
+            'filters' => $filters,
+            'categories' => SalonService::query()
+                ->whereNotNull('category')
+                ->where('category', '!=', '')
+                ->distinct()
+                ->orderBy('category')
+                ->pluck('category')
+                ->values(),
         ]);
     }
 

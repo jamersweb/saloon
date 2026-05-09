@@ -20,11 +20,20 @@ class AttendanceLogController extends Controller
         $isStaff = $user?->hasRole('staff');
         $staffProfileId = $user?->staffProfile?->id;
         $today = now()->toDateString();
+        $filters = [
+            'staff_profile_id' => $request->integer('staff_profile_id') ?: null,
+            'date_from' => (string) $request->input('date_from', ''),
+            'date_to' => (string) $request->input('date_to', ''),
+            'per_page' => (int) $request->input('per_page', 10),
+        ];
+
+        if (! in_array($filters['per_page'], [10, 25, 50, 100], true)) {
+            $filters['per_page'] = 10;
+        }
 
         $logsQuery = AttendanceLog::query()
             ->with('staffProfile.user')
-            ->latest('attendance_date')
-            ->limit(100);
+            ->latest('attendance_date');
 
         $staffProfilesQuery = StaffProfile::query()
             ->with('user')
@@ -34,6 +43,17 @@ class AttendanceLogController extends Controller
         if ($isStaff) {
             $logsQuery->where('staff_profile_id', $staffProfileId ?: 0);
             $staffProfilesQuery->whereKey($staffProfileId ?: 0);
+            $filters['staff_profile_id'] = $staffProfileId ?: null;
+        } elseif ($filters['staff_profile_id']) {
+            $logsQuery->where('staff_profile_id', $filters['staff_profile_id']);
+        }
+
+        if ($filters['date_from'] !== '') {
+            $logsQuery->whereDate('attendance_date', '>=', $filters['date_from']);
+        }
+
+        if ($filters['date_to'] !== '') {
+            $logsQuery->whereDate('attendance_date', '<=', $filters['date_to']);
         }
 
         $todayLog = null;
@@ -54,19 +74,23 @@ class AttendanceLogController extends Controller
                 'clock_out' => $todayLog->clock_out,
             ] : null,
             'appTimezone' => config('app.timezone'),
-            'logs' => $logsQuery->get()->map(fn (AttendanceLog $log) => [
-                'id' => $log->id,
-                'attendance_date' => $log->attendance_date,
-                'clock_in' => $log->clock_in,
-                'clock_in_latitude' => $log->clock_in_latitude,
-                'clock_in_longitude' => $log->clock_in_longitude,
-                'clock_in_location_url' => $log->clock_in_latitude !== null && $log->clock_in_longitude !== null
-                    ? sprintf('https://www.google.com/maps?q=%s,%s', $log->clock_in_latitude, $log->clock_in_longitude)
-                    : null,
-                'clock_out' => $log->clock_out,
-                'late_minutes' => $log->late_minutes,
-                'staff_name' => $log->staffProfile?->user?->name,
-            ]),
+            'logs' => $logsQuery
+                ->paginate($filters['per_page'])
+                ->withQueryString()
+                ->through(fn (AttendanceLog $log) => [
+                    'id' => $log->id,
+                    'attendance_date' => $log->attendance_date,
+                    'clock_in' => $log->clock_in,
+                    'clock_in_latitude' => $log->clock_in_latitude,
+                    'clock_in_longitude' => $log->clock_in_longitude,
+                    'clock_in_location_url' => $log->clock_in_latitude !== null && $log->clock_in_longitude !== null
+                        ? sprintf('https://www.google.com/maps?q=%s,%s', $log->clock_in_latitude, $log->clock_in_longitude)
+                        : null,
+                    'clock_out' => $log->clock_out,
+                    'late_minutes' => $log->late_minutes,
+                    'staff_name' => $log->staffProfile?->user?->name,
+                ]),
+            'filters' => $filters,
             'staffProfiles' => $staffProfilesQuery->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'name' => $staff->user?->name,

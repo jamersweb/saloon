@@ -21,6 +21,22 @@ class StaffScheduleController extends Controller
     public function index(Request $request): Response
     {
         $this->staffScheduleGenerator->fillRollingWeek();
+        $filters = [
+            'search' => trim($request->string('search')->toString()),
+            'staff_profile_id' => $request->integer('staff_profile_id') ?: null,
+            'date_from' => $request->string('date_from')->toString() ?: '',
+            'date_to' => $request->string('date_to')->toString() ?: '',
+            'day_off' => $request->string('day_off')->toString() ?: 'all',
+            'per_page' => (int) $request->integer('per_page', 30),
+        ];
+
+        if (! in_array($filters['day_off'], ['all', 'working', 'day_off'], true)) {
+            $filters['day_off'] = 'all';
+        }
+
+        if (! in_array($filters['per_page'], [10, 25, 30, 50, 100], true)) {
+            $filters['per_page'] = 30;
+        }
 
         $rules = BookingRule::current();
         $today = Carbon::today();
@@ -53,26 +69,41 @@ class StaffScheduleController extends Controller
                 ->with('staffProfile.user')
                 ->whereDate('schedule_date', '>=', $visibleRangeStart)
                 ->whereDate('schedule_date', '<=', $visibleRangeEnd)
+                ->when($filters['search'] !== '', function ($query) use ($filters): void {
+                    $needle = '%' . $filters['search'] . '%';
+                    $query->where(function ($scheduleQuery) use ($needle): void {
+                        $scheduleQuery
+                            ->where('schedule_date', 'like', $needle)
+                            ->orWhereHas('staffProfile.user', fn ($userQuery) => $userQuery->where('name', 'like', $needle));
+                    });
+                })
+                ->when($filters['staff_profile_id'], fn ($query) => $query->where('staff_profile_id', $filters['staff_profile_id']))
+                ->when($filters['date_from'] !== '', fn ($query) => $query->whereDate('schedule_date', '>=', $filters['date_from']))
+                ->when($filters['date_to'] !== '', fn ($query) => $query->whereDate('schedule_date', '<=', $filters['date_to']))
+                ->when($filters['day_off'] === 'day_off', fn ($query) => $query->where('is_day_off', true))
+                ->when($filters['day_off'] === 'working', fn ($query) => $query->where('is_day_off', false))
                 ->orderByRaw(
                     'CASE WHEN schedule_date >= ? AND schedule_date < ? THEN 0 ELSE 1 END ASC',
                     [$currentMonthStart, $nextMonthStart]
                 )
                 ->orderByDesc('schedule_date')
                 ->orderBy('staff_profile_id')
-                ->get()
-                ->map(fn (StaffSchedule $schedule) => [
-                'id' => $schedule->id,
-                'staff_profile_id' => $schedule->staff_profile_id,
-                'schedule_date' => $schedule->schedule_date,
-                'start_time' => $schedule->start_time,
-                'end_time' => $schedule->end_time,
-                'break_start' => $schedule->break_start,
-                'break_end' => $schedule->break_end,
-                'is_day_off' => $schedule->is_day_off,
-                'notes' => $schedule->notes,
-                'staff_name' => $schedule->staffProfile?->user?->name,
-                'staff_code' => $schedule->staffProfile?->employee_code,
-            ]),
+                ->paginate($filters['per_page'])
+                ->withQueryString()
+                ->through(fn (StaffSchedule $schedule) => [
+                    'id' => $schedule->id,
+                    'staff_profile_id' => $schedule->staff_profile_id,
+                    'schedule_date' => $schedule->schedule_date,
+                    'start_time' => $schedule->start_time,
+                    'end_time' => $schedule->end_time,
+                    'break_start' => $schedule->break_start,
+                    'break_end' => $schedule->break_end,
+                    'is_day_off' => $schedule->is_day_off,
+                    'notes' => $schedule->notes,
+                    'staff_name' => $schedule->staffProfile?->user?->name,
+                    'staff_code' => $schedule->staffProfile?->employee_code,
+                ]),
+            'filters' => $filters,
         ]);
     }
 

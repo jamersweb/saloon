@@ -1,13 +1,19 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 
-export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTimezone }) {
+export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTimezone, filters }) {
     const { errors, auth, flash } = usePage().props;
     const isStaff = auth?.user?.role?.name === 'staff';
     const myProfileName = staffProfiles?.[0]?.name || 'My profile';
     const clockInForm = useForm({ staff_profile_id: '', clock_in_latitude: '', clock_in_longitude: '' });
     const clockOutForm = useForm({ staff_profile_id: '' });
+    const filterForm = useForm({
+        staff_profile_id: filters?.staff_profile_id || '',
+        date_from: filters?.date_from || '',
+        date_to: filters?.date_to || '',
+        per_page: String(filters?.per_page || 10),
+    });
     const [now, setNow] = useState(new Date());
     const [toast, setToast] = useState('');
 
@@ -31,6 +37,45 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
         hour12: false,
         timeZone: appTimezone || 'UTC',
     }).format(now);
+
+    useEffect(() => {
+        filterForm.setData({
+            staff_profile_id: filters?.staff_profile_id || '',
+            date_from: filters?.date_from || '',
+            date_to: filters?.date_to || '',
+            per_page: String(filters?.per_page || 10),
+        });
+    }, [filters?.staff_profile_id, filters?.date_from, filters?.date_to, filters?.per_page]);
+
+    const applyFilters = () => {
+        router.get(route('attendance.index'), {
+            staff_profile_id: filterForm.data.staff_profile_id || undefined,
+            date_from: filterForm.data.date_from || undefined,
+            date_to: filterForm.data.date_to || undefined,
+            per_page: filterForm.data.per_page,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
+
+    const resetFilters = () => {
+        const defaults = {
+            staff_profile_id: '',
+            date_from: '',
+            date_to: '',
+            per_page: '10',
+        };
+
+        filterForm.setData(defaults);
+
+        router.get(route('attendance.index'), defaults, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
 
     const requestLocation = () => new Promise((resolve) => {
         if (!navigator.geolocation) {
@@ -147,8 +192,33 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
 
                 <section className="ta-card overflow-hidden">
                     <div className="border-b border-slate-200 px-5 py-4">
-                        <h3 className="text-sm font-semibold text-slate-700">Attendance Log</h3>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <h3 className="text-sm font-semibold text-slate-700">Attendance Log</h3>
+                            <span className="text-xs text-slate-500">Showing {logs.from || 0}-{logs.to || 0} of {logs.total || 0}</span>
+                        </div>
                     </div>
+                    <form className="border-b border-slate-100 px-5 py-4" onSubmit={(e) => { e.preventDefault(); applyFilters(); }}>
+                        <div className="grid gap-3 md:grid-cols-4">
+                            {!isStaff && (
+                                <select className="ta-input" value={filterForm.data.staff_profile_id} onChange={(e) => filterForm.setData('staff_profile_id', e.target.value)}>
+                                    <option value="">All staff profiles</option>
+                                    {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                            )}
+                            <input className="ta-input" type="date" value={filterForm.data.date_from} onChange={(e) => filterForm.setData('date_from', e.target.value)} />
+                            <input className="ta-input" type="date" value={filterForm.data.date_to} onChange={(e) => filterForm.setData('date_to', e.target.value)} />
+                            <select className="ta-input" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                                <option value="10">10 / page</option>
+                                <option value="25">25 / page</option>
+                                <option value="50">50 / page</option>
+                                <option value="100">100 / page</option>
+                            </select>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-3">
+                            <button className="ta-btn-primary" type="submit">Apply Filters</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700" onClick={resetFilters}>Reset</button>
+                        </div>
+                    </form>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
@@ -162,12 +232,12 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
                                 </tr>
                             </thead>
                             <tbody>
-                                {logs.length === 0 && (
+                                {logs.data.length === 0 && (
                                     <tr>
                                         <td className="px-5 py-4 text-slate-500" colSpan="6">No attendance records available.</td>
                                     </tr>
                                 )}
-                                {logs.map((l) => (
+                                {logs.data.map((l) => (
                                     <tr key={l.id} className="border-t border-slate-100">
                                         <td className="px-5 py-3 text-slate-600">{l.attendance_date?.slice(0, 10)}</td>
                                         <td className="px-5 py-3 font-medium text-slate-700">{l.staff_name}</td>
@@ -186,6 +256,17 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
                             </tbody>
                         </table>
                     </div>
+                    {logs.links?.length > 3 && (
+                        <div className="flex flex-wrap gap-2 border-t border-slate-100 px-5 py-3 text-sm">
+                            {logs.links.map((link, i) =>
+                                link.url ? (
+                                    <Link key={i} href={link.url} className={`rounded-lg px-3 py-1 ${link.active ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'}`} preserveScroll preserveState dangerouslySetInnerHTML={{ __html: link.label }} />
+                                ) : (
+                                    <span key={i} className="px-3 py-1 text-slate-400" dangerouslySetInnerHTML={{ __html: link.label }} />
+                                ),
+                            )}
+                        </div>
+                    )}
                 </section>
             </div>
         </AuthenticatedLayout>

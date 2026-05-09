@@ -1,12 +1,12 @@
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useRef, useState } from 'react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function StaffIndex({ staffProfiles, roles, showDeleted = false, trashedCount = 0 }) {
+export default function StaffIndex({ staffProfiles, roles, filters, showDeleted = false, trashedCount = 0 }) {
     const { flash } = usePage().props;
     const [editingId, setEditingId] = useState(null);
     const [uiError, setUiError] = useState('');
@@ -14,10 +14,25 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
     const [staffConfirmBusy, setStaffConfirmBusy] = useState(false);
     const importFileRef = useRef(null);
     const safeRoles = Array.isArray(roles) ? roles : [];
-    const safeStaffProfiles = Array.isArray(staffProfiles) ? staffProfiles : [];
+    const safeStaffProfiles = Array.isArray(staffProfiles?.data) ? staffProfiles.data : [];
+    const filterForm = useForm({
+        search: filters?.search || '',
+        role_id: filters?.role_id ? String(filters.role_id) : '',
+        status: filters?.status || (showDeleted ? 'removed' : 'all'),
+        per_page: String(filters?.per_page || 10),
+    });
 
     const createForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', password: '', role_id: '' });
     const editForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', is_active: true, role_id: '' });
+
+    useEffect(() => {
+        filterForm.setData({
+            search: filters?.search || '',
+            role_id: filters?.role_id ? String(filters.role_id) : '',
+            status: filters?.status || (showDeleted ? 'removed' : 'all'),
+            per_page: String(filters?.per_page || 10),
+        });
+    }, [filters?.search, filters?.role_id, filters?.status, filters?.per_page, showDeleted]);
 
     const toUserFriendlyError = (errors, fallback) => {
         const first = Object.values(errors || {}).find((v) => typeof v === 'string' && v.trim() !== '');
@@ -87,6 +102,39 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
         });
     };
 
+    const applyFilters = () => {
+        router.get(route('staff.index'), {
+            search: filterForm.data.search || undefined,
+            role_id: filterForm.data.role_id || undefined,
+            status: filterForm.data.status,
+            per_page: filterForm.data.per_page,
+            show_deleted: showDeleted ? 1 : undefined,
+        }, {
+            preserveState: true,
+            replace: true,
+        });
+    };
+
+    const resetFilters = () => {
+        const defaults = {
+            search: '',
+            role_id: '',
+            status: showDeleted ? 'removed' : 'all',
+            per_page: '10',
+        };
+
+        filterForm.setData(defaults);
+
+        router.get(route('staff.index'), {
+            status: defaults.status,
+            per_page: defaults.per_page,
+            show_deleted: showDeleted ? 1 : undefined,
+        }, {
+            preserveState: true,
+            replace: true,
+        });
+    };
+
     return (
         <AuthenticatedLayout header="Staff">
             <Head title="Staff" />
@@ -130,7 +178,10 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
 
                 <section className="ta-card overflow-hidden">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
-                        <h3 className="text-sm font-semibold text-slate-700">{showDeleted ? 'Removed staff' : 'Team List'}</h3>
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-700">{showDeleted ? 'Removed staff' : 'Team List'}</h3>
+                            <p className="mt-1 text-xs text-slate-500">Showing {staffProfiles?.from || 0}-{staffProfiles?.to || 0} of {staffProfiles?.total || 0}</p>
+                        </div>
                         <div className="flex flex-wrap items-center gap-2">
                             <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleUsersImport} />
                             <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50" onClick={() => importFileRef.current?.click()}>
@@ -151,6 +202,31 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
                                     {showDeleted ? 'Back to active team' : `Removed staff (${trashedCount})`}
                                 </button>
                             ) : null}
+                        </div>
+                    </div>
+                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-5">
+                        <input className="ta-input md:col-span-2" placeholder="Search code, name, email, or phone" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
+                        <select className="ta-input" value={filterForm.data.role_id} onChange={(e) => filterForm.setData('role_id', e.target.value)}>
+                            <option value="">All roles</option>
+                            {safeRoles.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}
+                        </select>
+                        <select className="ta-input" value={filterForm.data.status} onChange={(e) => filterForm.setData('status', e.target.value)}>
+                            {showDeleted ? (
+                                <option value="removed">Removed only</option>
+                            ) : (
+                                <>
+                                    <option value="all">All staff</option>
+                                    <option value="active">Active only</option>
+                                    <option value="inactive">Inactive only</option>
+                                </>
+                            )}
+                        </select>
+                        <div className="flex gap-3">
+                            <select className="ta-input max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                                {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
+                            </select>
+                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" onClick={applyFilters}>Apply Filters</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500" onClick={resetFilters}>Reset</button>
                         </div>
                     </div>
                     <div className="overflow-x-auto">
@@ -216,8 +292,27 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
                                         </td>
                                     </tr>
                                 ))}
+                                {safeStaffProfiles.length === 0 && (
+                                    <tr>
+                                        <td colSpan="8" className="px-5 py-8 text-center text-sm text-slate-500">No staff match the current filters.</td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
+                        <span>Page {staffProfiles?.current_page || 1} of {staffProfiles?.last_page || 1}</span>
+                        <div className="flex flex-wrap gap-2">
+                            {(staffProfiles?.links || []).map((link) => (
+                                <Link
+                                    key={`${link.label}-${link.url || 'null'}`}
+                                    href={link.url || '#'}
+                                    preserveState
+                                    className={`rounded-lg border px-3 py-1.5 ${link.active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600'} ${!link.url ? 'pointer-events-none opacity-50' : 'hover:bg-slate-50'}`}
+                                    dangerouslySetInnerHTML={{ __html: link.label }}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </section>
 
@@ -285,6 +380,5 @@ export default function StaffIndex({ staffProfiles, roles, showDeleted = false, 
         </AuthenticatedLayout>
     );
 }
-
 
 

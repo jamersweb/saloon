@@ -1,6 +1,6 @@
 ﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const buildTimeZoneParts = (value, timeZone) => {
     if (!value) {
@@ -47,15 +47,22 @@ const formatDateTimeInZone = (value, timeZone) => {
     return `${parts.year}-${parts.month}-${parts.day}, ${String(hour12).padStart(2, '0')}:${parts.minute} ${suffix}`;
 };
 
-export default function Automation({ tags, customerOptions, customers, customerFilters, contacts, dueServices, recentLogs, segmentRules, campaignTemplates, metaTemplates, campaigns }) {
+export default function Automation({ tags, customerOptions, customers, customerFilters, contacts, contactFilters, dueServices, recentLogs, segmentRules, campaignTemplates, metaTemplates, campaigns }) {
     const { flash, auth, app_timezone: appTimezone = 'Asia/Dubai' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_crm_automation);
     const [editingRuleId, setEditingRuleId] = useState(null);
-    const [contactFilter, setContactFilter] = useState('');
     const [editingMetaTemplateId, setEditingMetaTemplateId] = useState(null);
 
     const tagForm = useForm({ name: '', color: '#4f46e5', is_active: true });
     const assignForm = useForm({ customer_id: '', customer_tag_id: '' });
+    const singleMessageForm = useForm({
+        customer_id: '',
+        channel: 'whatsapp',
+        message: '',
+        whatsapp_message_type: 'text',
+        whatsapp_template_id: '',
+        whatsapp_template_variables: '',
+    });
     const customerFilterForm = useForm({
         search: customerFilters?.search || '',
         tag_id: customerFilters?.tag_id || '',
@@ -63,6 +70,13 @@ export default function Automation({ tags, customerOptions, customers, customerF
         active_status: customerFilters?.active_status || 'all',
         sort: customerFilters?.sort || 'name_asc',
         per_page: String(customerFilters?.per_page || 10),
+    });
+    const contactFilterForm = useForm({
+        search: contactFilters?.search || '',
+        tag_id: contactFilters?.tag_id || '',
+        tag_state: contactFilters?.tag_state || 'all',
+        active_status: contactFilters?.active_status || 'active',
+        per_page: String(contactFilters?.per_page || 10),
     });
     const ruleForm = useForm({ name: '', customer_tag_id: '', criteria: 'inactivity_days', threshold_value: '', lookback_days: '', is_active: true });
     const editRuleForm = useForm({ name: '', customer_tag_id: '', criteria: 'inactivity_days', threshold_value: '', lookback_days: '', is_active: true });
@@ -165,19 +179,6 @@ export default function Automation({ tags, customerOptions, customers, customerF
         });
     };
 
-    const filteredContacts = useMemo(() => {
-        const needle = contactFilter.trim().toLowerCase();
-        if (!needle) {
-            return contacts;
-        }
-
-        return contacts.filter((contact) =>
-            [contact.name, contact.phone, contact.email]
-                .filter(Boolean)
-                .some((value) => value.toLowerCase().includes(needle))
-        );
-    }, [contacts, contactFilter]);
-
     useEffect(() => {
         if (!flash?.whatsapp_header_media_handle) {
             return;
@@ -200,6 +201,16 @@ export default function Automation({ tags, customerOptions, customers, customerF
             per_page: String(customerFilters?.per_page || 10),
         });
     }, [customerFilters?.search, customerFilters?.tag_id, customerFilters?.tag_state, customerFilters?.active_status, customerFilters?.sort, customerFilters?.per_page]);
+
+    useEffect(() => {
+        contactFilterForm.setData({
+            search: contactFilters?.search || '',
+            tag_id: contactFilters?.tag_id || '',
+            tag_state: contactFilters?.tag_state || 'all',
+            active_status: contactFilters?.active_status || 'active',
+            per_page: String(contactFilters?.per_page || 10),
+        });
+    }, [contactFilters?.search, contactFilters?.tag_id, contactFilters?.tag_state, contactFilters?.active_status, contactFilters?.per_page]);
 
     const applyCustomerFilters = () => {
         router.get(route('customers.automation.index'), {
@@ -225,6 +236,48 @@ export default function Automation({ tags, customerOptions, customers, customerF
         customerFilterForm.setData(defaults);
 
         router.get(route('customers.automation.index'), defaults, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
+
+    const applyContactFilters = () => {
+        router.get(route('customers.automation.index'), {
+            ...customerFilterForm.data,
+            tag_id: customerFilterForm.data.tag_id || undefined,
+            contact_search: contactFilterForm.data.search,
+            contact_tag_id: contactFilterForm.data.tag_id || undefined,
+            contact_tag_state: contactFilterForm.data.tag_state,
+            contact_active_status: contactFilterForm.data.active_status,
+            contact_per_page: contactFilterForm.data.per_page,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
+
+    const resetContactFilters = () => {
+        const defaults = {
+            search: '',
+            tag_id: '',
+            tag_state: 'all',
+            active_status: 'active',
+            per_page: '10',
+        };
+
+        contactFilterForm.setData(defaults);
+
+        router.get(route('customers.automation.index'), {
+            ...customerFilterForm.data,
+            tag_id: customerFilterForm.data.tag_id || undefined,
+            contact_search: '',
+            contact_tag_id: undefined,
+            contact_tag_state: 'all',
+            contact_active_status: 'active',
+            contact_per_page: '10',
+        }, {
             preserveState: true,
             preserveScroll: true,
             replace: true,
@@ -258,6 +311,8 @@ export default function Automation({ tags, customerOptions, customers, customerF
 
         campaignForm.setData('scheduled_at', `${scheduledDate}T${value}`);
     };
+
+    const selectedSingleMessageCustomer = customerOptions.find((customer) => String(customer.id) === String(singleMessageForm.data.customer_id));
 
     return (
         <AuthenticatedLayout header="CRM Automation">
@@ -576,19 +631,126 @@ export default function Automation({ tags, customerOptions, customers, customerF
                     </div>
                 </section>
 
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">Send Single Message</h3>
+                    <form
+                        className="grid gap-3 md:grid-cols-2"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            singleMessageForm.post(route('customers.automation.messages.single'), {
+                                preserveScroll: true,
+                                onSuccess: () => singleMessageForm.reset('message', 'whatsapp_template_variables'),
+                            });
+                        }}
+                    >
+                        <select className="ta-input" value={singleMessageForm.data.customer_id} onChange={(e) => singleMessageForm.setData('customer_id', e.target.value)} required>
+                            <option value="">Select contact</option>
+                            {customerOptions.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                        </select>
+                        <select className="ta-input" value={singleMessageForm.data.channel} onChange={(e) => singleMessageForm.setData('channel', e.target.value)}>
+                            <option value="whatsapp">WhatsApp</option>
+                            <option value="sms">SMS</option>
+                            <option value="email">Email</option>
+                        </select>
+                        {singleMessageForm.data.channel === 'whatsapp' && (
+                            <>
+                                <select className="ta-input" value={singleMessageForm.data.whatsapp_message_type} onChange={(e) => singleMessageForm.setData('whatsapp_message_type', e.target.value)}>
+                                    <option value="text">WhatsApp text</option>
+                                    <option value="template">WhatsApp template</option>
+                                </select>
+                                {singleMessageForm.data.whatsapp_message_type === 'template' && (
+                                    <select className="ta-input" value={singleMessageForm.data.whatsapp_template_id} onChange={(e) => singleMessageForm.setData('whatsapp_template_id', e.target.value)} required>
+                                        <option value="">Select Meta template</option>
+                                        {metaTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} ({template.language})</option>)}
+                                    </select>
+                                )}
+                            </>
+                        )}
+                        <textarea
+                            className="ta-input md:col-span-2"
+                            rows="4"
+                            placeholder={singleMessageForm.data.whatsapp_message_type === 'template' ? 'Optional internal note for this send. Leave blank for template-only send.' : 'Write your message'}
+                            value={singleMessageForm.data.message}
+                            onChange={(e) => singleMessageForm.setData('message', e.target.value)}
+                        />
+                        {singleMessageForm.data.channel === 'whatsapp' && singleMessageForm.data.whatsapp_message_type === 'template' && (
+                            <input
+                                className="ta-input md:col-span-2"
+                                placeholder="Template variables, comma-separated"
+                                value={singleMessageForm.data.whatsapp_template_variables}
+                                onChange={(e) => singleMessageForm.setData('whatsapp_template_variables', e.target.value)}
+                            />
+                        )}
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 md:col-span-2">
+                            Recipient: {selectedSingleMessageCustomer ? selectedSingleMessageCustomer.name : 'Select a contact'}.
+                            {singleMessageForm.data.channel === 'email' ? ' The customer email will be used.' : ' The customer phone number will be used.'}
+                        </div>
+                        <div className="md:col-span-2">
+                            <button className="ta-btn-primary" disabled={singleMessageForm.processing || !canManage}>Send Message</button>
+                        </div>
+                    </form>
+                </section>
+
                 <section className="ta-card overflow-hidden">
                     <div className="border-b border-slate-200 px-5 py-4">
-                        <div className="flex items-center justify-between gap-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                             <h3 className="text-sm font-semibold text-slate-700">Contact List</h3>
-                            <input className="ta-input max-w-sm" placeholder="Search contacts" value={contactFilter} onChange={(e) => setContactFilter(e.target.value)} />
+                            <span className="text-xs text-slate-500">Showing {contacts.from || 0}-{contacts.to || 0} of {contacts.total || 0}</span>
                         </div>
                     </div>
+                    <form className="border-b border-slate-100 px-5 py-4" onSubmit={(e) => { e.preventDefault(); applyContactFilters(); }}>
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                            <input className="ta-input xl:col-span-2" placeholder="Search name, code, phone, or email" value={contactFilterForm.data.search} onChange={(e) => contactFilterForm.setData('search', e.target.value)} />
+                            <select className="ta-input" value={contactFilterForm.data.tag_id} onChange={(e) => contactFilterForm.setData('tag_id', e.target.value)}>
+                                <option value="">All tags</option>
+                                {tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
+                            </select>
+                            <select className="ta-input" value={contactFilterForm.data.tag_state} onChange={(e) => contactFilterForm.setData('tag_state', e.target.value)}>
+                                <option value="all">All tag states</option>
+                                <option value="tagged">Tagged only</option>
+                                <option value="untagged">Untagged only</option>
+                            </select>
+                            <select className="ta-input" value={contactFilterForm.data.active_status} onChange={(e) => contactFilterForm.setData('active_status', e.target.value)}>
+                                <option value="active">Active only</option>
+                                <option value="all">All statuses</option>
+                                <option value="inactive">Inactive only</option>
+                            </select>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                            <select className="ta-input max-w-[140px]" value={contactFilterForm.data.per_page} onChange={(e) => contactFilterForm.setData('per_page', e.target.value)}>
+                                <option value="10">10 / page</option>
+                                <option value="25">25 / page</option>
+                                <option value="50">50 / page</option>
+                                <option value="100">100 / page</option>
+                            </select>
+                            <button className="ta-btn-primary" type="submit">Apply Filters</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700" onClick={resetContactFilters}>Reset</button>
+                        </div>
+                    </form>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Name</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Tags</th><th className="px-5 py-3">WhatsApp</th><th className="px-5 py-3">Last WA Status</th></tr></thead>
-                            <tbody>{filteredContacts.map((contact) => <tr key={contact.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{contact.name}</td><td className="px-5 py-3 text-slate-600">{contact.phone || '-'}</td><td className="px-5 py-3 text-slate-600">{contact.email || '-'}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2">{contact.tags.map((tag) => <span key={tag.id} className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span>)}{contact.tags.length === 0 && <span className="text-xs text-slate-400">No tags</span>}</div></td><td className="px-5 py-3 text-slate-600">{contact.whatsapp_ready ? 'Ready' : 'Invalid / missing'}</td><td className="px-5 py-3 text-slate-600">{contact.last_whatsapp_status || '-'}</td></tr>)}</tbody>
+                            <tbody>
+                                {contacts.data.map((contact) => <tr key={contact.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700"><div className="font-medium text-slate-800">{contact.name}</div><div className="text-xs text-slate-500">{contact.customer_code || 'No code'}</div></td><td className="px-5 py-3 text-slate-600">{contact.phone || '-'}</td><td className="px-5 py-3 text-slate-600">{contact.email || '-'}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2">{contact.tags.map((tag) => <span key={tag.id} className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span>)}{contact.tags.length === 0 && <span className="text-xs text-slate-400">No tags</span>}</div></td><td className="px-5 py-3 text-slate-600">{contact.whatsapp_ready ? 'Ready' : 'Invalid / missing'}</td><td className="px-5 py-3 text-slate-600">{contact.last_whatsapp_status || '-'}</td></tr>)}
+                                {contacts.data.length === 0 && (
+                                    <tr>
+                                        <td colSpan="6" className="px-5 py-8 text-center text-sm text-slate-500">No contacts match the current filters.</td>
+                                    </tr>
+                                )}
+                            </tbody>
                         </table>
                     </div>
+                    {contacts.links?.length > 3 && (
+                        <div className="flex flex-wrap gap-2 border-t border-slate-100 px-5 py-3 text-sm">
+                            {contacts.links.map((link, i) =>
+                                link.url ? (
+                                    <Link key={i} href={link.url} className={`rounded-lg px-3 py-1 ${link.active ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'}`} preserveScroll preserveState dangerouslySetInnerHTML={{ __html: link.label }} />
+                                ) : (
+                                    <span key={i} className="px-3 py-1 text-slate-400" dangerouslySetInnerHTML={{ __html: link.label }} />
+                                ),
+                            )}
+                        </div>
+                    )}
                 </section>
 
                 <section className="ta-card overflow-hidden">

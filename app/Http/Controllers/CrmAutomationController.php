@@ -42,6 +42,13 @@ class CrmAutomationController extends Controller
             'sort' => (string) $request->input('sort', 'name_asc'),
             'per_page' => (int) $request->input('per_page', 10),
         ];
+        $contactFilters = [
+            'search' => trim((string) $request->input('contact_search', '')),
+            'tag_id' => $request->integer('contact_tag_id') ?: null,
+            'tag_state' => (string) $request->input('contact_tag_state', 'all'),
+            'active_status' => (string) $request->input('contact_active_status', 'active'),
+            'per_page' => (int) $request->input('contact_per_page', 10),
+        ];
 
         if (! in_array($filters['tag_state'], ['all', 'tagged', 'untagged'], true)) {
             $filters['tag_state'] = 'all';
@@ -57,6 +64,18 @@ class CrmAutomationController extends Controller
 
         if (! in_array($filters['per_page'], [10, 25, 50, 100], true)) {
             $filters['per_page'] = 10;
+        }
+
+        if (! in_array($contactFilters['tag_state'], ['all', 'tagged', 'untagged'], true)) {
+            $contactFilters['tag_state'] = 'all';
+        }
+
+        if (! in_array($contactFilters['active_status'], ['all', 'active', 'inactive'], true)) {
+            $contactFilters['active_status'] = 'active';
+        }
+
+        if (! in_array($contactFilters['per_page'], [10, 25, 50, 100], true)) {
+            $contactFilters['per_page'] = 10;
         }
 
         $customers = Customer::query()
@@ -82,6 +101,25 @@ class CrmAutomationController extends Controller
             'recent' => $customers->latest(),
             default => $customers->orderBy('name'),
         };
+
+        $contacts = Customer::query()
+            ->with('tags:id,name,color')
+            ->when($contactFilters['search'] !== '', function ($query) use ($contactFilters): void {
+                $needle = '%' . $contactFilters['search'] . '%';
+                $query->where(function ($customerQuery) use ($needle): void {
+                    $customerQuery
+                        ->where('name', 'like', $needle)
+                        ->orWhere('customer_code', 'like', $needle)
+                        ->orWhere('phone', 'like', $needle)
+                        ->orWhere('email', 'like', $needle);
+                });
+            })
+            ->when($contactFilters['tag_id'], fn ($query) => $query->whereHas('tags', fn ($tagQuery) => $tagQuery->where('customer_tags.id', $contactFilters['tag_id'])))
+            ->when($contactFilters['tag_state'] === 'tagged', fn ($query) => $query->whereHas('tags'))
+            ->when($contactFilters['tag_state'] === 'untagged', fn ($query) => $query->doesntHave('tags'))
+            ->when($contactFilters['active_status'] === 'active', fn ($query) => $query->where('is_active', true))
+            ->when($contactFilters['active_status'] === 'inactive', fn ($query) => $query->where('is_active', false))
+            ->orderBy('name');
 
         return Inertia::render('Customers/Automation', [
             'tags' => CustomerTag::query()->orderByDesc('is_active')->orderBy('name')->get(),
@@ -143,29 +181,33 @@ class CrmAutomationController extends Controller
                     'provider_status' => $log->provider_status,
                     'sent_at' => $log->sent_at,
                 ]),
-            'contacts' => Customer::query()
-                ->with('tags:id,name,color')
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->limit(500)
-                ->get()
-                ->map(fn (Customer $customer) => [
-                    'id' => $customer->id,
-                    'name' => $customer->name,
-                    'phone' => $customer->phone,
-                    'email' => $customer->email,
-                    'tags' => $customer->tags->map(fn ($tag) => [
-                        'id' => $tag->id,
-                        'name' => $tag->name,
-                        'color' => $tag->color,
-                    ])->values(),
-                    'whatsapp_ready' => $this->isWhatsAppReady((string) ($customer->phone ?? '')),
-                    'last_whatsapp_status' => CommunicationLog::query()
-                        ->where('customer_id', $customer->id)
-                        ->where('channel', 'whatsapp')
-                        ->latest('id')
-                        ->value('provider_status'),
-                ]),
+            'contacts' => $contacts
+                ->paginate($contactFilters['per_page'], ['*'], 'contact_page')
+                ->withQueryString()
+                ->through(function (Customer $customer) {
+                    $isReady = $this->isWhatsAppReady((string) ($customer->phone ?? ''));
+
+                    return [
+                        'id' => $customer->id,
+                        'customer_code' => $customer->customer_code,
+                        'name' => $customer->name,
+                        'phone' => $customer->phone,
+                        'email' => $customer->email,
+                        'is_active' => (bool) $customer->is_active,
+                        'tags' => $customer->tags->map(fn ($tag) => [
+                            'id' => $tag->id,
+                            'name' => $tag->name,
+                            'color' => $tag->color,
+                        ])->values(),
+                        'whatsapp_ready' => $isReady,
+                        'last_whatsapp_status' => CommunicationLog::query()
+                            ->where('customer_id', $customer->id)
+                            ->where('channel', 'whatsapp')
+                            ->latest('id')
+                            ->value('provider_status'),
+                    ];
+                }),
+            'contactFilters' => $contactFilters,
             'segmentRules' => CustomerSegmentRule::query()
                 ->with('tag:id,name,color')
                 ->latest()
@@ -564,6 +606,57 @@ class CrmAutomationController extends Controller
         return back()->with('status', $log->status === 'queued' ? 'Reminder queued for delivery.' : 'Reminder logged as sent.');
     }
 
+    public function sendSingleMessage(Request $request, CommunicationDeliveryService $communicationDeliveryService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $data = $request->validate([
+            'customer_id' => ['required', 'exists:customers,id'],
+            'channel' => ['required', 'in:sms,email,whatsapp'],
+            'message' => ['nullable', 'string', 'max:2000'],
+            'whatsapp_message_type' => ['nullable', 'in:text,template'],
+            'whatsapp_template_id' => ['nullable', 'exists:whatsapp_message_templates,id'],
+            'whatsapp_template_variables' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $customer = Customer::findOrFail((int) $data['customer_id']);
+        $channel = (string) $data['channel'];
+        $messageType = $channel === 'whatsapp'
+            ? (string) ($data['whatsapp_message_type'] ?? 'text')
+            : 'text';
+
+        if ($messageType === 'template' && empty($data['whatsapp_template_id'])) {
+            return back()->withErrors(['whatsapp_template_id' => 'Select a WhatsApp template.']);
+        }
+
+        if ($messageType === 'text' && blank($data['message'] ?? null)) {
+            return back()->withErrors(['message' => 'Message content is required.']);
+        }
+
+        $recipient = $this->recipientForCustomerChannel($customer, $channel);
+        $deliveryOptions = $this->deliveryOptionsForSingleMessage($channel, $messageType, $data);
+        $log = $communicationDeliveryService->deliver(
+            $customer,
+            $channel,
+            $recipient,
+            (string) ($data['message'] ?? ($messageType === 'template' ? 'WhatsApp template message' : '')),
+            'single_message:' . $customer->id,
+            $deliveryOptions,
+        );
+
+        if (! in_array($log->status, ['queued', 'sent'], true)) {
+            return back()->withErrors(['message' => $log->error_message ?? 'Message delivery failed.']);
+        }
+
+        Audit::log($request->user()?->id, 'customer.single_message_sent', 'Customer', $customer->id, [
+            'channel' => $channel,
+            'message_type' => $messageType,
+            'communication_log_id' => $log->id,
+        ]);
+
+        return back()->with('status', $log->status === 'queued' ? 'Message queued for delivery.' : 'Message sent.');
+    }
+
     public function updateDueStatus(Request $request, CustomerDueService $dueService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
@@ -723,6 +816,13 @@ class CrmAutomationController extends Controller
             : $dueService->customer?->phone;
     }
 
+    private function recipientForCustomerChannel(Customer $customer, string $channel): ?string
+    {
+        return $channel === 'email'
+            ? $customer->email
+            : $customer->phone;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -758,6 +858,44 @@ class CrmAutomationController extends Controller
         return [
             'async' => true,
             'message_type' => 'text',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function deliveryOptionsForSingleMessage(string $channel, string $messageType, array $data): array
+    {
+        if ($channel !== 'whatsapp') {
+            return [];
+        }
+
+        if ($messageType !== 'template') {
+            return [
+                'async' => true,
+                'message_type' => 'text',
+            ];
+        }
+
+        $template = WhatsAppMessageTemplate::findOrFail((int) $data['whatsapp_template_id']);
+        $variables = collect(explode(',', (string) ($data['whatsapp_template_variables'] ?? '')))
+            ->map(fn (string $value) => trim($value))
+            ->filter()
+            ->values();
+
+        return [
+            'async' => true,
+            'message_type' => 'template',
+            'template_name' => $template->name,
+            'language_code' => $template->language,
+            'components' => $variables->isEmpty() ? [] : [[
+                'type' => 'body',
+                'parameters' => $variables
+                    ->map(fn (string $value) => ['type' => 'text', 'text' => $value])
+                    ->values()
+                    ->all(),
+            ]],
         ];
     }
 

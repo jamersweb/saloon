@@ -11,6 +11,7 @@ use App\Models\CustomerDueService;
 use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\User;
+use App\Models\WhatsAppMessageTemplate;
 use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -215,5 +216,56 @@ class WhatsAppDeliveryTest extends TestCase
         $this->assertSame([60, 300, 900, 1800], $job->backoff());
         $this->assertCount(1, $job->middleware());
         $this->assertSame(\Illuminate\Queue\Middleware\RateLimited::class, $job->middleware()[0]::class);
+    }
+
+    public function test_single_whatsapp_message_can_be_queued_for_one_customer(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-WA-004',
+            'name' => 'Single Message Customer',
+            'phone' => '971505555555',
+            'email' => 'single@example.com',
+            'is_active' => true,
+        ]);
+
+        $template = WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-template-1',
+            'name' => 'welcome_whatsapp',
+            'language' => 'en_US',
+            'category' => 'UTILITY',
+            'status' => 'APPROVED',
+            'components' => [],
+            'last_synced_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.messages.single'), [
+                'customer_id' => $customer->id,
+                'channel' => 'whatsapp',
+                'whatsapp_message_type' => 'template',
+                'whatsapp_template_id' => $template->id,
+                'whatsapp_template_variables' => 'Alya',
+            ])
+            ->assertSessionHasNoErrors();
+
+        Queue::assertPushed(SendWhatsAppDeliveryJob::class, 1);
+
+        $this->assertDatabaseHas('communication_logs', [
+            'customer_id' => $customer->id,
+            'channel' => 'whatsapp',
+            'status' => 'queued',
+            'provider_status' => 'queued',
+            'message_type' => 'template',
+            'context' => 'single_message:' . $customer->id,
+        ]);
     }
 }
