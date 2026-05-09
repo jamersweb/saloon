@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Appointment;
+use App\Models\CommunicationLog;
 use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
@@ -78,5 +79,67 @@ class PublicEmbedBookingTest extends TestCase
             ])
             ->assertRedirect(route('embed.booking'))
             ->assertSessionHasErrors();
+    }
+
+    public function test_embed_booking_still_succeeds_when_team_whatsapp_phone_is_invalid(): void
+    {
+        $staffRole = Role::create(['name' => 'staff', 'label' => 'Staff']);
+        $managerRole = Role::create(['name' => 'manager', 'label' => 'Manager']);
+
+        $staffUser = User::factory()->create(['role_id' => $staffRole->id]);
+        $managerUser = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $staffProfile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'STF-EMB-2',
+            'is_active' => true,
+        ]);
+
+        StaffProfile::create([
+            'user_id' => $managerUser->id,
+            'employee_code' => 'MGR-EMB-1',
+            'phone' => '123',
+            'is_active' => true,
+        ]);
+
+        $start = now()->addDays(3)->setTime(12, 0);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staffProfile->id,
+            'schedule_date' => $start->toDateString(),
+            'start_time' => '09:00:00',
+            'end_time' => '17:00:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Embed Color',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 10,
+            'price' => 140,
+            'is_active' => true,
+        ]);
+
+        $this->followingRedirects()->post(route('embed.booking.store'), [
+            'customer_name' => 'Embed Invalid Alert',
+            'customer_phone' => '5558811111',
+            'customer_email' => 'invalid-alert@example.com',
+            'service_id' => $service->id,
+            'scheduled_start' => $start->toDateTimeString(),
+        ])
+            ->assertOk()
+            ->assertSee('Thank you', false);
+
+        $appointment = Appointment::query()->where('customer_phone', '5558811111')->latest()->first();
+        $this->assertNotNull($appointment);
+
+        $this->assertDatabaseHas('communication_logs', [
+            'channel' => 'whatsapp',
+            'context' => 'public_booking_team_alert',
+            'status' => 'failed',
+            'provider_status' => 'invalid-recipient',
+        ]);
+
+        $this->assertSame(1, CommunicationLog::query()->where('context', 'public_booking_team_alert')->count());
     }
 }

@@ -25,6 +25,7 @@ export default function FinanceSettings({ settings }) {
                                 ...d,
                                 vat_rate_percent: Number(d.vat_rate_percent),
                                 next_invoice_number: parseInt(d.next_invoice_number, 10),
+                                whatsapp_rate_limit_per_minute: d.whatsapp_rate_limit_per_minute === '' ? null : parseInt(d.whatsapp_rate_limit_per_minute, 10),
                             }));
                             form.patch(route('finance.settings.update'));
                         }}
@@ -72,6 +73,85 @@ export default function FinanceSettings({ settings }) {
                         <div className="md:col-span-2">
                             <button type="submit" className="ta-btn-primary" disabled={form.processing}>
                                 Save settings
+                            </button>
+                        </div>
+                    </form>
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700">WhatsApp</h3>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            form.transform((d) => ({
+                                ...d,
+                                vat_rate_percent: Number(d.vat_rate_percent),
+                                next_invoice_number: parseInt(d.next_invoice_number, 10),
+                                whatsapp_rate_limit_per_minute: d.whatsapp_rate_limit_per_minute === '' ? null : parseInt(d.whatsapp_rate_limit_per_minute, 10),
+                            }));
+                            form.patch(route('finance.settings.update'));
+                        }}
+                        className="grid gap-4 md:grid-cols-2"
+                    >
+                        <div>
+                            <label className="ta-field-label">Driver</label>
+                            <select className="ta-input" value={form.data.whatsapp_driver || 'log'} onChange={(e) => form.setData('whatsapp_driver', e.target.value)}>
+                                <option value="log">log</option>
+                                <option value="meta">meta</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="ta-field-label">API version</label>
+                            <input className="ta-input" value={form.data.whatsapp_api_version || ''} onChange={(e) => form.setData('whatsapp_api_version', e.target.value)} />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="ta-field-label">Base URL</label>
+                            <input className="ta-input" value={form.data.whatsapp_base_url || ''} onChange={(e) => form.setData('whatsapp_base_url', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Phone number ID</label>
+                            <input className="ta-input" value={form.data.whatsapp_phone_number_id || ''} onChange={(e) => form.setData('whatsapp_phone_number_id', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Business account ID</label>
+                            <input className="ta-input" value={form.data.whatsapp_business_account_id || ''} onChange={(e) => form.setData('whatsapp_business_account_id', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Webhook verify token</label>
+                            <input className="ta-input" value={form.data.whatsapp_webhook_verify_token || ''} onChange={(e) => form.setData('whatsapp_webhook_verify_token', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Default language code</label>
+                            <input className="ta-input" value={form.data.whatsapp_default_language_code || ''} onChange={(e) => form.setData('whatsapp_default_language_code', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Rate limit / minute</label>
+                            <input type="number" min="1" className="ta-input" value={form.data.whatsapp_rate_limit_per_minute || ''} onChange={(e) => form.setData('whatsapp_rate_limit_per_minute', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Due-service template</label>
+                            <input className="ta-input" value={form.data.whatsapp_due_service_template_name || ''} onChange={(e) => form.setData('whatsapp_due_service_template_name', e.target.value)} placeholder="e.g. due_service_reminder" />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Public-booking alert template</label>
+                            <input className="ta-input" value={form.data.whatsapp_public_booking_template_name || ''} onChange={(e) => form.setData('whatsapp_public_booking_template_name', e.target.value)} placeholder="e.g. booking_alert" />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="ta-field-label">Access token</label>
+                            <input
+                                type="password"
+                                className="ta-input"
+                                value={form.data.whatsapp_access_token || ''}
+                                onChange={(e) => form.setData('whatsapp_access_token', e.target.value)}
+                                placeholder={settings.whatsapp_access_token_configured ? 'Stored. Enter a new token only to rotate it.' : 'Paste a Meta access token'}
+                            />
+                            <p className="mt-1 text-xs text-slate-500">
+                                {settings.whatsapp_access_token_configured ? 'A token is already stored. Leaving this blank keeps the current token.' : 'No token is stored yet.'}
+                            </p>
+                        </div>
+                        <div className="md:col-span-2">
+                            <button type="submit" className="ta-btn-primary" disabled={form.processing}>
+                                Save WhatsApp settings
                             </button>
                         </div>
                     </form>

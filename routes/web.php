@@ -27,10 +27,15 @@ use App\Http\Controllers\StaffProfileController;
 use App\Http\Controllers\StaffScheduleController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TaxInvoiceController;
+use App\Http\Controllers\WhatsAppWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicBookingController::class, 'create'])->name('public.booking');
 Route::post('/book', [PublicBookingController::class, 'store'])->name('public.booking.store');
+Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])->name('whatsapp.webhook.verify');
+Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
+    ->name('whatsapp.webhook.receive');
 
 Route::get('/embed/book', [PublicBookingController::class, 'embedCreate'])->name('embed.booking');
 Route::post('/embed/book', [PublicBookingController::class, 'embedStore'])->name('embed.booking.store');
@@ -175,6 +180,11 @@ Route::middleware('auth')->group(function () {
         Route::patch('/customers/automation/due-services/{dueService}/status', [CrmAutomationController::class, 'updateDueStatus'])->name('customers.automation.due-services.status');
         Route::post('/customers/automation/campaign-templates', [CrmAutomationController::class, 'storeCampaignTemplate'])->name('customers.automation.campaign-templates.store');
         Route::put('/customers/automation/campaign-templates/{template}', [CrmAutomationController::class, 'updateCampaignTemplate'])->name('customers.automation.campaign-templates.update');
+        Route::post('/customers/automation/whatsapp-templates/sync', [CrmAutomationController::class, 'syncMetaTemplates'])->name('customers.automation.whatsapp-templates.sync');
+        Route::post('/customers/automation/whatsapp-templates/header-media', [CrmAutomationController::class, 'uploadMetaTemplateHeaderMedia'])->name('customers.automation.whatsapp-templates.header-media');
+        Route::post('/customers/automation/whatsapp-templates', [CrmAutomationController::class, 'storeMetaTemplate'])->name('customers.automation.whatsapp-templates.store');
+        Route::put('/customers/automation/whatsapp-templates/{template}', [CrmAutomationController::class, 'updateMetaTemplate'])->name('customers.automation.whatsapp-templates.update');
+        Route::delete('/customers/automation/whatsapp-templates/{template}', [CrmAutomationController::class, 'destroyMetaTemplate'])->name('customers.automation.whatsapp-templates.destroy');
         Route::post('/customers/automation/campaigns', [CrmAutomationController::class, 'storeCampaign'])->name('customers.automation.campaigns.store');
         Route::post('/customers/automation/campaigns/{campaign}/dispatch', [CrmAutomationController::class, 'dispatchCampaign'])->name('customers.automation.campaigns.dispatch');
         Route::post('/customers/automation/campaigns/run-scheduled', [CrmAutomationController::class, 'runScheduledCampaigns'])->name('customers.automation.campaigns.run-scheduled');

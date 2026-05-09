@@ -19,39 +19,75 @@ class CampaignDispatchService
     {
         $campaign->loadMissing('template');
 
-        $customers = $this->resolveAudience($campaign)->get();
-        $sent = 0;
-        $failed = 0;
+        $queued = 0;
 
-        foreach ($customers as $customer) {
-            $recipient = $campaign->channel === 'email' ? $customer->email : $customer->phone;
+        $this->resolveAudience($campaign)
+            ->orderBy('customers.id')
+            ->chunkById(100, function ($customers) use ($campaign, &$queued): void {
+                foreach ($customers as $customer) {
+                    $recipient = $campaign->channel === 'email' ? $customer->email : $customer->phone;
+                    $message = str_replace('{name}', $customer->name, $campaign->template?->content ?? '');
 
-            $message = str_replace('{name}', $customer->name, $campaign->template?->content ?? '');
+                    $options = $this->deliveryOptionsForCampaign($campaign, $customer->name);
 
-            $log = $this->communicationDeliveryService->deliver(
-                $customer,
-                $campaign->channel,
-                $recipient,
-                $message,
-                'campaign:' . $campaign->id,
-            );
+                    $log = $this->communicationDeliveryService->deliver(
+                        $customer,
+                        $campaign->channel,
+                        $recipient,
+                        $message,
+                        'campaign:' . $campaign->id,
+                        $options,
+                    );
 
-            if ($log->status === 'sent') {
-                $sent++;
-                continue;
-            }
-
-            $failed++;
-        }
+                    if (in_array($log->status, ['queued', 'sent'], true)) {
+                        $queued++;
+                    }
+                }
+            }, 'customers.id');
 
         $campaign->update([
             'status' => 'sent',
-            'sent_count' => $campaign->sent_count + $sent,
-            'failed_count' => $campaign->failed_count + $failed,
             'last_run_at' => now(),
         ]);
 
-        return ['sent' => $sent, 'failed' => $failed];
+        return ['queued' => $queued, 'sent' => 0, 'failed' => 0];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function deliveryOptionsForCampaign(Campaign $campaign, string $customerName): array
+    {
+        if ($campaign->channel !== 'whatsapp') {
+            return [];
+        }
+
+        $template = $campaign->template;
+
+        if (($template?->whatsapp_message_type ?? 'text') === 'template' && filled($template?->whatsapp_template_name)) {
+            return [
+                'async' => true,
+                'message_type' => 'template',
+                'template_name' => $template->whatsapp_template_name,
+                'language_code' => $template->whatsapp_template_language_code ?: config('services.whatsapp.default_language_code', 'en_US'),
+                'components' => [
+                    [
+                        'type' => 'body',
+                        'parameters' => [
+                            [
+                                'type' => 'text',
+                                'text' => $customerName,
+                            ],
+                        ],
+                    ],
+                ],
+            ];
+        }
+
+        return [
+            'async' => true,
+            'message_type' => 'text',
+        ];
     }
 
     private function resolveAudience(Campaign $campaign): Builder

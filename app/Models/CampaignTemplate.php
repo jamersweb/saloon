@@ -14,6 +14,9 @@ class CampaignTemplate extends Model
         'name',
         'channel',
         'content',
+        'whatsapp_message_type',
+        'whatsapp_template_name',
+        'whatsapp_template_language_code',
         'is_active',
     ];
 
@@ -29,4 +32,3 @@ class CampaignTemplate extends Model
         return $this->hasMany(Campaign::class);
     }
 }
-

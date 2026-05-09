@@ -74,6 +74,7 @@ class HandleInertiaRequests extends Middleware
                 'status' => fn () => $request->session()->get('status'),
                 'created_tax_invoice_id' => fn () => $request->session()->get('created_tax_invoice_id'),
                 'created_purchase_order_id' => fn () => $request->session()->get('created_purchase_order_id'),
+                'whatsapp_header_media_handle' => fn () => $request->session()->get('whatsapp_header_media_handle'),
             ],
             'app_timezone' => config('app.timezone'),
             'app_currency_code' => $financeSettings->currency_code ?: 'AED',

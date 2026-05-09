@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\FinanceSetting;
 use App\Models\CustomerDueService;
 use App\Services\CommunicationDeliveryService;
 use Illuminate\Console\Command;
@@ -83,14 +84,14 @@ class SendDueServiceReminders extends Command
                         $dueService->service?->name ?? 'service',
                         $dueService->due_date?->toDateString()
                     ),
-                    'due_service_reminder_auto',
+                    'due_service_reminder_auto:' . $dueService->id,
+                    $this->deliveryOptions($attemptChannel, $dueService),
                 );
 
-                if ($log->status !== 'sent') {
+                if (! in_array($log->status, ['queued', 'sent'], true)) {
                     continue;
                 }
 
-                $dueService->update(['reminder_sent_at' => now()]);
                 $sent++;
                 $sentForCustomer = true;
                 break;
@@ -111,5 +112,43 @@ class SendDueServiceReminders extends Command
         return $channel === 'email'
             ? $dueService->customer?->email
             : $dueService->customer?->phone;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function deliveryOptions(string $channel, CustomerDueService $dueService): array
+    {
+        if ($channel !== 'whatsapp') {
+            return [];
+        }
+
+        $settings = FinanceSetting::current();
+        $templateName = $settings->whatsapp_due_service_template_name;
+        $languageCode = $settings->whatsapp_default_language_code ?: config('services.whatsapp.default_language_code', 'en_US');
+
+        if (filled($templateName)) {
+            return [
+                'async' => true,
+                'message_type' => 'template',
+                'template_name' => $templateName,
+                'language_code' => $languageCode,
+                'components' => [
+                    [
+                        'type' => 'body',
+                        'parameters' => [
+                            ['type' => 'text', 'text' => (string) ($dueService->customer?->name ?? 'Customer')],
+                            ['type' => 'text', 'text' => (string) ($dueService->service?->name ?? 'service')],
+                            ['type' => 'text', 'text' => (string) $dueService->due_date?->toDateString()],
+                        ],
+                    ],
+                ],
+            ];
+        }
+
+        return [
+            'async' => true,
+            'message_type' => 'text',
+        ];
     }
 }

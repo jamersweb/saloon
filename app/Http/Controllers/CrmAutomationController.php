@@ -8,11 +8,15 @@ use App\Models\CampaignTemplate;
 use App\Models\CommunicationLog;
 use App\Models\Customer;
 use App\Models\CustomerDueService;
+use App\Models\FinanceSetting;
 use App\Models\CustomerSegmentRule;
 use App\Models\CustomerTag;
+use App\Models\WhatsAppMessageTemplate;
 use App\Services\CampaignDispatchService;
 use App\Services\CommunicationDeliveryService;
 use App\Services\DueServiceManager;
+use App\Services\WhatsAppService;
+use App\Services\WhatsAppTemplateManagerService;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -23,6 +27,11 @@ use Inertia\Response;
 
 class CrmAutomationController extends Controller
 {
+    public function __construct(
+        private readonly WhatsAppService $whatsAppService,
+    ) {
+    }
+
     public function index(): Response
     {
         return Inertia::render('Customers/Automation', [
@@ -68,7 +77,31 @@ class CrmAutomationController extends Controller
                     'context' => $log->context,
                     'recipient' => $log->recipient,
                     'status' => $log->status,
+                    'provider_status' => $log->provider_status,
                     'sent_at' => $log->sent_at,
+                ]),
+            'contacts' => Customer::query()
+                ->with('tags:id,name,color')
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->limit(500)
+                ->get()
+                ->map(fn (Customer $customer) => [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'phone' => $customer->phone,
+                    'email' => $customer->email,
+                    'tags' => $customer->tags->map(fn ($tag) => [
+                        'id' => $tag->id,
+                        'name' => $tag->name,
+                        'color' => $tag->color,
+                    ])->values(),
+                    'whatsapp_ready' => $this->isWhatsAppReady((string) ($customer->phone ?? '')),
+                    'last_whatsapp_status' => CommunicationLog::query()
+                        ->where('customer_id', $customer->id)
+                        ->where('channel', 'whatsapp')
+                        ->latest('id')
+                        ->value('provider_status'),
                 ]),
             'segmentRules' => CustomerSegmentRule::query()
                 ->with('tag:id,name,color')
@@ -90,6 +123,23 @@ class CrmAutomationController extends Controller
                 ->orderByDesc('is_active')
                 ->orderBy('name')
                 ->get(),
+            'metaTemplates' => WhatsAppMessageTemplate::query()
+                ->latest('updated_at')
+                ->limit(200)
+                ->get()
+                ->map(fn (WhatsAppMessageTemplate $template) => [
+                    'id' => $template->id,
+                    'template_uid' => $template->template_uid,
+                    'name' => $template->name,
+                    'language' => $template->language,
+                    'category' => $template->category,
+                    'status' => $template->status,
+                    'sub_category' => $template->sub_category,
+                    'quality_score' => $template->quality_score,
+                    'rejection_reason' => $template->rejection_reason,
+                    'components' => $template->components,
+                    'last_synced_at' => $template->last_synced_at,
+                ]),
             'campaigns' => Campaign::query()
                 ->with(['template:id,name', 'tag:id,name'])
                 ->latest()
@@ -120,11 +170,17 @@ class CrmAutomationController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'channel' => ['required', 'in:sms,email,whatsapp'],
             'content' => ['required', 'string', 'max:2000'],
+            'whatsapp_message_type' => ['nullable', 'in:text,template'],
+            'whatsapp_template_name' => ['nullable', 'string', 'max:255'],
+            'whatsapp_template_language_code' => ['nullable', 'string', 'max:16'],
             'is_active' => ['nullable', 'boolean'],
         ]);
 
         $template = CampaignTemplate::create([
             ...$data,
+            'whatsapp_message_type' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_message_type'] ?? 'text') : null,
+            'whatsapp_template_name' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_template_name'] ?? null) : null,
+            'whatsapp_template_language_code' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_template_language_code'] ?? null) : null,
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
 
@@ -141,11 +197,17 @@ class CrmAutomationController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'channel' => ['required', 'in:sms,email,whatsapp'],
             'content' => ['required', 'string', 'max:2000'],
+            'whatsapp_message_type' => ['nullable', 'in:text,template'],
+            'whatsapp_template_name' => ['nullable', 'string', 'max:255'],
+            'whatsapp_template_language_code' => ['nullable', 'string', 'max:16'],
             'is_active' => ['nullable', 'boolean'],
         ]);
 
         $template->update([
             ...$data,
+            'whatsapp_message_type' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_message_type'] ?? 'text') : null,
+            'whatsapp_template_name' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_template_name'] ?? null) : null,
+            'whatsapp_template_language_code' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_template_language_code'] ?? null) : null,
             'is_active' => (bool) ($data['is_active'] ?? false),
         ]);
 
@@ -194,6 +256,99 @@ class CrmAutomationController extends Controller
         return back()->with('status', 'Campaign created.');
     }
 
+    public function syncMetaTemplates(Request $request, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $templates = $templateManagerService->syncFromMeta();
+
+        Audit::log($request->user()?->id, 'whatsapp.templates.synced', 'WhatsAppMessageTemplate', null, [
+            'count' => count($templates),
+        ]);
+
+        return back()->with('status', 'Meta templates synced.');
+    }
+
+    public function storeMetaTemplate(Request $request, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $this->validateMetaTemplatePayload($request);
+        $components = $this->buildMetaTemplateComponents($data);
+
+        $template = $templateManagerService->createTemplate(
+            strtolower((string) $data['name']),
+            (string) $data['language'],
+            (string) $data['category'],
+            $components,
+        );
+
+        Audit::log($request->user()?->id, 'whatsapp.template.created', 'WhatsAppMessageTemplate', null, [
+            'name' => $template['name'] ?? $data['name'],
+            'language' => $template['language'] ?? $data['language'],
+        ]);
+
+        return back()->with('status', 'Meta template submitted.');
+    }
+
+    public function updateMetaTemplate(Request $request, WhatsAppMessageTemplate $template, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $this->validateMetaTemplatePayload($request);
+        $components = $this->buildMetaTemplateComponents($data);
+
+        $updated = $templateManagerService->replaceTemplate(
+            $template,
+            strtolower((string) $data['name']),
+            (string) $data['language'],
+            (string) $data['category'],
+            $components,
+        );
+
+        Audit::log($request->user()?->id, 'whatsapp.template.replaced', 'WhatsAppMessageTemplate', $template->id, [
+            'name' => $updated['name'] ?? $data['name'],
+            'language' => $updated['language'] ?? $data['language'],
+        ]);
+
+        return back()->with('status', 'Meta template replaced.');
+    }
+
+    public function uploadMetaTemplateHeaderMedia(Request $request, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'header_type' => ['required', 'in:image,video,document'],
+            'header_media_file' => ['required', 'file', 'max:16384'],
+        ]);
+
+        $handle = $templateManagerService->uploadHeaderSample($data['header_media_file']);
+
+        Audit::log($request->user()?->id, 'whatsapp.template.header_media_uploaded', 'WhatsAppMessageTemplate', null, [
+            'header_type' => $data['header_type'],
+            'file_name' => $data['header_media_file']->getClientOriginalName(),
+        ]);
+
+        return back()
+            ->with('status', 'Header sample uploaded to Meta.')
+            ->with('whatsapp_header_media_handle', $handle);
+    }
+
+    public function destroyMetaTemplate(Request $request, WhatsAppMessageTemplate $template, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $templateManagerService->deleteTemplate($template);
+
+        Audit::log($request->user()?->id, 'whatsapp.template.deleted', 'WhatsAppMessageTemplate', $template->id, [
+            'name' => $template->name,
+            'language' => $template->language,
+        ]);
+
+        return back()->with('status', 'Meta template deleted.');
+    }
+
     public function dispatchCampaign(Request $request, Campaign $campaign, CampaignDispatchService $dispatcher): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
@@ -205,7 +360,7 @@ class CrmAutomationController extends Controller
         $result = $dispatcher->dispatch($campaign);
         Audit::log($request->user()?->id, 'campaign.dispatched', 'Campaign', $campaign->id, $result);
 
-        return back()->with('status', "Campaign dispatched. Sent: {$result['sent']}, Failed: {$result['failed']}.");
+        return back()->with('status', "Campaign queued. Jobs: {$result['queued']}.");
     }
 
     public function runScheduledCampaigns(Request $request, CampaignDispatchService $dispatcher): RedirectResponse
@@ -220,18 +375,16 @@ class CrmAutomationController extends Controller
             ->limit(20)
             ->get();
 
-        $sent = 0;
-        $failed = 0;
+        $queued = 0;
 
         foreach ($campaigns as $campaign) {
             $result = $dispatcher->dispatch($campaign);
-            $sent += $result['sent'];
-            $failed += $result['failed'];
+            $queued += $result['queued'];
         }
 
-        Audit::log($request->user()?->id, 'campaign.scheduled_dispatched', 'Campaign', null, ['sent' => $sent, 'failed' => $failed]);
+        Audit::log($request->user()?->id, 'campaign.scheduled_dispatched', 'Campaign', null, ['queued' => $queued]);
 
-        return back()->with('status', "Scheduled campaigns dispatched. Sent: {$sent}, Failed: {$failed}.");
+        return back()->with('status', "Scheduled campaigns queued. Jobs: {$queued}.");
     }
 
     public function storeTag(Request $request): RedirectResponse
@@ -335,18 +488,17 @@ class CrmAutomationController extends Controller
             $channel,
             $recipient,
             sprintf('Hi %s, your %s service is due on %s.', $dueService->customer?->name ?? 'Customer', $dueService->service?->name ?? 'service', $dueService->due_date?->toDateString()),
-            'due_service_reminder',
+            'due_service_reminder:' . $dueService->id,
+            $this->deliveryOptionsForReminder($channel, $dueService),
         );
 
-        if ($log->status !== 'sent') {
+        if (! in_array($log->status, ['queued', 'sent'], true)) {
             return back()->withErrors(['channel' => $log->error_message ?? 'Message delivery failed.']);
         }
 
-        $dueService->update(['reminder_sent_at' => now()]);
-
         Audit::log($request->user()?->id, 'due_service.reminder_sent', 'CustomerDueService', $dueService->id, ['channel' => $channel, 'policy' => $policy]);
 
-        return back()->with('status', 'Reminder logged as sent.');
+        return back()->with('status', $log->status === 'queued' ? 'Reminder queued for delivery.' : 'Reminder logged as sent.');
     }
 
     public function updateDueStatus(Request $request, CustomerDueService $dueService): RedirectResponse
@@ -506,5 +658,170 @@ class CrmAutomationController extends Controller
         return $channel === 'email'
             ? $dueService->customer?->email
             : $dueService->customer?->phone;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function deliveryOptionsForReminder(string $channel, CustomerDueService $dueService): array
+    {
+        if ($channel !== 'whatsapp') {
+            return [];
+        }
+
+        $settings = FinanceSetting::current();
+        $templateName = $settings->whatsapp_due_service_template_name;
+        $languageCode = $settings->whatsapp_default_language_code ?: config('services.whatsapp.default_language_code', 'en_US');
+
+        if (filled($templateName)) {
+            return [
+                'async' => true,
+                'message_type' => 'template',
+                'template_name' => $templateName,
+                'language_code' => $languageCode,
+                'components' => [
+                    [
+                        'type' => 'body',
+                        'parameters' => [
+                            ['type' => 'text', 'text' => (string) ($dueService->customer?->name ?? 'Customer')],
+                            ['type' => 'text', 'text' => (string) ($dueService->service?->name ?? 'service')],
+                            ['type' => 'text', 'text' => (string) $dueService->due_date?->toDateString()],
+                        ],
+                    ],
+                ],
+            ];
+        }
+
+        return [
+            'async' => true,
+            'message_type' => 'text',
+        ];
+    }
+
+    private function isWhatsAppReady(string $phone): bool
+    {
+        if ($phone === '') {
+            return false;
+        }
+
+        try {
+            $this->whatsAppService->normalizeRecipientForTransport($phone);
+
+            return true;
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
+    }
+
+    private function validateMetaTemplatePayload(Request $request): array
+    {
+        return $request->validate([
+            'name' => ['required', 'string', 'max:512', 'regex:/^[a-z0-9_]+$/'],
+            'language' => ['required', 'string', 'max:16'],
+            'category' => ['required', 'in:MARKETING,UTILITY,AUTHENTICATION'],
+            'header_type' => ['nullable', 'in:none,text,image,video,document'],
+            'header_text' => ['nullable', 'string', 'max:60'],
+            'header_example' => ['nullable', 'string', 'max:255'],
+            'header_media_handle' => ['nullable', 'string', 'max:4096', 'required_if:header_type,image,video,document'],
+            'body_text' => ['required', 'string', 'max:1024'],
+            'footer_text' => ['nullable', 'string', 'max:60'],
+            'example_values' => ['nullable', 'string', 'max:1000'],
+            'buttons' => ['nullable', 'array', 'max:3'],
+            'buttons.*.type' => ['nullable', 'in:QUICK_REPLY,URL,PHONE_NUMBER'],
+            'buttons.*.text' => ['nullable', 'string', 'max:25'],
+            'buttons.*.url' => ['nullable', 'string', 'max:2000'],
+            'buttons.*.phone_number' => ['nullable', 'string', 'max:30'],
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildMetaTemplateComponents(array $data): array
+    {
+        $exampleValues = collect(explode(',', (string) ($data['example_values'] ?? '')))
+            ->map(fn (string $value) => trim($value))
+            ->filter()
+            ->values()
+            ->all();
+
+        $components = [];
+
+        if (($data['header_type'] ?? 'none') === 'text' && filled($data['header_text'] ?? null)) {
+            $header = [
+                'type' => 'HEADER',
+                'format' => 'TEXT',
+                'text' => $data['header_text'],
+            ];
+
+            if (filled($data['header_example'] ?? null)) {
+                $header['example'] = [
+                    'header_text' => [(string) $data['header_example']],
+                ];
+            }
+
+            $components[] = $header;
+        }
+
+        if (in_array(($data['header_type'] ?? 'none'), ['image', 'video', 'document'], true)) {
+            $components[] = [
+                'type' => 'HEADER',
+                'format' => strtoupper((string) $data['header_type']),
+                'example' => [
+                    'header_handle' => [(string) $data['header_media_handle']],
+                ],
+            ];
+        }
+
+        $body = [
+            'type' => 'BODY',
+            'text' => $data['body_text'],
+        ];
+
+        if ($exampleValues !== []) {
+            $body['example'] = [
+                'body_text' => [$exampleValues],
+            ];
+        }
+
+        $components[] = $body;
+
+        if (filled($data['footer_text'] ?? null)) {
+            $components[] = [
+                'type' => 'FOOTER',
+                'text' => $data['footer_text'],
+            ];
+        }
+
+        $buttons = collect($data['buttons'] ?? [])
+            ->filter(fn ($button) => is_array($button) && filled($button['text'] ?? null) && filled($button['type'] ?? null))
+            ->values()
+            ->map(function (array $button, int $index): array {
+                $payload = [
+                    'type' => $button['type'],
+                    'text' => $button['text'],
+                ];
+
+                if (($button['type'] ?? null) === 'URL' && filled($button['url'] ?? null)) {
+                    $payload['url'] = $button['url'];
+                }
+
+                if (($button['type'] ?? null) === 'PHONE_NUMBER' && filled($button['phone_number'] ?? null)) {
+                    $payload['phone_number'] = $button['phone_number'];
+                }
+
+                return array_merge(['index' => (string) $index], $payload);
+            })
+            ->all();
+
+        if ($buttons !== []) {
+            $components[] = [
+                'type' => 'BUTTONS',
+                'buttons' => $buttons,
+            ];
+        }
+
+        return $components;
     }
 }

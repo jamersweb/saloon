@@ -4,9 +4,12 @@ namespace App\Providers;
 
 use App\Models\Customer;
 use App\Models\ExpenseEntry;
+use App\Models\FinanceSetting;
 use App\Models\PayrollLine;
 use App\Models\TaxInvoice;
 use App\Observers\CustomerObserver;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
@@ -39,6 +42,13 @@ class AppServiceProvider extends ServiceProvider
 
         Route::bind('line', function (string $value) {
             return PayrollLine::query()->whereKey($value)->firstOrFail();
+        });
+
+        RateLimiter::for('whatsapp-outbound', function () {
+            $settings = FinanceSetting::current();
+            $limit = (int) ($settings->whatsapp_rate_limit_per_minute ?: config('services.whatsapp.rate_limit_per_minute', 60));
+
+            return Limit::perMinute(max(1, $limit))->by('whatsapp-outbound');
         });
     }
 }

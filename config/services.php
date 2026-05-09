@@ -40,7 +40,13 @@ return [
         'base_url' => env('WHATSAPP_BASE_URL', 'https://graph.facebook.com'),
         'version' => env('WHATSAPP_API_VERSION', 'v23.0'),
         'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+        'business_account_id' => env('WHATSAPP_BUSINESS_ACCOUNT_ID'),
         'token' => env('WHATSAPP_ACCESS_TOKEN'),
+        'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
+        'default_language_code' => env('WHATSAPP_DEFAULT_LANGUAGE_CODE', 'en_US'),
+        'rate_limit_per_minute' => (int) env('WHATSAPP_RATE_LIMIT_PER_MINUTE', 60),
+        'due_service_template_name' => env('WHATSAPP_DUE_SERVICE_TEMPLATE_NAME'),
+        'public_booking_template_name' => env('WHATSAPP_PUBLIC_BOOKING_TEMPLATE_NAME'),
         'booking_alert_recipients' => array_values(array_filter(array_map('trim', explode(',', (string) env('BOOKING_ALERT_WHATSAPP_RECIPIENTS', ''))))),
     ],
 

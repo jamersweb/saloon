@@ -44,10 +44,9 @@ class DispatchScheduledCampaigns extends Command
 
         foreach ($campaigns as $campaign) {
             $result = $dispatcher->dispatch($campaign);
-            $this->info("Campaign #{$campaign->id} dispatched. Sent: {$result['sent']}, Failed: {$result['failed']}");
+            $this->info("Campaign #{$campaign->id} queued. Jobs: {$result['queued']}");
         }
 
         return self::SUCCESS;
     }
 }
-
