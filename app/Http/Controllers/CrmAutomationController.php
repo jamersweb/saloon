@@ -32,22 +32,85 @@ class CrmAutomationController extends Controller
     ) {
     }
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $filters = [
+            'search' => trim((string) $request->string('search')),
+            'tag_id' => $request->integer('tag_id') ?: null,
+            'tag_state' => (string) $request->input('tag_state', 'all'),
+            'active_status' => (string) $request->input('active_status', 'all'),
+            'sort' => (string) $request->input('sort', 'name_asc'),
+            'per_page' => (int) $request->input('per_page', 10),
+        ];
+
+        if (! in_array($filters['tag_state'], ['all', 'tagged', 'untagged'], true)) {
+            $filters['tag_state'] = 'all';
+        }
+
+        if (! in_array($filters['active_status'], ['all', 'active', 'inactive'], true)) {
+            $filters['active_status'] = 'all';
+        }
+
+        if (! in_array($filters['sort'], ['name_asc', 'name_desc', 'recent'], true)) {
+            $filters['sort'] = 'name_asc';
+        }
+
+        if (! in_array($filters['per_page'], [10, 25, 50, 100], true)) {
+            $filters['per_page'] = 10;
+        }
+
+        $customers = Customer::query()
+            ->with('tags:id,name,color')
+            ->when($filters['search'] !== '', function ($query) use ($filters): void {
+                $needle = '%' . $filters['search'] . '%';
+                $query->where(function ($customerQuery) use ($needle): void {
+                    $customerQuery
+                        ->where('name', 'like', $needle)
+                        ->orWhere('customer_code', 'like', $needle)
+                        ->orWhere('phone', 'like', $needle)
+                        ->orWhere('email', 'like', $needle);
+                });
+            })
+            ->when($filters['tag_id'], fn ($query) => $query->whereHas('tags', fn ($tagQuery) => $tagQuery->where('customer_tags.id', $filters['tag_id'])))
+            ->when($filters['tag_state'] === 'tagged', fn ($query) => $query->whereHas('tags'))
+            ->when($filters['tag_state'] === 'untagged', fn ($query) => $query->doesntHave('tags'))
+            ->when($filters['active_status'] === 'active', fn ($query) => $query->where('is_active', true))
+            ->when($filters['active_status'] === 'inactive', fn ($query) => $query->where('is_active', false));
+
+        match ($filters['sort']) {
+            'name_desc' => $customers->orderByDesc('name'),
+            'recent' => $customers->latest(),
+            default => $customers->orderBy('name'),
+        };
+
         return Inertia::render('Customers/Automation', [
             'tags' => CustomerTag::query()->orderByDesc('is_active')->orderBy('name')->get(),
-            'customers' => Customer::query()
-                ->with('tags:id,name,color')
+            'customerOptions' => Customer::query()
                 ->orderBy('name')
-                ->limit(250)
+                ->limit(500)
                 ->get()
                 ->map(fn (Customer $customer) => [
                     'id' => $customer->id,
                     'name' => $customer->name,
+                ]),
+            'customers' => $customers
+                ->paginate($filters['per_page'])
+                ->withQueryString()
+                ->through(fn (Customer $customer) => [
+                    'id' => $customer->id,
+                    'customer_code' => $customer->customer_code,
+                    'name' => $customer->name,
                     'phone' => $customer->phone,
                     'email' => $customer->email,
-                    'tags' => $customer->tags,
+                    'is_active' => (bool) $customer->is_active,
+                    'tags' => $customer->tags->map(fn ($tag) => [
+                        'id' => $tag->id,
+                        'name' => $tag->name,
+                        'color' => $tag->color,
+                    ])->values(),
+                    'created_at' => $customer->created_at?->toIso8601String(),
                 ]),
+            'customerFilters' => $filters,
             'dueServices' => CustomerDueService::query()
                 ->with(['customer:id,name,phone,email', 'service:id,name'])
                 ->where('status', 'pending')
