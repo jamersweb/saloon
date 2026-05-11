@@ -6,6 +6,8 @@ import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 
+const recaptchaScriptId = 'google-recaptcha-v2-script';
+
 export default function Login({ status, canResetPassword, recaptchaSiteKey }) {
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
@@ -23,11 +25,13 @@ export default function Login({ status, canResetPassword, recaptchaSiteKey }) {
 
         const renderCaptcha = () => {
             const container = document.getElementById('login-recaptcha');
-            if (! window.grecaptcha || ! container || container.dataset.widgetId) {
+            const grecaptcha = window.grecaptcha;
+
+            if (! grecaptcha || typeof grecaptcha.render !== 'function' || ! container || container.dataset.widgetId) {
                 return;
             }
 
-            const widgetId = window.grecaptcha.render(container, {
+            const widgetId = grecaptcha.render(container, {
                 sitekey: recaptchaSiteKey,
                 callback: (token) => setData('g-recaptcha-response', token),
                 'expired-callback': () => setData('g-recaptcha-response', ''),
@@ -38,26 +42,45 @@ export default function Login({ status, canResetPassword, recaptchaSiteKey }) {
             setCaptchaReady(true);
         };
 
-        const existingScript = document.querySelector('script[data-recaptcha-script="true"]');
+        const whenReady = () => {
+            const grecaptcha = window.grecaptcha;
+            if (! grecaptcha) {
+                return;
+            }
+
+            if (typeof grecaptcha.ready === 'function') {
+                grecaptcha.ready(renderCaptcha);
+                return;
+            }
+
+            renderCaptcha();
+        };
+
+        const existingScript = document.getElementById(recaptchaScriptId);
         if (existingScript) {
-            if (window.grecaptcha) {
-                renderCaptcha();
+            if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
+                whenReady();
             } else {
-                existingScript.addEventListener('load', renderCaptcha, { once: true });
+                existingScript.addEventListener('load', whenReady, { once: true });
             }
 
             return undefined;
         }
 
         const script = document.createElement('script');
-        script.src = 'https://www.google.com/recaptcha/api.js?render=explicit';
+        script.id = recaptchaScriptId;
+        script.src = 'https://www.google.com/recaptcha/api.js?onload=__saloonRecaptchaOnload&render=explicit';
         script.async = true;
         script.defer = true;
-        script.dataset.recaptchaScript = 'true';
-        script.addEventListener('load', renderCaptcha, { once: true });
+        window.__saloonRecaptchaOnload = whenReady;
+        script.addEventListener('load', whenReady, { once: true });
         document.body.appendChild(script);
 
-        return undefined;
+        return () => {
+            if (window.__saloonRecaptchaOnload === whenReady) {
+                delete window.__saloonRecaptchaOnload;
+            }
+        };
     }, [usesRecaptcha, recaptchaSiteKey, setData]);
 
     const submit = (e) => {
