@@ -50,4 +50,10 @@ return [
         'booking_alert_recipients' => array_values(array_filter(array_map('trim', explode(',', (string) env('BOOKING_ALERT_WHATSAPP_RECIPIENTS', ''))))),
     ],
 
+    'recaptcha' => [
+        'site_key' => env('RECAPTCHA_SITE_KEY'),
+        'secret_key' => env('RECAPTCHA_SECRET_KEY'),
+        'verify_url' => env('RECAPTCHA_VERIFY_URL', 'https://www.google.com/recaptcha/api/siteverify'),
+    ],
+
 ];

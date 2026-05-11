@@ -4,19 +4,78 @@ import PrimaryButton from '@/Components/PrimaryButton';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
 
-export default function Login({ status, canResetPassword }) {
+export default function Login({ status, canResetPassword, recaptchaSiteKey }) {
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
         password: '',
         remember: false,
+        'g-recaptcha-response': '',
     });
+    const [captchaReady, setCaptchaReady] = useState(false);
+    const usesRecaptcha = Boolean(recaptchaSiteKey);
+
+    useEffect(() => {
+        if (! usesRecaptcha) {
+            return undefined;
+        }
+
+        const renderCaptcha = () => {
+            const container = document.getElementById('login-recaptcha');
+            if (! window.grecaptcha || ! container || container.dataset.widgetId) {
+                return;
+            }
+
+            const widgetId = window.grecaptcha.render(container, {
+                sitekey: recaptchaSiteKey,
+                callback: (token) => setData('g-recaptcha-response', token),
+                'expired-callback': () => setData('g-recaptcha-response', ''),
+                'error-callback': () => setData('g-recaptcha-response', ''),
+            });
+
+            container.dataset.widgetId = String(widgetId);
+            setCaptchaReady(true);
+        };
+
+        const existingScript = document.querySelector('script[data-recaptcha-script="true"]');
+        if (existingScript) {
+            if (window.grecaptcha) {
+                renderCaptcha();
+            } else {
+                existingScript.addEventListener('load', renderCaptcha, { once: true });
+            }
+
+            return undefined;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://www.google.com/recaptcha/api.js?render=explicit';
+        script.async = true;
+        script.defer = true;
+        script.dataset.recaptchaScript = 'true';
+        script.addEventListener('load', renderCaptcha, { once: true });
+        document.body.appendChild(script);
+
+        return undefined;
+    }, [usesRecaptcha, recaptchaSiteKey, setData]);
 
     const submit = (e) => {
         e.preventDefault();
 
         post(route('login'), {
-            onFinish: () => reset('password'),
+            onFinish: () => {
+                reset('password');
+
+                if (window.grecaptcha && usesRecaptcha) {
+                    const container = document.getElementById('login-recaptcha');
+                    const widgetId = container?.dataset?.widgetId;
+                    if (widgetId !== undefined) {
+                        window.grecaptcha.reset(Number(widgetId));
+                    }
+                    setData('g-recaptcha-response', '');
+                }
+            },
         });
     };
 
@@ -91,7 +150,13 @@ export default function Login({ status, canResetPassword }) {
                     </div>
 
                     <div className="pt-1">
-                        <PrimaryButton className="w-full justify-center rounded-xl px-5 py-3 text-base tracking-[0.2em]" disabled={processing}>
+                        {usesRecaptcha && (
+                            <div className="space-y-2">
+                                <div id="login-recaptcha" />
+                                <InputError message={errors.captcha || errors['g-recaptcha-response']} className="mt-2" />
+                            </div>
+                        )}
+                        <PrimaryButton className="w-full justify-center rounded-xl px-5 py-3 text-base tracking-[0.2em]" disabled={processing || (usesRecaptcha && (!captchaReady || !data['g-recaptcha-response']))}>
                             LOG IN
                         </PrimaryButton>
                     </div>

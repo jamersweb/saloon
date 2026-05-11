@@ -91,6 +91,7 @@ export default function AuthenticatedLayout({ header, headerActions = null, chil
                     key: 'my-work',
                     title: 'My Work',
                     items: [
+                        { label: 'Appointments', href: route('appointments.index'), active: route().current('appointments.*') },
                         { label: 'Attendance', href: route('attendance.index'), active: route().current('attendance.*') },
                         { label: 'Leave Requests', href: route('leave-requests.index'), active: route().current('leave-requests.*') },
                         { label: 'Profile', href: route('profile.edit'), active: route().current('profile.*') },

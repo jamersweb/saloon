@@ -5,6 +5,7 @@ namespace App\Http\Requests\Auth;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -26,10 +27,16 @@ class LoginRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $rules = [
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
         ];
+
+        if ($this->usesRecaptcha()) {
+            $rules['g-recaptcha-response'] = ['required', 'string'];
+        }
+
+        return $rules;
     }
 
     /**
@@ -40,9 +47,10 @@ class LoginRequest extends FormRequest
     public function authenticate(): void
     {
         $this->ensureIsNotRateLimited();
+        $this->ensureRecaptchaIsValid();
 
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
-            RateLimiter::hit($this->throttleKey());
+            RateLimiter::hit($this->throttleKey(), 3600);
 
             throw ValidationException::withMessages([
                 'email' => trans('auth.failed'),
@@ -59,7 +67,7 @@ class LoginRequest extends FormRequest
      */
     public function ensureIsNotRateLimited(): void
     {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey(), 5)) {
+        if (! RateLimiter::tooManyAttempts($this->throttleKey(), 4)) {
             return;
         }
 
@@ -81,5 +89,31 @@ class LoginRequest extends FormRequest
     public function throttleKey(): string
     {
         return Str::transliterate(Str::lower($this->string('email')).'|'.$this->ip());
+    }
+
+    private function ensureRecaptchaIsValid(): void
+    {
+        if (! $this->usesRecaptcha()) {
+            return;
+        }
+
+        $response = Http::asForm()
+            ->timeout(10)
+            ->post((string) config('services.recaptcha.verify_url'), [
+                'secret' => config('services.recaptcha.secret_key'),
+                'response' => $this->input('g-recaptcha-response'),
+                'remoteip' => $this->ip(),
+            ]);
+
+        if (! $response->ok() || ! $response->json('success')) {
+            throw ValidationException::withMessages([
+                'captcha' => 'Captcha verification failed. Please try again.',
+            ]);
+        }
+    }
+
+    private function usesRecaptcha(): bool
+    {
+        return filled(config('services.recaptcha.site_key')) && filled(config('services.recaptcha.secret_key'));
     }
 }
