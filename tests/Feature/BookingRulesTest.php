@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
 use App\Models\StaffSchedule;
+use App\Models\BookingRule;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -329,5 +330,87 @@ class BookingRulesTest extends TestCase
             'staff_profile_id' => $staffProfile->id,
             'scheduled_start' => $start->toDateTimeString(),
         ])->assertSessionHasNoErrors();
+    }
+
+    public function test_public_booking_is_saved_as_pending_even_when_auto_confirm_is_disabled(): void
+    {
+        Role::create(['name' => 'staff', 'label' => 'Staff']);
+        $staffUser = User::factory()->create();
+        $staffProfile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'STF-PEND-01',
+            'is_active' => true,
+        ]);
+
+        BookingRule::current()->update(['public_requires_approval' => false]);
+
+        $start = now()->addDays(2)->setTime(10, 0);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staffProfile->id,
+            'schedule_date' => $start->toDateString(),
+            'start_time' => '09:00:00',
+            'end_time' => '17:00:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Pending Service',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 100,
+            'is_active' => true,
+        ]);
+
+        $this->post(route('public.booking.store'), [
+            'customer_name' => 'Pending Customer',
+            'customer_phone' => '5559988776',
+            'customer_email' => 'pending@example.com',
+            'service_id' => $service->id,
+            'scheduled_start' => $start->toDateTimeString(),
+        ])->assertSessionHasNoErrors();
+
+        $appointment = Appointment::query()->where('customer_phone', '5559988776')->latest()->first();
+
+        $this->assertNotNull($appointment);
+        $this->assertSame(Appointment::STATUS_PENDING, $appointment->status);
+    }
+
+    public function test_public_booking_future_date_auto_fills_missing_staff_schedule(): void
+    {
+        Role::create(['name' => 'staff', 'label' => 'Staff']);
+
+        $staffUser = User::factory()->create();
+        $staffProfile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'STF-FUTURE-01',
+            'is_active' => true,
+        ]);
+
+        $start = now()->addDays(40)->setTime(10, 0);
+
+        $service = SalonService::create([
+            'name' => 'Future Booking Service',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 90,
+            'is_active' => true,
+        ]);
+
+        $this->post(route('public.booking.store'), [
+            'customer_name' => 'Future Customer',
+            'customer_phone' => '5558844221',
+            'customer_email' => 'future@example.com',
+            'service_id' => $service->id,
+            'scheduled_start' => $start->toDateTimeString(),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertTrue(
+            StaffSchedule::query()
+                ->where('staff_profile_id', $staffProfile->id)
+                ->whereDate('schedule_date', $start->toDateString())
+                ->where('is_day_off', false)
+                ->exists()
+        );
     }
 }

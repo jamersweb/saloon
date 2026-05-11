@@ -126,7 +126,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
 
                 <section className="ta-card overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
                         <h3 className="text-sm font-semibold text-slate-700">Low Stock Alerts</h3>
                         <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('inventory.alerts.scan'))}>Refresh Alerts</button>
                     </div>
@@ -171,28 +171,28 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
                             <h3 className="text-sm font-semibold text-slate-700">Stock Catalog</h3>
                             <p className="mt-1 text-xs text-slate-500">Showing {items?.from || 0}-{items?.to || 0} of {items?.total || 0} items</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                             <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleInventoryImport} />
                             <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => importFileRef.current?.click()}>Import CSV</button>
                             <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.template', { entity: 'inventory' }); }}>Template CSV</button>
                             <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.export', { entity: 'inventory' }); }}>Export CSV</button>
                         </div>
                     </div>
-                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-6">
-                        <div className="md:col-span-2">
+                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:grid-cols-2 xl:grid-cols-6">
+                        <div className="sm:col-span-2 xl:col-span-2">
                             <label className="ta-field-label">Search</label>
-                            <input className="ta-input" placeholder="SKU, item name, category" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" placeholder="SKU, item name, category" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Category</label>
-                            <select className="ta-input" value={filterForm.data.category} onChange={(e) => filterForm.setData('category', e.target.value)}>
+                            <select className="ta-input w-full min-w-0" value={filterForm.data.category} onChange={(e) => filterForm.setData('category', e.target.value)}>
                                 <option value="">All categories</option>
                                 {categories.map((category) => <option key={category} value={category}>{category}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="ta-field-label">Stock</label>
-                            <select className="ta-input" value={filterForm.data.stock_status} onChange={(e) => filterForm.setData('stock_status', e.target.value)}>
+                            <select className="ta-input w-full min-w-0" value={filterForm.data.stock_status} onChange={(e) => filterForm.setData('stock_status', e.target.value)}>
                                 <option value="all">All items</option>
                                 <option value="low">Low stock</option>
                                 <option value="in_stock">In stock</option>
@@ -202,19 +202,19 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
                         </div>
                         <div>
                             <label className="ta-field-label">Min price</label>
-                            <input className="ta-input" type="number" min="0" step="0.01" value={filterForm.data.min_price} onChange={(e) => filterForm.setData('min_price', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" type="number" min="0" step="0.01" value={filterForm.data.min_price} onChange={(e) => filterForm.setData('min_price', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Max price</label>
-                            <input className="ta-input" type="number" min="0" step="0.01" value={filterForm.data.max_price} onChange={(e) => filterForm.setData('max_price', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" type="number" min="0" step="0.01" value={filterForm.data.max_price} onChange={(e) => filterForm.setData('max_price', e.target.value)} />
                         </div>
-                        <div className="md:col-span-6 flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex gap-3">
-                                <select className="ta-input max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                        <div className="sm:col-span-2 xl:col-span-6">
+                            <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center">
+                                <select className="ta-input w-full min-w-0 sm:max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
                                     {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
                                 </select>
-                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={applyFilters}>Apply Filters</button>
-                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                                <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 sm:w-auto" onClick={applyFilters}>Apply Filters</button>
+                                <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 sm:w-auto" onClick={clearFilters}>Reset filters</button>
                             </div>
                         </div>
                     </div>
@@ -333,5 +333,4 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
         </AuthenticatedLayout>
     );
 }
-
 

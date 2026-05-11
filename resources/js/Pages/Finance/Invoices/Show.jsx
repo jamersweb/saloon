@@ -252,6 +252,11 @@ export default function FinanceInvoicesShow({
                             Cashier: <strong>{invoice.cashier_name}</strong>
                         </p>
                     )}
+                    {invoice.settlement_label && (
+                        <p className="text-sm text-slate-600">
+                            Payment method: <strong>{invoice.settlement_label}</strong>
+                        </p>
+                    )}
                     <p className="text-xs text-slate-500">VAT rate used on lines: {vat_rate_percent}%</p>
                 </section>
 
@@ -541,7 +546,7 @@ export default function FinanceInvoicesShow({
                                     {invoice.payments.map((p) => (
                                         <li key={p.id} className="flex flex-wrap justify-between border-b border-slate-100 py-2">
                                             <span>
-                                                {payment_methods[p.method] || p.method} · {p.created_by_name || 'Staff'}
+                                                {p.method_label || payment_methods[p.method] || p.method} · {p.created_by_name || 'Staff'}
                                             </span>
                                             <span className="font-semibold text-emerald-700">{money(p.amount, currency_code)}</span>
                                             <span className="w-full text-xs text-slate-500">{new Date(p.paid_at).toLocaleString()}</span>

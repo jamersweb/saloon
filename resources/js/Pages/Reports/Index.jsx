@@ -98,20 +98,20 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
 
             <div className="space-y-6">
                 <section className="ta-card p-5">
-                    <div className="grid gap-3 md:grid-cols-4">
-                        <div><label className="mb-1 block text-xs font-semibold uppercase text-slate-500">From</label><input className="ta-input" type="date" value={filters.date_from} onChange={(e) => applyFilter('date_from', e.target.value)} /></div>
-                        <div><label className="mb-1 block text-xs font-semibold uppercase text-slate-500">To</label><input className="ta-input" type="date" value={filters.date_to} onChange={(e) => applyFilter('date_to', e.target.value)} /></div>
-                        <div className="md:col-span-2 flex items-end gap-2">
-                            <button className="ta-btn-primary disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('appointments')}>Export Appointments</button>
-                            <button className="rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('customers')}>Customers CSV</button>
-                            <button className="rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('inventory')}>Inventory CSV</button>
-                            <button className="rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('loyalty')}>Loyalty CSV</button>
-                            <button className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-700 disabled:opacity-50" disabled={!canExport} onClick={exportPdf}>Summary PDF</button>
+                    <div className="grid gap-3 lg:grid-cols-4">
+                        <div className="min-w-0"><label className="mb-1 block text-xs font-semibold uppercase text-slate-500">From</label><input className="ta-input w-full min-w-0" type="date" value={filters.date_from} onChange={(e) => applyFilter('date_from', e.target.value)} /></div>
+                        <div className="min-w-0"><label className="mb-1 block text-xs font-semibold uppercase text-slate-500">To</label><input className="ta-input w-full min-w-0" type="date" value={filters.date_to} onChange={(e) => applyFilter('date_to', e.target.value)} /></div>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-3">
+                            <button className="ta-btn-primary w-full disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('appointments')}>Export Appointments</button>
+                            <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('customers')}>Customers CSV</button>
+                            <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('inventory')}>Inventory CSV</button>
+                            <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50 lg:col-span-1" disabled={!canExport} onClick={() => exportReport('loyalty')}>Loyalty CSV</button>
+                            <button className="w-full rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-700 disabled:opacity-50 sm:col-span-2 lg:col-span-2" disabled={!canExport} onClick={exportPdf}>Summary PDF</button>
                         </div>
                     </div>
                 </section>
 
-                <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-7">
+                <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
                     {Object.entries(overview).map(([key, value]) => (
                         <div key={key} className="ta-card p-4">
                             <p className="text-xs uppercase text-slate-500">{key.replaceAll('_', ' ')}</p>

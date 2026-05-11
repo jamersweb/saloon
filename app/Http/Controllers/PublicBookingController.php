@@ -9,6 +9,7 @@ use App\Models\SalonService;
 use App\Models\StaffProfile;
 use App\Services\BookingAvailabilityService;
 use App\Services\PublicBookingNotificationService;
+use App\Services\StaffScheduleGeneratorService;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
@@ -22,16 +23,15 @@ use Inertia\Response;
 
 class PublicBookingController extends Controller
 {
+    public function __construct(private readonly StaffScheduleGeneratorService $staffScheduleGenerator) {}
+
     public function create(): Response
     {
         $rules = BookingRule::current();
+        $this->staffScheduleGenerator->fillGapsForActiveStaff(now(), now()->addDays((int) $rules->max_advance_days));
 
         return Inertia::render('Public/Booking', [
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes', 'price']),
-            'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
-                'id' => $staff->id,
-                'name' => $staff->user?->name,
-            ]),
             'bookingRules' => $rules,
             'defaultStart' => $rules->nextDefaultAppointmentStart(),
         ]);
@@ -40,10 +40,10 @@ class PublicBookingController extends Controller
     public function embedCreate(): View
     {
         $rules = BookingRule::current();
+        $this->staffScheduleGenerator->fillGapsForActiveStaff(now(), now()->addDays((int) $rules->max_advance_days));
 
         return view('public.embed-booking', [
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'duration_minutes', 'price']),
-            'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get(),
             'bookingRules' => $rules,
             'defaultStart' => $rules->nextDefaultAppointmentStart(),
         ]);
@@ -138,6 +138,7 @@ class PublicBookingController extends Controller
         $lastPlan = end($plans);
         $end = $lastPlan['end'];
         $rules = BookingRule::current();
+        $this->staffScheduleGenerator->fillGapsForActiveStaff(now(), $start->copy()->addDays(1));
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
@@ -190,7 +191,7 @@ class PublicBookingController extends Controller
                 'service_id' => $plan['service']->id,
                 'staff_profile_id' => $resolvedStaffId,
                 'source' => 'public',
-                'status' => $rules->public_requires_approval ? Appointment::STATUS_PENDING : Appointment::STATUS_CONFIRMED,
+                'status' => Appointment::STATUS_PENDING,
                 'scheduled_start' => $plan['start'],
                 'scheduled_end' => $plan['end'],
                 'customer_name' => $data['customer_name'],

@@ -29,16 +29,16 @@ export default function FinanceDashboard({ filters, summary, accountsReceivable,
                             <h3 className="text-sm font-semibold text-slate-700">Periodic reporting</h3>
                             <p className="text-xs text-slate-500">Income, expenses, tax, and cash movement for the selected range.</p>
                         </div>
-                        <div className="flex flex-wrap gap-3">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap">
                             <div>
                                 <label className="ta-field-label">From</label>
-                                <input type="date" className="ta-input" value={filters.date_from} onChange={(e) => applyFilter('date_from', e.target.value)} />
+                                <input type="date" className="ta-input w-full min-w-0" value={filters.date_from} onChange={(e) => applyFilter('date_from', e.target.value)} />
                             </div>
                             <div>
                                 <label className="ta-field-label">To</label>
-                                <input type="date" className="ta-input" value={filters.date_to} onChange={(e) => applyFilter('date_to', e.target.value)} />
+                                <input type="date" className="ta-input w-full min-w-0" value={filters.date_to} onChange={(e) => applyFilter('date_to', e.target.value)} />
                             </div>
-                            <button type="button" className="ta-btn-primary mt-5 h-10" onClick={exportCsv}>
+                            <button type="button" className="ta-btn-primary mt-0 w-full self-end sm:col-span-2 lg:mt-5 lg:w-auto lg:self-auto" onClick={exportCsv}>
                                 Export CSV
                             </button>
                         </div>

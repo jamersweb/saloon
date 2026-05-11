@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\FinanceSetting;
+use App\Models\InvoicePayment;
 use App\Models\TaxInvoice;
 use ArPHP\I18N\Arabic;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -25,7 +26,58 @@ final class TaxReceiptPdfView
         return [
             'settings' => $settings,
             'invoice' => $invoice,
+            'settlement_summary' => self::settlementSummary($invoice),
             'logo_placeholder' => self::LOGO_PLACEHOLDER,
+        ];
+    }
+
+    /**
+     * @return array{type:string,label:string,lines:array<int,string>}|null
+     */
+    private static function settlementSummary(TaxInvoice $invoice): ?array
+    {
+        $payments = $invoice->payments ?? collect();
+
+        if ($payments->isNotEmpty()) {
+            $methodLabels = InvoicePayment::methodLabels();
+            $lines = $payments->map(function ($payment) use ($methodLabels): string {
+                $label = $methodLabels[$payment->method] ?? ucfirst(str_replace('_', ' ', (string) $payment->method));
+                $reference = $payment->reference_note ? " ({$payment->reference_note})" : '';
+
+                return sprintf(
+                    '%s: %s @ %s%s',
+                    $label,
+                    number_format((float) $payment->amount, 2),
+                    $payment->paid_at?->format('Y-m-d H:i') ?? 'N/A',
+                    $reference
+                );
+            })->values()->all();
+
+            return [
+                'type' => 'payment',
+                'label' => 'Payment Method',
+                'lines' => $lines,
+            ];
+        }
+
+        $hasPackageSession = $invoice->items->contains(fn ($item) => str_contains(strtolower((string) $item->description), 'package session'));
+
+        if (! $hasPackageSession) {
+            return null;
+        }
+
+        $customer = $invoice->customer?->loadMissing('membershipCards.type');
+        $membershipName = $customer?->membershipCards?->firstWhere('status', 'active')?->type?->name
+            ?? $customer?->membershipCards?->first()?->type?->name;
+
+        return [
+            'type' => 'package',
+            'label' => 'Settlement Method',
+            'lines' => [
+                $membershipName
+                    ? "Package / Membership: {$membershipName}"
+                    : 'Package / Membership',
+            ],
         ];
     }
 

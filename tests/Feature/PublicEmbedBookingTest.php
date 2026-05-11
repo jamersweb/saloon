@@ -37,6 +37,8 @@ class PublicEmbedBookingTest extends TestCase
         $this->get(route('embed.booking'))
             ->assertOk()
             ->assertSee('Book Your Appointment', false)
+            ->assertSee('+971111111111', false)
+            ->assertDontSee('Staff Profile', false)
             ->assertSee(route('embed.booking.store'), false);
     }
 

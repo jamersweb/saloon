@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\StaffProfile;
 use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -75,5 +76,42 @@ class StaffProfileAutoCodeTest extends TestCase
 
         $this->assertNotNull($profile);
         $this->assertSame('EMP-106', $profile->employee_code);
+    }
+
+    public function test_manager_can_update_staff_password_without_current_password(): void
+    {
+        $managerRole = Role::create(['name' => 'manager', 'label' => 'Manager']);
+        $staffRole = Role::create(['name' => 'staff', 'label' => 'Staff']);
+
+        $manager = User::factory()->create(['role_id' => $managerRole->id]);
+        $staffUser = User::factory()->create([
+            'role_id' => $staffRole->id,
+            'password' => Hash::make('OldPassword@123'),
+        ]);
+
+        $profile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-111',
+            'phone' => null,
+            'skills' => [],
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($manager)
+            ->put(route('staff.update', $profile), [
+                'name' => $staffUser->name,
+                'email' => $staffUser->email,
+                'phone' => '',
+                'skills' => '',
+                'hourly_rate' => '',
+                'is_active' => true,
+                'role_id' => $staffRole->id,
+                'password' => 'NewPassword@123',
+                'password_confirmation' => 'NewPassword@123',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'Staff updated. Password changed.');
+
+        $this->assertTrue(Hash::check('NewPassword@123', $staffUser->fresh()->password));
     }
 }

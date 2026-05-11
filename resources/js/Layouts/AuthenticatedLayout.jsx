@@ -237,22 +237,22 @@ export default function AuthenticatedLayout({ header, headerActions = null, chil
 
             <div className="flex-1 lg:ml-[280px]">
                 <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
-                    <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-                        <div>
+                    <div className="mx-auto flex max-w-7xl flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+                        <div className="min-w-0 flex-1">
                             <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Vina Management System</p>
-                            <div className="text-lg font-semibold text-slate-800">{header}</div>
+                            <div className="truncate text-lg font-semibold text-slate-800">{header}</div>
                         </div>
-                        <div className="flex items-center gap-3">
-                            {headerActions}
+                        <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                            {headerActions ? <div className="flex flex-wrap gap-2 sm:justify-end">{headerActions}</div> : null}
                             <div className="hidden rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-right sm:block">
                                 <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Current Time</p>
                                 <p className="text-xs font-semibold text-slate-700">{currentTimeLabel}</p>
                             </div>
                             <Dropdown>
                                 <Dropdown.Trigger>
-                                    <button className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
+                                    <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 sm:w-auto">
                                         <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-semibold text-indigo-600">{user?.role?.label ?? 'N/A'}</span>
-                                        {user?.name}
+                                        <span className="truncate">{user?.name}</span>
                                     </button>
                                 </Dropdown.Trigger>
                                 <Dropdown.Content>

@@ -117,21 +117,21 @@ export default function ServicesIndex({ services, filters, categories = [] }) {
                         <h3 className="text-sm font-semibold text-slate-700">Service Catalog</h3>
                         <p className="mt-1 text-xs text-slate-500">Showing {services?.from || 0}-{services?.to || 0} of {services?.total || 0} services</p>
                     </div>
-                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-6">
-                        <div className="md:col-span-2">
+                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:grid-cols-2 xl:grid-cols-6">
+                        <div className="sm:col-span-2 xl:col-span-2">
                             <label className="ta-field-label">Search</label>
-                            <input className="ta-input" placeholder="Service name or category" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" placeholder="Service name or category" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Category</label>
-                            <select className="ta-input" value={filterForm.data.category} onChange={(e) => filterForm.setData('category', e.target.value)}>
+                            <select className="ta-input w-full min-w-0" value={filterForm.data.category} onChange={(e) => filterForm.setData('category', e.target.value)}>
                                 <option value="">All categories</option>
                                 {categories.map((category) => <option key={category} value={category}>{category}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="ta-field-label">Status</label>
-                            <select className="ta-input" value={filterForm.data.status} onChange={(e) => filterForm.setData('status', e.target.value)}>
+                            <select className="ta-input w-full min-w-0" value={filterForm.data.status} onChange={(e) => filterForm.setData('status', e.target.value)}>
                                 <option value="all">All services</option>
                                 <option value="active">Active only</option>
                                 <option value="inactive">Inactive only</option>
@@ -139,27 +139,27 @@ export default function ServicesIndex({ services, filters, categories = [] }) {
                         </div>
                         <div>
                             <label className="ta-field-label">Min price</label>
-                            <input className="ta-input" type="number" min="0" step="0.01" value={filterForm.data.min_price} onChange={(e) => filterForm.setData('min_price', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" type="number" min="0" step="0.01" value={filterForm.data.min_price} onChange={(e) => filterForm.setData('min_price', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Max price</label>
-                            <input className="ta-input" type="number" min="0" step="0.01" value={filterForm.data.max_price} onChange={(e) => filterForm.setData('max_price', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" type="number" min="0" step="0.01" value={filterForm.data.max_price} onChange={(e) => filterForm.setData('max_price', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Min duration</label>
-                            <input className="ta-input" type="number" min="0" value={filterForm.data.min_duration} onChange={(e) => filterForm.setData('min_duration', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" type="number" min="0" value={filterForm.data.min_duration} onChange={(e) => filterForm.setData('min_duration', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Max duration</label>
-                            <input className="ta-input" type="number" min="0" value={filterForm.data.max_duration} onChange={(e) => filterForm.setData('max_duration', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" type="number" min="0" value={filterForm.data.max_duration} onChange={(e) => filterForm.setData('max_duration', e.target.value)} />
                         </div>
-                        <div className="md:col-span-6 flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex gap-3">
-                                <select className="ta-input max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                        <div className="sm:col-span-2 xl:col-span-6">
+                            <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center">
+                                <select className="ta-input w-full min-w-0 sm:max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
                                     {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
                                 </select>
-                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={applyFilters}>Apply Filters</button>
-                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                                <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 sm:w-auto" onClick={applyFilters}>Apply Filters</button>
+                                <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 sm:w-auto" onClick={clearFilters}>Reset filters</button>
                             </div>
                         </div>
                     </div>
@@ -225,6 +225,5 @@ export default function ServicesIndex({ services, filters, categories = [] }) {
         </AuthenticatedLayout>
     );
 }
-
 
 

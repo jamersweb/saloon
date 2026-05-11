@@ -1,3 +1,4 @@
+import AppFlashPopup from '@/Components/AppFlashPopup';
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
@@ -23,7 +24,7 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
     });
 
     const createForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', password: '', role_id: '' });
-    const editForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', is_active: true, role_id: '' });
+    const editForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', is_active: true, role_id: '', password: '', password_confirmation: '' });
 
     useEffect(() => {
         filterForm.setData({
@@ -85,6 +86,8 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
             hourly_rate: staff.hourly_rate != null ? String(staff.hourly_rate) : '',
             is_active: Boolean(staff.is_active),
             role_id: staff.user?.role_id ? String(staff.user.role_id) : '',
+            password: '',
+            password_confirmation: '',
         });
         editForm.clearErrors();
     };
@@ -139,6 +142,7 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
         <AuthenticatedLayout header="Staff">
             <Head title="Staff" />
             <div className="space-y-6">
+                <AppFlashPopup />
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
                 {uiError && <div className="ta-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{uiError}</div>}
 
@@ -204,13 +208,13 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
                             ) : null}
                         </div>
                     </div>
-                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-5">
-                        <input className="ta-input md:col-span-2" placeholder="Search code, name, email, or phone" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
-                        <select className="ta-input" value={filterForm.data.role_id} onChange={(e) => filterForm.setData('role_id', e.target.value)}>
+                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:grid-cols-2 xl:grid-cols-5">
+                        <input className="ta-input w-full min-w-0 sm:col-span-2 md:col-span-2" placeholder="Search code, name, email, or phone" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
+                        <select className="ta-input w-full min-w-0" value={filterForm.data.role_id} onChange={(e) => filterForm.setData('role_id', e.target.value)}>
                             <option value="">All roles</option>
                             {safeRoles.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}
                         </select>
-                        <select className="ta-input" value={filterForm.data.status} onChange={(e) => filterForm.setData('status', e.target.value)}>
+                        <select className="ta-input w-full min-w-0" value={filterForm.data.status} onChange={(e) => filterForm.setData('status', e.target.value)}>
                             {showDeleted ? (
                                 <option value="removed">Removed only</option>
                             ) : (
@@ -221,12 +225,12 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
                                 </>
                             )}
                         </select>
-                        <div className="flex gap-3">
-                            <select className="ta-input max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                        <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center">
+                            <select className="ta-input w-full min-w-0 sm:max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
                                 {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
                             </select>
-                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" onClick={applyFilters}>Apply Filters</button>
-                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500" onClick={resetFilters}>Reset</button>
+                            <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 sm:w-auto" onClick={applyFilters}>Apply Filters</button>
+                            <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500 sm:w-auto" onClick={resetFilters}>Reset</button>
                         </div>
                     </div>
                     <div className="overflow-x-auto">
@@ -372,6 +376,8 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label>{fieldError(editForm, 'is_active')}</div>
                             <div><label className="ta-field-label">Hourly rate</label><input className="ta-input" type="number" min="0" step="0.01" value={editForm.data.hourly_rate} onChange={(e) => editForm.setData('hourly_rate', e.target.value)} />{fieldError(editForm, 'hourly_rate')}</div>
                             <div className="md:col-span-2 xl:col-span-2"><label className="ta-field-label">Skills</label><input className="ta-input" value={editForm.data.skills} onChange={(e) => editForm.setData('skills', e.target.value)} placeholder="Comma separated skills" />{fieldError(editForm, 'skills')}</div>
+                            <div><label className="ta-field-label">New Password</label><input className="ta-input" type="password" value={editForm.data.password} onChange={(e) => editForm.setData('password', e.target.value)} placeholder="Leave blank to keep current password" />{fieldError(editForm, 'password')}</div>
+                            <div><label className="ta-field-label">Confirm Password</label><input className="ta-input" type="password" value={editForm.data.password_confirmation} onChange={(e) => editForm.setData('password_confirmation', e.target.value)} placeholder="Repeat new password" />{fieldError(editForm, 'password_confirmation')}</div>
                             <div className="md:col-span-4 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={closeEditModal}>Cancel</button></div>
                         </form>
                     </section>
@@ -380,5 +386,3 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
         </AuthenticatedLayout>
     );
 }
-
-

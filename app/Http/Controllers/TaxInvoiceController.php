@@ -178,7 +178,7 @@ class TaxInvoiceController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager', 'reception');
         $this->authorizeInvoiceAccess($request, $invoice);
 
-        $invoice->load(['items.salonService:id,name', 'customer:id,name,phone,email', 'appointment.service:id,name', 'payments.createdBy:id,name']);
+        $invoice->load(['items.salonService:id,name', 'customer.membershipCards.type:id,name', 'customer:id,name,phone,email', 'appointment.service:id,name', 'payments.createdBy:id,name']);
 
         $settings = FinanceSetting::current();
 
@@ -245,10 +245,12 @@ class TaxInvoiceController extends Controller
                     'id' => $p->id,
                     'amount' => (float) $p->amount,
                     'method' => $p->method,
+                    'method_label' => InvoicePayment::methodLabels()[$p->method] ?? ucfirst(str_replace('_', ' ', $p->method)),
                     'paid_at' => $p->paid_at->toIso8601String(),
                     'reference_note' => $p->reference_note,
                     'created_by_name' => $p->createdBy?->name,
                 ]),
+                'settlement_label' => $this->resolveSettlementLabel($invoice),
             ],
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
@@ -495,5 +497,25 @@ class TaxInvoiceController extends Controller
             'service_id' => $appointment->service_id,
             'visit_items' => $visitItems,
         ];
+    }
+
+    private function resolveSettlementLabel(TaxInvoice $invoice): ?string
+    {
+        if ($invoice->payments->isNotEmpty()) {
+            return $invoice->payments
+                ->map(fn (InvoicePayment $payment) => InvoicePayment::methodLabels()[$payment->method] ?? ucfirst(str_replace('_', ' ', $payment->method)))
+                ->unique()
+                ->implode(', ');
+        }
+
+        $hasPackageSession = $invoice->items->contains(fn (TaxInvoiceItem $item) => str_contains(strtolower((string) $item->description), 'package session'));
+        if (! $hasPackageSession) {
+            return null;
+        }
+
+        $membershipName = $invoice->customer?->membershipCards?->firstWhere('status', 'active')?->type?->name
+            ?? $invoice->customer?->membershipCards?->first()?->type?->name;
+
+        return $membershipName ? "Package / {$membershipName}" : 'Package / Membership';
     }
 }

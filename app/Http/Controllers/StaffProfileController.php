@@ -148,13 +148,15 @@ class StaffProfileController extends Controller
             'hourly_rate' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'is_active' => ['nullable', 'boolean'],
             'role_id' => ['required', 'exists:roles,id'],
+            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $staff->user->update([
+        $staff->user->update(array_filter([
             'name' => $data['name'],
             'email' => $data['email'],
             'role_id' => (int) $data['role_id'],
-        ]);
+            'password' => ! empty($data['password']) ? Hash::make($data['password']) : null,
+        ], fn ($value) => $value !== null));
 
         $staff->update([
             'phone' => $data['phone'] ?? null,
@@ -167,7 +169,7 @@ class StaffProfileController extends Controller
 
         Audit::log($request->user()->id, 'staff.updated', 'StaffProfile', $staff->id);
 
-        return back()->with('status', 'Staff updated.');
+        return back()->with('status', ! empty($data['password']) ? 'Staff updated. Password changed.' : 'Staff updated.');
     }
 
     public function deactivate(Request $request, StaffProfile $staff): RedirectResponse

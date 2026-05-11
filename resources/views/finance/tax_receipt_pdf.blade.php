@@ -213,13 +213,10 @@
         </tr>
     </table>
 
-    @php
-        $payments = $invoice->payments ?? collect();
-    @endphp
-    @if($payments->isNotEmpty())
-        <div class="muted" style="margin-top:5px;">Payments / <span class="ar">المدفوعات</span>:</div>
-        @foreach($payments as $p)
-            <div class="muted">{{ ucfirst(str_replace('_', ' ', $p->method)) }}: {{ number_format((float) $p->amount, 2) }} @ {{ $p->paid_at?->format('Y-m-d H:i') }}</div>
+    @if(!empty($settlement_summary))
+        <div class="muted" style="margin-top:5px;">{{ $settlement_summary['label'] }} / <span class="ar">طريقة السداد</span>:</div>
+        @foreach(($settlement_summary['lines'] ?? []) as $line)
+            <div class="muted">{{ $line }}</div>
         @endforeach
     @endif
 

@@ -198,25 +198,25 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
                         </div>
                     </div>
                     <form className="border-b border-slate-100 px-5 py-4" onSubmit={(e) => { e.preventDefault(); applyFilters(); }}>
-                        <div className="grid gap-3 md:grid-cols-4">
+                        <div className={`grid gap-3 ${isStaff ? 'sm:grid-cols-3' : 'sm:grid-cols-2 xl:grid-cols-4'}`}>
                             {!isStaff && (
-                                <select className="ta-input" value={filterForm.data.staff_profile_id} onChange={(e) => filterForm.setData('staff_profile_id', e.target.value)}>
+                                <select className="ta-input w-full min-w-0" value={filterForm.data.staff_profile_id} onChange={(e) => filterForm.setData('staff_profile_id', e.target.value)}>
                                     <option value="">All staff profiles</option>
                                     {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             )}
-                            <input className="ta-input" type="date" value={filterForm.data.date_from} onChange={(e) => filterForm.setData('date_from', e.target.value)} />
-                            <input className="ta-input" type="date" value={filterForm.data.date_to} onChange={(e) => filterForm.setData('date_to', e.target.value)} />
-                            <select className="ta-input" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                            <input className="ta-input w-full min-w-0" type="date" value={filterForm.data.date_from} onChange={(e) => filterForm.setData('date_from', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" type="date" value={filterForm.data.date_to} onChange={(e) => filterForm.setData('date_to', e.target.value)} />
+                            <select className="ta-input w-full min-w-0" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
                                 <option value="10">10 / page</option>
                                 <option value="25">25 / page</option>
                                 <option value="50">50 / page</option>
                                 <option value="100">100 / page</option>
                             </select>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-3">
-                            <button className="ta-btn-primary" type="submit">Apply Filters</button>
-                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700" onClick={resetFilters}>Reset</button>
+                        <div className="mt-3 grid gap-3 sm:flex sm:flex-wrap">
+                            <button className="ta-btn-primary w-full sm:w-auto" type="submit">Apply Filters</button>
+                            <button type="button" className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 sm:w-auto" onClick={resetFilters}>Reset</button>
                         </div>
                     </form>
                     <div className="overflow-x-auto">

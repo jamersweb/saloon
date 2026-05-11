@@ -145,7 +145,7 @@
         <h1>Book Your Appointment</h1>
         <p class="intro">
             Salon hours: {{ $bookingRules->opening_time ?? '09:00' }} to {{ $bookingRules->closing_time ?? '22:00' }} (same day).
-            Slot interval: every {{ $bookingRules->slot_interval_minutes ?? 30 }} minutes.
+            Start times are booked in the next available salon slot.
             Minimum advance: {{ $bookingRules->min_advance_minutes ?? 30 }} minutes.
             Maximum advance: {{ $bookingRules->max_advance_days ?? 60 }} days.
         </p>
@@ -162,7 +162,7 @@
             </div>
             <div class="field">
                 <label for="customer_phone">Customer Phone</label>
-                <input id="customer_phone" name="customer_phone" type="tel" placeholder="Phone" value="{{ old('customer_phone') }}" required>
+                <input id="customer_phone" name="customer_phone" type="tel" placeholder="+971111111111" value="{{ old('customer_phone') }}" required>
             </div>
             <div class="field span-2">
                 <label for="customer_email">Customer Email</label>
@@ -174,17 +174,6 @@
                     @foreach ($services as $service)
                         <option value="{{ $service->id }}" @selected(in_array((string) $service->id, array_map('strval', old('service_ids', [])), true))>
                             {{ $service->name }} ({{ $service->duration_minutes }} min) - {{ number_format((float) $service->price, 2) }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="field">
-                <label for="staff_profile_id">Staff Profile</label>
-                <select id="staff_profile_id" name="staff_profile_id">
-                    <option value="">Any available staff</option>
-                    @foreach ($staffProfiles as $staff)
-                        <option value="{{ $staff->id }}" @selected(old('staff_profile_id') == $staff->id)>
-                            {{ $staff->user?->name }}
                         </option>
                     @endforeach
                 </select>
@@ -299,7 +288,7 @@
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return value;
         const safeInterval = Math.max(1, Number(intervalMinutes || 1));
-        const snapped = Math.round(date.getMinutes() / safeInterval) * safeInterval;
+        const snapped = Math.ceil(date.getMinutes() / safeInterval) * safeInterval;
         date.setMinutes(snapped, 0, 0);
         return toDateTimeLocal(date);
     };

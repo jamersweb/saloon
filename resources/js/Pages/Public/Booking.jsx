@@ -1,6 +1,5 @@
 import ApplicationLogo from '@/Components/ApplicationLogo';
 import AppFlashPopup from '@/Components/AppFlashPopup';
-import SearchableSelect from '@/Components/SearchableSelect';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
@@ -93,7 +92,7 @@ const formatMoney = (value) => {
     }).format(amount);
 };
 
-/** Snap minutes to booking slot interval (matches server BookingAvailabilityService). */
+/** Snap minutes up to the next booking slot interval (matches server public-booking policy). */
 const normalizeToInterval = (value, intervalMinutes) => {
     if (!value) return '';
 
@@ -101,13 +100,13 @@ const normalizeToInterval = (value, intervalMinutes) => {
     if (Number.isNaN(date.getTime())) return value;
 
     const safeInterval = Math.max(1, Number(intervalMinutes || 1));
-    const snappedMinutes = Math.round(date.getMinutes() / safeInterval) * safeInterval;
+    const snappedMinutes = Math.ceil(date.getMinutes() / safeInterval) * safeInterval;
     date.setMinutes(snappedMinutes, 0, 0);
 
     return toDateTimeLocal(date);
 };
 
-export default function Booking({ services, staffProfiles, bookingRules, defaultStart }) {
+export default function Booking({ services, bookingRules, defaultStart }) {
     const { errors } = usePage().props;
     const [serviceSearch, setServiceSearch] = useState('');
     const { data, setData, clearErrors, post, processing } = useForm({
@@ -118,7 +117,6 @@ export default function Booking({ services, staffProfiles, bookingRules, default
     const bookingStartYmd = (data.scheduled_start || defaultStart || '').split('T')[0] || localYmd(new Date());
     const bookingStartBounds = salonSelectableBoundsForYmd(bookingStartYmd, bookingRules, slotIntervalMinutes);
     const selectedServiceIds = data.service_ids || [];
-    const staffOptions = [{ value: '', label: 'Any available staff' }, ...staffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
     const availableServices = useMemo(
         () => services.filter((s) => !selectedServiceIds.includes(String(s.id))),
         [services, selectedServiceIds],
@@ -154,7 +152,7 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                     <h1 className="text-2xl font-semibold text-slate-800">Book Your Appointment</h1>
                     <p className="text-sm text-slate-500">
                         Salon hours: {bookingRules?.opening_time || '09:00'} to {bookingRules?.closing_time || '22:00'} (same day). For today, the earliest slot is the next available time from now (including minimum advance).
-                        Slot interval: every {bookingRules?.slot_interval_minutes ?? 30} minutes.
+                        Start times are booked in the next available salon slot.
                         Minimum advance: {bookingRules?.min_advance_minutes ?? 30} minutes.
                         Maximum advance: {bookingRules?.max_advance_days ?? 60} days.
                     </p>
@@ -166,7 +164,7 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                         </div>
                         <div>
                             <label className="ta-field-label">Customer Phone</label>
-                            <input className="ta-input" placeholder="Phone" value={data.customer_phone} onChange={(e) => setData('customer_phone', e.target.value)} required />
+                            <input className="ta-input" placeholder="+971111111111" value={data.customer_phone} onChange={(e) => setData('customer_phone', e.target.value)} required />
                         </div>
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Customer Email</label>
@@ -208,15 +206,6 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                             {errors.service_id && <div className="mt-1 text-sm text-red-600">{errors.service_id}</div>}
                             {errors.service_ids && <div className="mt-1 text-sm text-red-600">{errors.service_ids}</div>}
                         </div>
-                        <div>
-                            <SearchableSelect
-                                label="Staff Profile"
-                                value={data.staff_profile_id}
-                                onChange={(id) => setData('staff_profile_id', id)}
-                                options={staffOptions}
-                                placeholder="Search staff"
-                            />
-                        </div>
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Scheduled Start</label>
                             <input
@@ -244,7 +233,6 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                             <Link href={route('public.privacy-policy')} className="text-sm text-slate-600 hover:text-slate-800">Privacy Policy</Link>
                             <Link href={route('public.terms-of-service')} className="text-sm text-slate-600 hover:text-slate-800">Terms of Service</Link>
                         </div>
-                        <Link href={route('login')} className="text-sm text-indigo-600">Staff login</Link>
                     </div>
                 </div>
             </div>

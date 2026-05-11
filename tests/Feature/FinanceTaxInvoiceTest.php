@@ -4,11 +4,14 @@ namespace Tests\Feature;
 
 use App\Mail\TaxInvoiceReceiptMail;
 use App\Models\Customer;
+use App\Models\CustomerMembershipCard;
 use App\Models\FinanceSetting;
+use App\Models\MembershipCardType;
 use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\TaxInvoice;
 use App\Models\User;
+use App\Support\TaxReceiptPdfView;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -151,5 +154,115 @@ class FinanceTaxInvoiceTest extends TestCase
         Mail::assertSent(TaxInvoiceReceiptMail::class, function (TaxInvoiceReceiptMail $mail) {
             return $mail->hasTo('guest@example.com');
         });
+    }
+
+    public function test_receipt_html_shows_payment_method_label(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-C3',
+            'name' => 'Cash Customer',
+            'phone' => '5551114455',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Blowdry',
+            'category' => 'Hair',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 100,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)->post(route('finance.invoices.store'), [
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'items' => [[
+                'salon_service_id' => $service->id,
+                'description' => $service->name,
+                'quantity' => 1,
+                'unit_price' => 100,
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->latest()->firstOrFail();
+
+        $this->actingAs($user)->post(route('finance.invoices.finalize', $invoice))->assertSessionHasNoErrors();
+        $this->actingAs($user)->post(route('finance.invoices.payments.store', $invoice), [
+            'amount' => 105,
+            'method' => 'cash',
+            'paid_at' => now()->toDateTimeString(),
+        ])->assertSessionHasNoErrors();
+
+        $html = TaxReceiptPdfView::shapedHtml($invoice->fresh());
+
+        $this->assertStringContainsString('Payment Method', $html);
+        $this->assertStringContainsString('Cash: 105.00', $html);
+    }
+
+    public function test_receipt_html_shows_package_membership_settlement_label(): void
+    {
+        FinanceSetting::current();
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-C4',
+            'name' => 'Gold Package Customer',
+            'phone' => '5551115566',
+            'is_active' => true,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Gold Membership',
+            'slug' => 'gold-membership-receipt-test',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'is_active' => true,
+        ]);
+
+        CustomerMembershipCard::create([
+            'customer_id' => $customer->id,
+            'membership_card_type_id' => $cardType->id,
+            'card_number' => 'GOLD-0001',
+            'status' => 'active',
+            'issued_at' => now(),
+            'activated_at' => now(),
+        ]);
+
+        $invoice = TaxInvoice::create([
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'invoice_number' => 'INV-PKG-1',
+            'issued_at' => now(),
+            'subtotal' => 0,
+            'vat_amount' => 0,
+            'total' => 0,
+        ]);
+
+        $invoice->items()->create([
+            'description' => 'Blowdry (package session)',
+            'quantity' => 1,
+            'unit_price' => 0,
+            'line_subtotal' => 0,
+            'tax_rate_percent' => 5,
+            'line_tax' => 0,
+            'line_total' => 0,
+        ]);
+
+        $html = TaxReceiptPdfView::shapedHtml($invoice->fresh());
+
+        $this->assertStringContainsString('Settlement Method', $html);
+        $this->assertStringContainsString('Package / Membership: Gold Membership', $html);
     }
 }

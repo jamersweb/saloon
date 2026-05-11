@@ -128,30 +128,30 @@ export default function LeaveRequestsIndex({ leaveRequests, staffProfiles, filte
                         <h3 className="text-sm font-semibold text-slate-700">Request Queue</h3>
                         <p className="mt-1 text-xs text-slate-500">Showing {leaveRequests?.from || 0}-{leaveRequests?.to || 0} of {leaveRequests?.total || 0} leave requests</p>
                     </div>
-                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-5">
+                    <div className={`grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 ${isStaff ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-2 xl:grid-cols-5'}`}>
                         {!isStaff ? (
-                            <select className="ta-input" value={filterForm.data.staff_profile_id} onChange={(e) => filterForm.setData('staff_profile_id', e.target.value)}>
+                            <select className="ta-input w-full min-w-0" value={filterForm.data.staff_profile_id} onChange={(e) => filterForm.setData('staff_profile_id', e.target.value)}>
                                 <option value="">All staff</option>
                                 {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         ) : (
-                            <div className="ta-input flex items-center bg-white">{myProfileName}</div>
+                            <div className="ta-input min-w-0 bg-white">{myProfileName}</div>
                         )}
-                        <select className="ta-input" value={filterForm.data.status} onChange={(e) => filterForm.setData('status', e.target.value)}>
+                        <select className="ta-input w-full min-w-0" value={filterForm.data.status} onChange={(e) => filterForm.setData('status', e.target.value)}>
                             <option value="all">All statuses</option>
                             <option value="pending">Pending</option>
                             <option value="approved">Approved</option>
                             <option value="rejected">Rejected</option>
                             <option value="cancelled">Cancelled</option>
                         </select>
-                        <input className="ta-input" type="date" value={filterForm.data.date_from} onChange={(e) => filterForm.setData('date_from', e.target.value)} />
-                        <input className="ta-input" type="date" value={filterForm.data.date_to} onChange={(e) => filterForm.setData('date_to', e.target.value)} />
-                        <div className="flex gap-3">
-                            <select className="ta-input max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                        <input className="ta-input w-full min-w-0" type="date" value={filterForm.data.date_from} onChange={(e) => filterForm.setData('date_from', e.target.value)} />
+                        <input className="ta-input w-full min-w-0" type="date" value={filterForm.data.date_to} onChange={(e) => filterForm.setData('date_to', e.target.value)} />
+                        <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center">
+                            <select className="ta-input w-full min-w-0 sm:max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
                                 {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
                             </select>
-                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700" onClick={applyFilters}>Apply Filters</button>
-                            <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500" onClick={resetFilters}>Reset</button>
+                            <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 sm:w-auto" onClick={applyFilters}>Apply Filters</button>
+                            <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500 sm:w-auto" onClick={resetFilters}>Reset</button>
                         </div>
                     </div>
                     <div className="overflow-x-auto">

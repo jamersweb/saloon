@@ -205,41 +205,41 @@ export default function SchedulesIndex({ staffProfiles, schedules, filters, book
                         <h3 className="text-sm font-semibold text-slate-700">Schedule Calendar Rows</h3>
                         <p className="mt-1 text-xs text-slate-500">Showing {schedules?.from || 0}-{schedules?.to || 0} of {schedules?.total || 0} schedule rows</p>
                     </div>
-                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 md:grid-cols-6">
-                        <div className="md:col-span-2">
+                    <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:grid-cols-2 xl:grid-cols-6">
+                        <div className="sm:col-span-2 xl:col-span-2">
                             <label className="ta-field-label">Search</label>
-                            <input className="ta-input" placeholder="Staff name or date" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" placeholder="Staff name or date" value={filterForm.data.search} onChange={(e) => filterForm.setData('search', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Staff</label>
-                            <select className="ta-input" value={filterForm.data.staff_profile_id} onChange={(e) => filterForm.setData('staff_profile_id', e.target.value)}>
+                            <select className="ta-input w-full min-w-0" value={filterForm.data.staff_profile_id} onChange={(e) => filterForm.setData('staff_profile_id', e.target.value)}>
                                 <option value="">All staff</option>
                                 {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.employee_code} {s.name}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="ta-field-label">From date</label>
-                            <input className="ta-input" type="date" value={filterForm.data.date_from} onChange={(e) => filterForm.setData('date_from', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" type="date" value={filterForm.data.date_from} onChange={(e) => filterForm.setData('date_from', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">To date</label>
-                            <input className="ta-input" type="date" value={filterForm.data.date_to} onChange={(e) => filterForm.setData('date_to', e.target.value)} />
+                            <input className="ta-input w-full min-w-0" type="date" value={filterForm.data.date_to} onChange={(e) => filterForm.setData('date_to', e.target.value)} />
                         </div>
                         <div>
                             <label className="ta-field-label">Day off</label>
-                            <select className="ta-input" value={filterForm.data.day_off} onChange={(e) => filterForm.setData('day_off', e.target.value)}>
+                            <select className="ta-input w-full min-w-0" value={filterForm.data.day_off} onChange={(e) => filterForm.setData('day_off', e.target.value)}>
                                 <option value="all">All</option>
                                 <option value="working">Working days</option>
                                 <option value="day_off">Day off only</option>
                             </select>
                         </div>
-                        <div className="md:col-span-6 flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex gap-3">
-                                <select className="ta-input max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
+                        <div className="sm:col-span-2 xl:col-span-6">
+                            <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center">
+                                <select className="ta-input w-full min-w-0 sm:max-w-[140px]" value={filterForm.data.per_page} onChange={(e) => filterForm.setData('per_page', e.target.value)}>
                                     {[10, 25, 30, 50, 100].map((size) => <option key={size} value={size}>{size} / page</option>)}
                                 </select>
-                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={applyFilters}>Apply Filters</button>
-                                <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={clearFilters}>Reset filters</button>
+                                <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 sm:w-auto" onClick={applyFilters}>Apply Filters</button>
+                                <button type="button" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700 sm:w-auto" onClick={clearFilters}>Reset filters</button>
                             </div>
                         </div>
                     </div>
@@ -297,5 +297,4 @@ export default function SchedulesIndex({ staffProfiles, schedules, filters, book
         </AuthenticatedLayout>
     );
 }
-
 
