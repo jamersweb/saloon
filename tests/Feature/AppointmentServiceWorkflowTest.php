@@ -3,15 +3,19 @@
 namespace Tests\Feature;
 
 use App\Models\Appointment;
+use App\Models\BookingRule;
+use App\Models\CommunicationLog;
 use App\Models\Customer;
 use App\Models\InventoryItem;
 use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
+use App\Models\StaffSchedule;
 use App\Models\User;
 use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -19,6 +23,141 @@ use Tests\TestCase;
 class AppointmentServiceWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_store_notifies_assigned_staff_via_whatsapp_log(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $manager = User::factory()->create(['role_id' => $managerRole->id]);
+        $staffUser = User::factory()->create(['role_id' => $managerRole->id, 'name' => 'Mona Bassagh']);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-NOTIFY-01',
+            'phone' => '971500001111',
+            'is_active' => true,
+        ]);
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '22:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Lashes Refill',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 120,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.store'), [
+            'customer_name' => 'Notify Client',
+            'customer_phone' => '971500009999',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'staff_profile_id' => $staff->id,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 15:00:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('communication_logs', [
+            'channel' => 'whatsapp',
+            'recipient' => '971500001111',
+            'status' => 'queued',
+        ]);
+
+        $log = CommunicationLog::query()->latest('id')->first();
+        $this->assertNotNull($log);
+        $this->assertStringContainsString('you have a new appointment', (string) $log->message);
+        $this->assertStringContainsString('Lashes Refill', (string) $log->message);
+    }
+
+    public function test_update_notifies_newly_assigned_staff_via_whatsapp_log(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $manager = User::factory()->create(['role_id' => $managerRole->id]);
+        $staffUser = User::factory()->create(['role_id' => $managerRole->id, 'name' => 'Hengameh Dortaj']);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-NOTIFY-02',
+            'phone' => '971500002222',
+            'is_active' => true,
+        ]);
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '22:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Acrylic Gel Refill',
+            'duration_minutes' => 80,
+            'buffer_minutes' => 0,
+            'price' => 250,
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::create([
+            'service_id' => $service->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 16:00:00',
+            'scheduled_end' => '2026-05-12 17:20:00',
+            'customer_name' => 'Reassign Client',
+            'customer_phone' => '971500008888',
+        ]);
+
+        $this->actingAs($manager)->put(route('appointments.update', $appointment), [
+            'customer_name' => 'Reassign Client',
+            'customer_phone' => '971500008888',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'staff_profile_id' => $staff->id,
+            'scheduled_start' => '2026-05-12 16:00:00',
+            'scheduled_end' => '2026-05-12 17:20:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('communication_logs', [
+            'channel' => 'whatsapp',
+            'recipient' => '971500002222',
+            'status' => 'queued',
+        ]);
+    }
 
     public function test_staff_can_start_service_with_before_photo_and_notes(): void
     {

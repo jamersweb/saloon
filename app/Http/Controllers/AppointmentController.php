@@ -20,6 +20,7 @@ use App\Services\DueServiceManager;
 use App\Services\GiftCardService;
 use App\Services\LoyaltyService;
 use App\Services\PackageBalanceService;
+use App\Services\StaffAppointmentNotificationService;
 use App\Services\TaxInvoiceDraftFromAppointmentService;
 use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoicePaymentService;
@@ -172,7 +173,7 @@ class AppointmentController extends Controller
         ]);
     }
 
-    public function store(Request $request, BookingAvailabilityService $availabilityService): RedirectResponse
+    public function store(Request $request, BookingAvailabilityService $availabilityService, StaffAppointmentNotificationService $staffAppointmentNotificationService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -248,11 +249,13 @@ class AppointmentController extends Controller
             ]);
         }
 
+        $staffAppointmentNotificationService->notifyAssignedStaff($created, 'assigned');
+
         $count = count($created);
         return back()->with('status', $count > 1 ? "Appointments created ({$count} services)." : 'Appointment created.');
     }
 
-    public function update(Request $request, Appointment $appointment, BookingAvailabilityService $availabilityService): RedirectResponse
+    public function update(Request $request, Appointment $appointment, BookingAvailabilityService $availabilityService, StaffAppointmentNotificationService $staffAppointmentNotificationService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -293,7 +296,9 @@ class AppointmentController extends Controller
         );
         $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer->id, $appointment->id);
 
-        DB::transaction(function () use ($appointment, $data, $customer, $servicePlans, $packageSelection): void {
+        $notifiableAppointments = [];
+
+        DB::transaction(function () use ($appointment, $data, $customer, $servicePlans, $packageSelection, &$notifiableAppointments): void {
             $visitId = $appointment->visit_id ?: (string) Str::uuid();
             $first = $servicePlans[0];
             $firstCovered = in_array((int) $first['service']->id, $packageSelection['covered_service_ids'], true);
@@ -308,12 +313,13 @@ class AppointmentController extends Controller
                 'scheduled_start' => $first['start'],
                 'scheduled_end' => $first['end'],
             ]);
+            $notifiableAppointments[] = $appointment->fresh(['service', 'staffProfile.user']);
 
             if (count($servicePlans) > 1) {
                 for ($i = 1; $i < count($servicePlans); $i++) {
                     $plan = $servicePlans[$i];
                     $covered = in_array((int) $plan['service']->id, $packageSelection['covered_service_ids'], true);
-                    Appointment::create([
+                    $createdAppointment = Appointment::create([
                         ...$data,
                         'service_id' => $plan['service']->id,
                         'service_quantity' => $plan['service_quantity'],
@@ -327,11 +333,13 @@ class AppointmentController extends Controller
                         'source' => $appointment->source ?: ($data['source'] ?? 'admin'),
                         'status' => $data['status'] ?? $appointment->status,
                     ]);
+                    $notifiableAppointments[] = $createdAppointment->load(['service', 'staffProfile.user']);
                 }
             }
         });
 
         Audit::log($request->user()?->id, 'appointment.updated', 'Appointment', $appointment->id);
+        $staffAppointmentNotificationService->notifyAssignedStaff($notifiableAppointments, 'updated');
 
         return back()->with('status', count($servicePlans) > 1 ? 'Appointment updated and additional service appointments added.' : 'Appointment updated.');
     }

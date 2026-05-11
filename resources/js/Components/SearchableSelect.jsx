@@ -27,7 +27,7 @@ export default function SearchableSelect({
         <div className={className}>
             {label ? <label className="ta-field-label">{label}</label> : null}
             <input
-                className="ta-input mb-2"
+                className="ta-input mb-2 font-medium text-slate-800 placeholder:font-semibold placeholder:text-slate-600"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={selectedOption ? `Selected: ${selectedOption.label}` : placeholder}
@@ -40,7 +40,7 @@ export default function SearchableSelect({
                         <button
                             key={option.value}
                             type="button"
-                            className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${selected ? 'bg-amber-50 text-amber-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                        className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium ${selected ? 'bg-amber-50 text-amber-900' : 'text-slate-800 hover:bg-slate-50'}`}
                             onClick={() => {
                                 if (disabled) return;
                                 onChange(option.value);
@@ -49,11 +49,11 @@ export default function SearchableSelect({
                             disabled={disabled}
                         >
                             <span>{option.label}</span>
-                            {selected ? <span className="text-[10px] font-semibold uppercase">Selected</span> : null}
+                            {selected ? <span className="text-[10px] font-bold uppercase tracking-wide text-amber-900">Selected</span> : null}
                         </button>
                     );
                 }) : (
-                    <div className="px-3 py-2 text-sm text-slate-500">{emptyLabel}</div>
+                    <div className="px-3 py-2 text-sm font-medium text-slate-700">{emptyLabel}</div>
                 )}
             </div>
         </div>

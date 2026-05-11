@@ -1091,18 +1091,18 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         {createHasMultipleServices ? (
                             <div>
                                 <label className="ta-field-label">Default Staff Profile</label>
-                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">Hidden for multi-service bookings. Assign staff per service below.</div>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">Hidden for multi-service bookings. Assign staff per service below.</div>
                             </div>
                         ) : (
                             <div>
                                 <SearchableSelect label="Default Staff Profile" value={createForm.data.staff_profile_id} onChange={(id) => createForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
-                                <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-700">Optional default for all selected services.</p>
                                 {fieldError(createForm, 'staff_profile_id')}
                             </div>
                         )}
                         {createHasMultipleServices ? (
                             <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Per Service</p>
+                                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">Staff Per Service</p>
                                 <div className="grid gap-2 md:grid-cols-2">
                                     {createSelectedServices.map((serviceId) => {
                                         const service = services.find((s) => String(s.id) === String(serviceId));
@@ -1149,13 +1149,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         );
                                     })}
                                 </div>
-                                <p className="mt-2 text-xs text-slate-500">Staff marked busy already have an overlapping appointment in the current schedule view.</p>
+                                <p className="mt-2 text-xs font-semibold text-slate-700">Staff marked busy already have an overlapping appointment in the current schedule view.</p>
                                 {fieldError(createForm, 'staff_assignments')}
                             </div>
                         ) : null}
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
-                            <p className="mb-1 text-xs text-slate-500">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. Walk-ins can start from the current time, and future bookings can be scheduled up to the booking horizon.</p>
+                            <p className="mb-1 text-xs font-semibold text-slate-700">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. Walk-ins can start from the current time, and future bookings can be scheduled up to the booking horizon.</p>
                             <input
                                 key={`create-start-${createStartMount}`}
                                 ref={createStartRef}
@@ -1729,18 +1729,18 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         {editHasMultipleServices ? (
                             <div>
                                 <label className="ta-field-label">Default Staff Profile</label>
-                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">Hidden for multi-service bookings. Assign staff per service below.</div>
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">Hidden for multi-service bookings. Assign staff per service below.</div>
                             </div>
                         ) : (
                             <div>
                                 <SearchableSelect label="Default Staff Profile" value={editForm.data.staff_profile_id} onChange={(id) => editForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
-                                <p className="mt-1 text-xs text-slate-500">Optional default for all selected services.</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-700">Optional default for all selected services.</p>
                                 {fieldError(editForm, 'staff_profile_id')}
                             </div>
                         )}
                         {editHasMultipleServices ? (
                             <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Per Service</p>
+                                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">Staff Per Service</p>
                                 <div className="grid gap-2 md:grid-cols-2">
                                     {editSelectedServices.map((serviceId) => {
                                         const service = services.find((s) => String(s.id) === String(serviceId));
@@ -1787,14 +1787,14 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         );
                                     })}
                                 </div>
-                                <p className="mt-2 text-xs text-slate-500">Staff marked busy already have an overlapping appointment in the current schedule view.</p>
+                                <p className="mt-2 text-xs font-semibold text-slate-700">Staff marked busy already have an overlapping appointment in the current schedule view.</p>
                                 {fieldError(editForm, 'staff_assignments')}
                             </div>
                         ) : null}
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
-                            <p className="mb-1 text-xs text-slate-500">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. Walk-ins can start from the current time, and future bookings can be scheduled up to the booking horizon.</p>
+                            <p className="mb-1 text-xs font-semibold text-slate-700">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. Walk-ins can start from the current time, and future bookings can be scheduled up to the booking horizon.</p>
                             <input
                                 key={`edit-start-${editStartMountKey}`}
                                 ref={editStartRef}
