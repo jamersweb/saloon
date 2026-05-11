@@ -13,6 +13,7 @@ use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class AppointmentServiceWorkflowTest extends TestCase
@@ -149,6 +150,61 @@ class AppointmentServiceWorkflowTest extends TestCase
         $photo = $appointment->photos()->where('type', 'after')->first();
         $this->assertNotNull($photo);
         Storage::disk('public')->assertExists($photo->path);
+    }
+
+    public function test_staff_only_sees_their_own_appointments_on_the_appointments_screen(): void
+    {
+        [$user, $staffProfile] = $this->createStaffUser();
+
+        $otherStaffUser = User::factory()->create([
+            'role_id' => $user->role_id,
+        ]);
+        $otherStaffProfile = StaffProfile::create([
+            'user_id' => $otherStaffUser->id,
+            'employee_code' => 'STF-WORK-02',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Hair Cut',
+            'category' => 'Hair',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 90,
+            'is_active' => true,
+        ]);
+
+        $mine = Appointment::create([
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => now()->addHour(),
+            'scheduled_end' => now()->addHours(2),
+            'customer_name' => 'My Client',
+            'customer_phone' => '5551110001',
+        ]);
+
+        Appointment::create([
+            'service_id' => $service->id,
+            'staff_profile_id' => $otherStaffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => now()->addHours(3),
+            'scheduled_end' => now()->addHours(4),
+            'customer_name' => 'Other Client',
+            'customer_phone' => '5551110002',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('appointments.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Appointments/Index')
+                ->has('appointments', 1)
+                ->where('appointments.0.id', $mine->id)
+                ->where('appointments.0.customer_name', 'My Client')
+            );
     }
 
     private function createStaffUser(): array

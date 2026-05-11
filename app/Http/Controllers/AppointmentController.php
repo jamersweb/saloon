@@ -85,6 +85,9 @@ class AppointmentController extends Controller
     {
         $status = $request->string('status')->toString();
         $rules = BookingRule::current();
+        $user = $request->user();
+        $isStaff = $user?->hasRole('staff') ?? false;
+        $staffProfileId = $user?->staffProfile?->id;
 
         $appointmentRows = Appointment::query()
             ->with([
@@ -96,6 +99,7 @@ class AppointmentController extends Controller
                 'customerPackage.package',
                 'taxInvoices.payments',
             ])
+            ->when($isStaff, fn ($query) => $query->where('staff_profile_id', $staffProfileId ?: 0))
             ->when($status === 'upcoming', function ($query): void {
                 $query->where('scheduled_start', '>=', now())
                     ->whereIn('status', [Appointment::STATUS_PENDING, Appointment::STATUS_CONFIRMED, Appointment::STATUS_IN_PROGRESS]);

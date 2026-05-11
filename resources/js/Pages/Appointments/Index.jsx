@@ -261,6 +261,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         [services],
     );
     const roleName = String(auth?.user?.role?.name || '').toLowerCase();
+    const isStaff = roleName === 'staff';
     const canManageFinance = Boolean(auth?.permissions?.can_manage_finance);
     const canCollectPayments = Boolean(auth?.permissions?.can_collect_payments);
     const canCheckout = canManageFinance || canCollectPayments;
@@ -861,15 +862,15 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         >
             <Head title="Appointments" />
             <div className="space-y-6">
-                <section className="ta-card p-3">
+                {!isStaff ? <section className="ta-card p-3">
                     <div className="flex items-center gap-2">
                         <input ref={importFileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleAppointmentsImport} />
                         <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => importFileRef.current?.click()}>Import CSV</button>
                         <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.template', { entity: 'appointments' }); }}>Template CSV</button>
                         <button type="button" className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700" onClick={() => { window.location.href = route('data-transfer.export', { entity: 'appointments' }); }}>Export CSV</button>
                     </div>
-                </section>
-                {flash?.created_tax_invoice_id ? (
+                </section> : null}
+                {!isStaff && flash?.created_tax_invoice_id ? (
                     <div className="ta-card flex flex-wrap items-center justify-between gap-3 border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
                         <span>Tax invoice is ready for this visit — open it to adjust lines, issue the receipt, or record payment.</span>
                         <Link href={route('finance.invoices.show', flash.created_tax_invoice_id)} className="font-semibold text-indigo-700 underline">
@@ -877,7 +878,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         </Link>
                     </div>
                 ) : null}
-                {canCheckout && appointments.some((a) => a.awaiting_checkout) ? (
+                {!isStaff && canCheckout && appointments.some((a) => a.awaiting_checkout) ? (
                     <section id="checkout-alerts" className="ta-card border-amber-200 bg-amber-50/90 p-4">
                         <h3 className="mb-2 text-sm font-semibold text-amber-950">Needs checkout</h3>
                         <p className="mb-2 text-xs text-amber-900/90">Completed visits below still need a receipt issued and/or payment recorded.</p>
@@ -901,7 +902,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         </ul>
                     </section>
                 ) : null}
-                <section className="ta-card p-5">
+                {!isStaff ? <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Appointment</h3>
                     <form
                         onSubmit={(e) => {
@@ -1177,7 +1178,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         <div className="md:col-span-4"><input className="ta-input" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(createForm, 'notes')}</div>
                         <button className="ta-btn-primary" disabled={createForm.processing}>Create</button>
                     </form>
-                </section>
+                </section> : null}
 
                 <section className="ta-card p-4">
                     <label className="ta-field-label mb-2 block">Filter Status</label>
@@ -1260,14 +1261,14 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         </td>
                                         <td className="px-5 py-3">
                                             <div className="flex flex-wrap gap-2">
-                                                <button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(a)}>Edit</button>
+                                                {!isStaff ? <button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(a)}>Edit</button> : null}
                                                 {a.status === 'confirmed' && <button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700" onClick={() => openStartService(a)}>Start Service</button>}
                                                 {a.status === 'in_progress' && (
                                                     <button className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700" onClick={() => openCompleteService(a)}>
                                                         {canCheckout ? 'Finish / Pay' : 'Finish Service'}
                                                     </button>
                                                 )}
-                                                {a.status === 'completed' && a.awaiting_checkout && a.checkout_invoice_id ? (
+                                                {!isStaff && a.status === 'completed' && a.awaiting_checkout && a.checkout_invoice_id ? (
                                                     <Link
                                                         href={route('finance.invoices.show', a.checkout_invoice_id)}
                                                         className="inline-flex rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50"
@@ -1275,14 +1276,14 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                         Checkout
                                                     </Link>
                                                 ) : null}
-                                                {(a.next_statuses || []).filter((next) => !['in_progress', 'completed'].includes(next)).map((next) => <button key={next} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50" onClick={() => transition(a.id, next)}>{statusLabels[next] || next}</button>)}
-                                                <button
+                                                {!isStaff ? (a.next_statuses || []).filter((next) => !['in_progress', 'completed'].includes(next)).map((next) => <button key={next} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50" onClick={() => transition(a.id, next)}>{statusLabels[next] || next}</button>) : null}
+                                                {!isStaff ? <button
                                                     type="button"
                                                     className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
                                                     onClick={() => setDeleteAppointmentId(a.id)}
                                                 >
                                                     Delete permanently
-                                                </button>
+                                                </button> : null}
                                             </div>
                                         </td>
                                     </tr>
@@ -1568,7 +1569,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                 </div>
             </Modal>
 
-            <Modal show={Boolean(editingId)} maxWidth="2xl" onClose={() => setEditingId(null)}>
+            {!isStaff ? <Modal show={Boolean(editingId)} maxWidth="2xl" onClose={() => setEditingId(null)}>
                 <div className="p-6">
                     <h3 className="mb-4 text-base font-semibold text-slate-800">Edit Appointment #{editingId}</h3>
                     <form
@@ -1809,9 +1810,9 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         </div>
                     </form>
                 </div>
-            </Modal>
+            </Modal> : null}
 
-            <ConfirmActionModal
+            {!isStaff ? <ConfirmActionModal
                 show={Boolean(deleteAppointmentId)}
                 title="Delete this appointment permanently?"
                 message="This removes the appointment from the database. This cannot be undone."
@@ -1828,7 +1829,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         },
                     });
                 }}
-            />
+            /> : null}
 
             <Modal show={showBoardView} maxWidth="full" onClose={() => setShowBoardView(false)}>
                 <div className="flex h-[90vh] flex-col bg-[#111315] text-white">
