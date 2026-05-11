@@ -46,36 +46,36 @@ const formatHourLabel = (hour) => {
 };
 const formatMoney = (value, currencyCode = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2 }).format(Number(value || 0));
-const appointmentCategoryCardPalettes = [
-    { backgroundColor: '#fff1f2', borderColor: '#fecdd3', color: '#881337' },
-    { backgroundColor: '#fff7ed', borderColor: '#fed7aa', color: '#9a3412' },
-    { backgroundColor: '#fffbeb', borderColor: '#fde68a', color: '#92400e' },
-    { backgroundColor: '#f7fee7', borderColor: '#bef264', color: '#3f6212' },
-    { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0', color: '#065f46' },
-    { backgroundColor: '#ecfeff', borderColor: '#a5f3fc', color: '#155e75' },
-    { backgroundColor: '#f0f9ff', borderColor: '#bae6fd', color: '#0c4a6e' },
-    { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', color: '#1d4ed8' },
-    { backgroundColor: '#f5f3ff', borderColor: '#ddd6fe', color: '#5b21b6' },
-    { backgroundColor: '#fdf4ff', borderColor: '#f5d0fe', color: '#a21caf' },
-];
-const stringToPaletteIndex = (value) => {
+const appointmentCategoryCardPalettes = {
+    hair: { backgroundColor: '#fef3c7', borderColor: '#fcd34d', color: '#854d0e' },
+    makeup: { backgroundColor: '#fce7f3', borderColor: '#f9a8d4', color: '#9d174d' },
+    threading: { backgroundColor: '#f3e8ff', borderColor: '#d8b4fe', color: '#6b21a8' },
+    eyelash: { backgroundColor: '#e0f2fe', borderColor: '#7dd3fc', color: '#0c4a6e' },
+    waxing: { backgroundColor: '#dcfce7', borderColor: '#86efac', color: '#166534' },
+    nails: { backgroundColor: '#ffedd5', borderColor: '#fdba74', color: '#9a3412' },
+    hair_extension: { backgroundColor: '#dbeafe', borderColor: '#93c5fd', color: '#1d4ed8' },
+    default: { backgroundColor: '#f8fafc', borderColor: '#cbd5e1', color: '#334155' },
+};
+const resolveAppointmentCategoryPalette = (value) => {
     const text = String(value || '').trim().toLowerCase();
-    if (!text) return 0;
+    if (!text) return appointmentCategoryCardPalettes.default;
 
-    let hash = 0;
-    for (let index = 0; index < text.length; index += 1) {
-        hash = ((hash << 5) - hash) + text.charCodeAt(index);
-        hash |= 0;
-    }
+    if (text.includes('hair extension')) return appointmentCategoryCardPalettes.hair_extension;
+    if (text.includes('eyelash') || text.includes('lashes') || text.includes('lash')) return appointmentCategoryCardPalettes.eyelash;
+    if (text.includes('thread')) return appointmentCategoryCardPalettes.threading;
+    if (text.includes('makeup') || text.includes('make up')) return appointmentCategoryCardPalettes.makeup;
+    if (text.includes('wax')) return appointmentCategoryCardPalettes.waxing;
+    if (text.includes('nail') || text.includes('manicure') || text.includes('pedicure')) return appointmentCategoryCardPalettes.nails;
+    if (text.includes('hair')) return appointmentCategoryCardPalettes.hair;
 
-    return Math.abs(hash) % appointmentCategoryCardPalettes.length;
+    return appointmentCategoryCardPalettes.default;
 };
 const getAppointmentCardStyle = (category, isPaid) => {
     if (isPaid) {
         return { backgroundColor: '#ffffff', borderColor: '#ffffff', color: '#0f172a' };
     }
 
-    return appointmentCategoryCardPalettes[stringToPaletteIndex(category)];
+    return resolveAppointmentCategoryPalette(category);
 };
 const layoutOverlappingAppointments = (cards) => {
     const sortedCards = [...cards].sort((a, b) => {
@@ -1383,7 +1383,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 <input type="checkbox" className="mr-2 rounded border-slate-300" checked={completeForm.data.exclude_loyalty_earn} onChange={(e) => completeForm.setData('exclude_loyalty_earn', e.target.checked)} />
                                 Paid with gift card / no loyalty points for this visit
                             </label>
-                            <p className="mt-1 text-xs text-slate-500">Matches policy when the client pays using gift card balance. You can also link gift card usage to this visit from Loyalty → Consume Gift Card.</p>
+                            <p className="mt-1 text-xs text-slate-500">Gift card payments still use the full tax invoice total, including VAT. You can also link gift card usage to this visit from Loyalty → Consume Gift Card.</p>
                             {fieldError(completeForm, 'exclude_loyalty_earn')}
                         </div>
                         {canCheckout ? (

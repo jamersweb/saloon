@@ -147,6 +147,9 @@ class AppointmentCheckoutFlowTest extends TestCase
 
         $invoice = TaxInvoice::query()->where('appointment_id', $appointment->id)->first();
         $this->assertSame(TaxInvoice::STATUS_FINALIZED, $invoice->status);
+        $this->assertEqualsWithDelta(100.0, (float) $invoice->subtotal, 0.02);
+        $this->assertEqualsWithDelta(5.0, (float) $invoice->vat_amount, 0.02);
+        $this->assertEqualsWithDelta(105.0, (float) $invoice->total, 0.02);
         $this->assertLessThan(0.02, $invoice->balanceDue());
     }
 
