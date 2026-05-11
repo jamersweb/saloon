@@ -7,7 +7,7 @@ const formatDate = (value) => value ? new Date(value).toLocaleDateString() : 'N/
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : 'N/A';
 const formatCurrency = (value, currencyCode = 'AED') => value === null || value === undefined ? 'N/A' : new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(value));
 
-export default function CustomersIndex({ customers, selectedCustomer, history, filters, acquisitionSources }) {
+export default function CustomersIndex({ customers, selectedCustomer, history, filters, acquisitionSources, availablePackages = [] }) {
     const { flash, app_currency_code: currencyCode = 'AED' } = usePage().props;
     const importFileRef = useRef(null);
 
@@ -22,6 +22,7 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
         acquisition_source: selectedCustomer?.acquisition_source || '',
     });
     const portalForm = useForm({});
+    const assignPackageForm = useForm({ customer_id: selectedCustomer?.id || '', service_package_id: '', notes: '' });
 
     useEffect(() => {
         editForm.setData({
@@ -32,6 +33,14 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
             allergies: selectedCustomer?.allergies || '',
             notes: selectedCustomer?.notes || '',
             acquisition_source: selectedCustomer?.acquisition_source || '',
+        });
+    }, [selectedCustomer?.id]);
+
+    useEffect(() => {
+        assignPackageForm.setData({
+            customer_id: selectedCustomer?.id || '',
+            service_package_id: '',
+            notes: '',
         });
     }, [selectedCustomer?.id]);
 
@@ -205,6 +214,57 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
                             <div className="mt-6 grid gap-4 lg:grid-cols-2">
                                 <div className="overflow-hidden rounded-xl border border-slate-200">
                                     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">Package Balances</div>
+                                    <div className="border-b border-slate-200 bg-white px-4 py-4">
+                                        <form
+                                            className="grid gap-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]"
+                                            onSubmit={(e) => {
+                                                e.preventDefault();
+                                                assignPackageForm.post(route('loyalty.packages.assign'), {
+                                                    preserveScroll: true,
+                                                    onSuccess: () => assignPackageForm.reset('service_package_id', 'notes'),
+                                                });
+                                            }}
+                                        >
+                                            <div>
+                                                <label className="ta-field-label">Assign package</label>
+                                                <select
+                                                    className="ta-input"
+                                                    value={assignPackageForm.data.service_package_id}
+                                                    onChange={(e) => assignPackageForm.setData('service_package_id', e.target.value)}
+                                                    required
+                                                >
+                                                    <option value="">Select package</option>
+                                                    {availablePackages.map((pkg) => (
+                                                        <option key={pkg.id} value={pkg.id}>
+                                                            {pkg.name} - {formatCurrency(pkg.price, currencyCode)}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {fieldError(assignPackageForm, 'service_package_id')}
+                                            </div>
+                                            <div>
+                                                <label className="ta-field-label">Notes</label>
+                                                <input
+                                                    className="ta-input"
+                                                    value={assignPackageForm.data.notes}
+                                                    onChange={(e) => assignPackageForm.setData('notes', e.target.value)}
+                                                    placeholder="Optional approval / reference note"
+                                                />
+                                                {fieldError(assignPackageForm, 'notes')}
+                                            </div>
+                                            <div className="flex items-end">
+                                                <button
+                                                    className="ta-btn-primary w-full md:w-auto"
+                                                    disabled={assignPackageForm.processing || availablePackages.length === 0 || !selectedCustomer?.id}
+                                                >
+                                                    Assign Package
+                                                </button>
+                                            </div>
+                                        </form>
+                                        {availablePackages.length === 0 ? (
+                                            <p className="mt-2 text-xs text-slate-500">No active package templates are available. Create one in Loyalty &gt; Packages first.</p>
+                                        ) : null}
+                                    </div>
                                     <div className="divide-y divide-slate-100">
                                         {(selectedCustomer.active_packages || []).length === 0 && <div className="px-4 py-3 text-sm text-slate-500">No active packages.</div>}
                                         {(selectedCustomer.active_packages || []).map((pkg, index) => (

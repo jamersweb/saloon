@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MembershipCardType extends Model
@@ -17,6 +18,7 @@ class MembershipCardType extends Model
         'min_points',
         'direct_purchase_price',
         'validity_days',
+        'service_package_id',
         'is_active',
         'is_transferable',
     ];
@@ -38,5 +40,10 @@ class MembershipCardType extends Model
     public function registrations(): HasMany
     {
         return $this->hasMany(MembershipRegistration::class);
+    }
+
+    public function servicePackage(): BelongsTo
+    {
+        return $this->belongsTo(ServicePackage::class, 'service_package_id');
     }
 }

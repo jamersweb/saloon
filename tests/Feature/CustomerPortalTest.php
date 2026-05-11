@@ -250,4 +250,165 @@ class CustomerPortalTest extends TestCase
 
         $this->assertNotNull($portalToken->revoked_at);
     }
+
+    public function test_customer_profile_exposes_available_packages_and_can_assign_one(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-PKG-100',
+            'name' => 'Package Customer',
+            'phone' => '5554004000',
+            'is_active' => true,
+        ]);
+
+        $package = ServicePackage::create([
+            'name' => 'Vina 10 Sessions',
+            'price' => 800,
+            'usage_limit' => 10,
+            'validity_days' => 365,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('customers.index', ['customer_id' => $customer->id]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Customers/Index')
+                ->where('selectedCustomer.id', $customer->id)
+                ->where('availablePackages.0.name', 'Vina 10 Sessions'));
+
+        $this->actingAs($user)
+            ->post(route('loyalty.packages.assign'), [
+                'customer_id' => $customer->id,
+                'service_package_id' => $package->id,
+                'notes' => '10 sessions approved by Madam',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'Package assigned.');
+
+        $assignedPackage = CustomerPackage::query()->where('customer_id', $customer->id)->first();
+
+        $this->assertNotNull($assignedPackage);
+        $this->assertSame(10, $assignedPackage->remaining_sessions);
+        $this->assertSame('active', $assignedPackage->status);
+        $this->assertSame('10 sessions approved by Madam', $assignedPackage->notes);
+    }
+
+    public function test_assigning_membership_card_auto_assigns_linked_package(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-CARD-AUTO-001',
+            'name' => 'Linked Package Customer',
+            'phone' => '5555551001',
+            'is_active' => true,
+        ]);
+
+        $package = ServicePackage::create([
+            'name' => 'Gold Blowdry Package',
+            'price' => 800,
+            'usage_limit' => 10,
+            'is_active' => true,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Gold Membership',
+            'slug' => 'gold-membership-auto-package',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'service_package_id' => $package->id,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.assign'), [
+                'customer_id' => $customer->id,
+                'membership_card_type_id' => $cardType->id,
+                'status' => 'active',
+                'notes' => 'Gold member package included',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'Membership card assigned.');
+
+        $assignedPackage = CustomerPackage::query()->where('customer_id', $customer->id)->latest('id')->first();
+
+        $this->assertNotNull($assignedPackage);
+        $this->assertSame($package->id, $assignedPackage->service_package_id);
+        $this->assertSame(10, $assignedPackage->remaining_sessions);
+        $this->assertSame('Gold member package included', $assignedPackage->notes);
+    }
+
+    public function test_membership_registration_auto_assigns_linked_package(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id, 'name' => 'Manager User']);
+
+        $package = ServicePackage::create([
+            'name' => 'Vina 10 Sessions',
+            'price' => 800,
+            'usage_limit' => 10,
+            'is_active' => true,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Vina Membership',
+            'slug' => 'vina-membership-auto-package',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'service_package_id' => $package->id,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.register-member'), [
+                'registration_date' => now()->toDateString(),
+                'staff_name' => 'Manager User',
+                'full_name' => 'Pegah Emami-Kalb',
+                'phone' => '971507356009',
+                'email' => 'pegah@example.com',
+                'is_first_visit' => true,
+                'preferred_language' => 'English',
+                'heard_about_us' => 'Instagram',
+                'service_interests' => ['Blowdry'],
+                'requires_home_service' => false,
+                'preferred_visit_frequency' => 'Monthly',
+                'spending_profile' => 'AED 500 - 2,000',
+                'membership_card_type_id' => $cardType->id,
+                'card_status' => 'active',
+                'card_notes' => '10 session approved by Madam',
+                'consent_data_processing' => '1',
+                'consent_marketing' => '1',
+                'signature_name' => 'Pegah Emami-Kalb',
+                'signature_date' => now()->toDateString(),
+                'notes' => 'Approved membership registration',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status');
+
+        $customer = Customer::query()->where('phone', '971507356009')->first();
+        $this->assertNotNull($customer);
+
+        $assignedPackage = CustomerPackage::query()->where('customer_id', $customer->id)->latest('id')->first();
+
+        $this->assertNotNull($assignedPackage);
+        $this->assertSame($package->id, $assignedPackage->service_package_id);
+        $this->assertSame(10, $assignedPackage->remaining_sessions);
+        $this->assertSame('10 session approved by Madam', $assignedPackage->notes);
+    }
 }

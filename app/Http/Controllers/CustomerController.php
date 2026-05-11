@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\Customer;
+use App\Models\ServicePackage;
 use App\Services\CustomerPortalService;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
@@ -75,6 +76,15 @@ class CustomerController extends Controller
                 'q' => $query,
             ],
             'acquisitionSources' => self::ACQUISITION_SOURCES,
+            'availablePackages' => ServicePackage::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'price'])
+                ->map(fn (ServicePackage $package) => [
+                    'id' => $package->id,
+                    'name' => $package->name,
+                    'price' => $package->price,
+                ]),
             'customers' => $customers->map(fn (Customer $customer) => [
                 'id' => $customer->id,
                 'customer_code' => $customer->customer_code,

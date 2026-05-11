@@ -73,6 +73,7 @@ class LoyaltyController extends Controller
         }
 
         $cardTypes = MembershipCardType::query()
+            ->with('servicePackage:id,name')
             ->orderBy('min_points')
             ->orderBy('name')
             ->get();
@@ -80,7 +81,19 @@ class LoyaltyController extends Controller
         return Inertia::render('Loyalty/Index', [
             'section' => $section,
             'tiers' => LoyaltyTier::query()->orderBy('min_points')->get(),
-            'cardTypes' => $cardTypes,
+            'cardTypes' => $cardTypes->map(fn (MembershipCardType $cardType) => [
+                'id' => $cardType->id,
+                'name' => $cardType->name,
+                'slug' => $cardType->slug,
+                'kind' => $cardType->kind,
+                'min_points' => $cardType->min_points,
+                'direct_purchase_price' => $cardType->direct_purchase_price,
+                'validity_days' => $cardType->validity_days,
+                'service_package_id' => $cardType->service_package_id,
+                'service_package_name' => $cardType->servicePackage?->name,
+                'is_active' => $cardType->is_active,
+                'is_transferable' => $cardType->is_transferable,
+            ]),
             'packages' => ServicePackage::query()
                 ->with('salonServices:id,name,category,duration_minutes,price')
                 ->withCount('customerPackages')
@@ -498,6 +511,7 @@ class LoyaltyController extends Controller
             'min_points' => ['required', 'integer', 'min:0'],
             'direct_purchase_price' => ['nullable', 'numeric', 'min:0'],
             'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'service_package_id' => ['nullable', 'exists:service_packages,id'],
             'is_active' => ['nullable', 'boolean'],
             'is_transferable' => ['nullable', 'boolean'],
         ]);
@@ -524,6 +538,7 @@ class LoyaltyController extends Controller
             'min_points' => ['required', 'integer', 'min:0'],
             'direct_purchase_price' => ['nullable', 'numeric', 'min:0'],
             'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'service_package_id' => ['nullable', 'exists:service_packages,id'],
             'is_active' => ['nullable', 'boolean'],
             'is_transferable' => ['nullable', 'boolean'],
         ]);
@@ -540,7 +555,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card type updated.');
     }
 
-    public function assignCard(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService): RedirectResponse
+    public function assignCard(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService, PackageBalanceService $packageBalanceService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -577,6 +592,7 @@ class LoyaltyController extends Controller
         );
 
         $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
+        $this->assignLinkedPackageIfConfigured($customer, $cardType, $packageBalanceService, $request->user()?->id, $data['notes'] ?? null);
 
         Audit::log($request->user()?->id, 'loyalty.card_assigned', 'CustomerMembershipCard', $card->id, [
             'customer_id' => $customer->id,
@@ -586,7 +602,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card assigned.');
     }
 
-    public function registerMember(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService): RedirectResponse
+    public function registerMember(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService, PackageBalanceService $packageBalanceService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff', 'reception');
 
@@ -635,7 +651,7 @@ class LoyaltyController extends Controller
         $customer = null;
         $card = null;
 
-        DB::transaction(function () use ($request, $data, $membershipCardService, &$customer, &$card): void {
+        DB::transaction(function () use ($request, $data, $membershipCardService, $giftCardService, $packageBalanceService, &$customer, &$card): void {
             $customer = ! empty($data['customer_id'])
                 ? Customer::findOrFail((int) $data['customer_id'])
                 : new Customer();
@@ -665,6 +681,7 @@ class LoyaltyController extends Controller
             );
 
             $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
+            $this->assignLinkedPackageIfConfigured($customer, $cardType, $packageBalanceService, $request->user()?->id, $data['card_notes'] ?? $data['notes'] ?? null);
 
             MembershipRegistration::create([
                 'customer_id' => $customer->id,
@@ -1455,5 +1472,21 @@ class LoyaltyController extends Controller
             $attempt++;
             $suffix = '-'.$attempt;
         }
+    }
+
+    private function assignLinkedPackageIfConfigured(Customer $customer, MembershipCardType $cardType, PackageBalanceService $packageBalanceService, ?int $assignedBy = null, ?string $notes = null): void
+    {
+        $package = $cardType->servicePackage;
+
+        if (! $package || ! $package->is_active) {
+            return;
+        }
+
+        $packageBalanceService->assignPackage(
+            $customer,
+            $package,
+            $assignedBy,
+            $notes ? trim($notes) : "Auto-assigned from membership card: {$cardType->name}",
+        );
     }
 }

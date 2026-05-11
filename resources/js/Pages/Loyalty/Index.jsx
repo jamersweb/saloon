@@ -49,8 +49,8 @@ export default function LoyaltyIndex({
 
     const createTierForm = useForm({ name: '', min_points: 0, discount_percent: 0, earn_multiplier: 1, is_active: true });
     const editTierForm = useForm({ name: '', min_points: 0, discount_percent: 0, earn_multiplier: 1, is_active: true });
-    const createCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
-    const editCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', is_active: true, is_transferable: false });
+    const createCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', service_package_id: '', is_active: true, is_transferable: false });
+    const editCardTypeForm = useForm({ name: '', kind: 'physical', min_points: 0, direct_purchase_price: '', validity_days: '', service_package_id: '', is_active: true, is_transferable: false });
     const assignCardForm = useForm({ customer_id: '', membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'active', notes: '' });
     const editMembershipCardForm = useForm({ membership_card_type_id: '', card_number: '', nfc_uid: '', status: 'pending', notes: '' });
     const refillMembershipCardForm = useForm({ amount: '', notes: '' });
@@ -195,6 +195,7 @@ export default function LoyaltyIndex({
             min_points: cardType.min_points,
             direct_purchase_price: cardType.direct_purchase_price ?? '',
             validity_days: cardType.validity_days ?? '',
+            service_package_id: cardType.service_package_id ? String(cardType.service_package_id) : '',
             is_active: Boolean(cardType.is_active),
             is_transferable: Boolean(cardType.is_transferable),
         });
@@ -408,6 +409,7 @@ export default function LoyaltyIndex({
                         readUidFromBridge={readUidFromBridge}
                         importCsv={importCsv}
                         exportCsv={exportCsv}
+                        packages={packages}
                     />
                 )}
 
