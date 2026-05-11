@@ -199,6 +199,7 @@
         <div class="footer-links">
             <a href="{{ route('public.privacy-policy') }}" target="_blank" rel="noreferrer">Privacy Policy</a>
             <a href="{{ route('public.terms-of-service') }}" target="_blank" rel="noreferrer">Terms of Service</a>
+            <a href="{{ route('login') }}">Staff login</a>
         </div>
     </div>
 </div>
@@ -215,6 +216,12 @@
 (function () {
     const pad2 = function (value) { return String(value).padStart(2, '0'); };
     const localYmd = function (d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
+    const addDaysLocalYmd = function (dateYmd, days) {
+        const parts = String(dateYmd).split('-').map(function (n) { return parseInt(n, 10); });
+        const date = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
+        date.setDate(date.getDate() + Number(days || 0));
+        return localYmd(date);
+    };
 
     const dateTimeLocalMs = function (value) {
         if (!value) return NaN;
@@ -269,6 +276,13 @@
         return { min: min, max: max };
     };
 
+    const salonAbsoluteMax = function (baseYmd, bookingRules) {
+        const close = salonClockBoundary(bookingRules, 'closing_time', '22:00');
+        const maxAdvanceDays = Math.max(1, Number((bookingRules && bookingRules.max_advance_days) || 60));
+        const maxYmd = addDaysLocalYmd(baseYmd, maxAdvanceDays);
+        return maxYmd + 'T' + pad2(close.h) + ':' + pad2(close.m);
+    };
+
     const clampDateTimeLocalToSalon = function (value, bookingRules, slotIntervalMinutes) {
         if (!value || !bookingRules) return value;
         const d = value.split('T')[0];
@@ -305,7 +319,7 @@
         const bookingStartYmd = (value.split('T')[0] || localYmd(new Date()));
         const bookingStartBounds = salonSelectableBoundsForYmd(bookingStartYmd, bookingRules, slotIntervalMinutes);
         input.min = bookingStartBounds.min;
-        input.max = bookingStartBounds.max;
+        input.max = salonAbsoluteMax(localYmd(new Date()), bookingRules);
         input.removeAttribute('step');
         var snapped = normalizeToInterval(value, slotIntervalMinutes);
         input.value = clampDateTimeLocalToSalon(snapped, bookingRules, slotIntervalMinutes);

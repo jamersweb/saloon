@@ -24,6 +24,13 @@ const dateTimeLocalCompare = (a, b) => {
 
 const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
+const addDaysLocalYmd = (dateYmd, days) => {
+    const [year, month, day] = String(dateYmd).split('-').map((n) => parseInt(n, 10));
+    const date = new Date(year, (month || 1) - 1, day || 1);
+    date.setDate(date.getDate() + Number(days || 0));
+    return localYmd(date);
+};
+
 const salonClockBoundary = (bookingRules, key, fallback) => {
     const raw = String(bookingRules?.[key] || fallback);
     const m = raw.match(/^(\d{1,2}):(\d{2})/);
@@ -62,6 +69,14 @@ const salonSelectableBoundsForYmd = (dateYmd, bookingRules, slotIntervalMinutes)
     if (dateTimeLocalCompare(min, max) > 0) min = max;
 
     return { min, max };
+};
+
+const salonAbsoluteMax = (baseYmd, bookingRules) => {
+    const close = salonClockBoundary(bookingRules, 'closing_time', '22:00');
+    const maxAdvanceDays = Math.max(1, Number(bookingRules?.max_advance_days || 60));
+    const maxYmd = addDaysLocalYmd(baseYmd, maxAdvanceDays);
+
+    return `${maxYmd}T${pad2(close.h)}:${pad2(close.m)}`;
 };
 
 const clampDateTimeLocalToSalon = (value, bookingRules, slotIntervalMinutes = 30) => {
@@ -116,6 +131,7 @@ export default function Booking({ services, bookingRules, defaultStart }) {
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
     const bookingStartYmd = (data.scheduled_start || defaultStart || '').split('T')[0] || localYmd(new Date());
     const bookingStartBounds = salonSelectableBoundsForYmd(bookingStartYmd, bookingRules, slotIntervalMinutes);
+    const bookingAbsoluteMax = salonAbsoluteMax(localYmd(new Date()), bookingRules);
     const selectedServiceIds = data.service_ids || [];
     const availableServices = useMemo(
         () => services.filter((s) => !selectedServiceIds.includes(String(s.id))),
@@ -218,7 +234,7 @@ export default function Booking({ services, bookingRules, defaultStart }) {
                                     setData('scheduled_start', v);
                                 }}
                                 min={bookingStartBounds.min}
-                                max={bookingStartBounds.max}
+                                max={bookingAbsoluteMax}
                                 required
                             />
                         </div>
@@ -233,6 +249,7 @@ export default function Booking({ services, bookingRules, defaultStart }) {
                             <Link href={route('public.privacy-policy')} className="text-sm text-slate-600 hover:text-slate-800">Privacy Policy</Link>
                             <Link href={route('public.terms-of-service')} className="text-sm text-slate-600 hover:text-slate-800">Terms of Service</Link>
                         </div>
+                        <Link href={route('login')} className="text-sm text-indigo-600 hover:text-indigo-800">Staff login</Link>
                     </div>
                 </div>
             </div>
