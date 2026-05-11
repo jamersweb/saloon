@@ -65,6 +65,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/appointments/{appointment}', [AppointmentController::class, 'update'])->name('appointments.update');
         Route::post('/appointments/{appointment}/service-start', [AppointmentController::class, 'startService'])->name('appointments.service-start');
         Route::post('/appointments/{appointment}/service-complete', [AppointmentController::class, 'completeService'])->name('appointments.service-complete');
+        Route::post('/appointments/{appointment}/checkout', [AppointmentController::class, 'checkout'])->name('appointments.checkout');
         Route::patch('/appointments/{appointment}/transition', [AppointmentController::class, 'transition'])->name('appointments.transition');
         Route::delete('/appointments/{appointment}', [AppointmentController::class, 'destroy'])->name('appointments.destroy');
 

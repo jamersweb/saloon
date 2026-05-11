@@ -1268,13 +1268,23 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                         {canCheckout ? 'Finish / Pay' : 'Finish Service'}
                                                     </button>
                                                 )}
-                                                {!isStaff && a.status === 'completed' && a.awaiting_checkout && a.checkout_invoice_id ? (
-                                                    <Link
-                                                        href={route('finance.invoices.show', a.checkout_invoice_id)}
-                                                        className="inline-flex rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50"
-                                                    >
-                                                        Checkout
-                                                    </Link>
+                                                {!isStaff && a.status === 'completed' && a.awaiting_checkout ? (
+                                                    a.checkout_invoice_id ? (
+                                                        <Link
+                                                            href={route('finance.invoices.show', a.checkout_invoice_id)}
+                                                            className="inline-flex rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50"
+                                                        >
+                                                            Checkout
+                                                        </Link>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50"
+                                                            onClick={() => router.post(route('appointments.checkout', a.id))}
+                                                        >
+                                                            Checkout
+                                                        </button>
+                                                    )
                                                 ) : null}
                                                 {!isStaff ? (a.next_statuses || []).filter((next) => !['in_progress', 'completed'].includes(next)).map((next) => <button key={next} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50" onClick={() => transition(a.id, next)}>{statusLabels[next] || next}</button>) : null}
                                                 {!isStaff ? <button

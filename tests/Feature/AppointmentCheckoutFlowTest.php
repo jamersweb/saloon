@@ -172,4 +172,30 @@ class AppointmentCheckoutFlowTest extends TestCase
             ->get(route('finance.invoices.show', $invoice))
             ->assertOk();
     }
+
+    public function test_reception_can_open_checkout_for_completed_visit_that_has_no_invoice_yet(): void
+    {
+        $reception = $this->seedReceptionUser();
+        $appointment = $this->inProgressAppointment($reception);
+
+        $this->actingAs($reception)
+            ->post(route('appointments.service-complete', $appointment), [
+                'service_report' => 'Done.',
+                'create_tax_invoice_draft' => false,
+                'products' => [],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $appointment->refresh();
+        $this->assertSame(Appointment::STATUS_COMPLETED, $appointment->status);
+        $this->assertDatabaseCount('tax_invoices', 0);
+
+        $response = $this->actingAs($reception)
+            ->post(route('appointments.checkout', $appointment));
+
+        $invoice = TaxInvoice::query()->where('appointment_id', $appointment->id)->first();
+        $this->assertNotNull($invoice);
+        $this->assertSame(TaxInvoice::STATUS_DRAFT, $invoice->status);
+        $response->assertRedirect(route('finance.invoices.show', $invoice, false));
+    }
 }

@@ -640,6 +640,34 @@ class AppointmentController extends Controller
             ->with('created_tax_invoice_id', $createdTaxInvoiceId);
     }
 
+    public function checkout(Request $request, Appointment $appointment): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+
+        $user = $request->user();
+        $canInvoice = $user && ($user->hasPermission('can_manage_finance') || $user->hasPermission('can_collect_payments'));
+        if (! $canInvoice) {
+            return back()->withErrors([
+                'checkout' => 'You do not have permission to create invoices or record payments.',
+            ]);
+        }
+
+        if ($appointment->status !== Appointment::STATUS_COMPLETED) {
+            return back()->withErrors([
+                'checkout' => 'Only completed appointments can be checked out.',
+            ]);
+        }
+
+        $invoice = app(TaxInvoiceDraftFromAppointmentService::class)->create(
+            $appointment->fresh(['service', 'customer']),
+            $user?->id,
+            $user?->name
+        );
+
+        return redirect()->route('finance.invoices.show', $invoice)
+            ->with('status', 'Checkout opened for appointment #'.$appointment->id.'.');
+    }
+
     public function transition(Request $request, Appointment $appointment, LoyaltyService $loyaltyService, DueServiceManager $dueServiceManager): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
