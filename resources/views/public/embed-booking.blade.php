@@ -118,6 +118,20 @@
         }
         button[type="submit"]:hover { background: #8f5a5a; }
         button[type="submit"]:disabled { opacity: 0.65; cursor: not-allowed; }
+        .footer-links {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1rem;
+            font-family: system-ui, sans-serif;
+            font-size: 0.85rem;
+        }
+        .footer-links a {
+            color: #6b534d;
+            text-decoration: none;
+        }
+        .footer-links a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -193,6 +207,10 @@
                 <button type="submit" id="embed-submit">Submit Booking</button>
             </div>
         </form>
+        <div class="footer-links">
+            <a href="{{ route('public.privacy-policy') }}" target="_blank" rel="noreferrer">Privacy Policy</a>
+            <a href="{{ route('public.terms-of-service') }}" target="_blank" rel="noreferrer">Terms of Service</a>
+        </div>
     </div>
 </div>
 @php

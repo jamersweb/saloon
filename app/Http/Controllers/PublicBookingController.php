@@ -12,6 +12,7 @@ use App\Services\PublicBookingNotificationService;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -51,6 +52,31 @@ class PublicBookingController extends Controller
     public function embedThanks(): View
     {
         return view('public.embed-booking-thanks');
+    }
+
+    public function privacyPolicy(): View
+    {
+        return view('public.privacy-policy', [
+            'policy' => [
+                'business_name' => (string) config('app.name', 'Vina Management System'),
+                'effective_date' => now()->toDateString(),
+                'contact_email' => (string) Config::get('mail.from.address', 'hello@example.com'),
+                'contact_phone' => (string) env('BOOKING_ALERT_WHATSAPP_RECIPIENTS', ''),
+                'app_url' => (string) config('app.url'),
+            ],
+        ]);
+    }
+
+    public function termsOfService(): View
+    {
+        return view('public.terms-of-service', [
+            'terms' => [
+                'business_name' => (string) config('app.name', 'Vina Management System'),
+                'effective_date' => now()->toDateString(),
+                'contact_email' => (string) Config::get('mail.from.address', 'hello@example.com'),
+                'app_url' => (string) config('app.url'),
+            ],
+        ]);
     }
 
     public function store(Request $request, BookingAvailabilityService $availabilityService, PublicBookingNotificationService $notificationService): RedirectResponse

@@ -97,14 +97,16 @@ export default function Dashboard({
         <AuthenticatedLayout
             header={isStaff ? 'My Workspace' : 'Vina Operations Dashboard'}
             headerActions={
-                <button
-                    type="button"
-                    onClick={checkNfcBridge}
-                    disabled={nfcBridgeChecking}
-                    className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                    {nfcBridgeChecking ? 'Connecting...' : 'Connect NFC'}
-                </button>
+                !isStaff ? (
+                    <button
+                        type="button"
+                        onClick={checkNfcBridge}
+                        disabled={nfcBridgeChecking}
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        {nfcBridgeChecking ? 'Connecting...' : 'Connect NFC'}
+                    </button>
+                ) : null
             }
         >
             <Head title="Dashboard" />
@@ -173,12 +175,12 @@ export default function Dashboard({
                         </ul>
                     </section>
                 )}
-                {nfcBridgeOnline === false && (
+                {!isStaff && nfcBridgeOnline === false && (
                     <div className="ta-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
                         NFC bridge is offline. Keep the bridge running on the same device where the card reader is connected.
                     </div>
                 )}
-                {nfcBridgeStatus && (
+                {!isStaff && nfcBridgeStatus && (
                     <div className="ta-card border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">{nfcBridgeStatus}</div>
                 )}
 

@@ -31,6 +31,8 @@ use App\Http\Controllers\WhatsAppWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicBookingController::class, 'create'])->name('public.booking');
+Route::get('/privacy-policy', [PublicBookingController::class, 'privacyPolicy'])->name('public.privacy-policy');
+Route::get('/terms-of-service', [PublicBookingController::class, 'termsOfService'])->name('public.terms-of-service');
 Route::post('/book', [PublicBookingController::class, 'store'])->name('public.booking.store');
 Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])->name('whatsapp.webhook.verify');
 Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])

@@ -16,6 +16,22 @@ class PublicEmbedBookingTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_public_privacy_policy_page_renders(): void
+    {
+        $this->get(route('public.privacy-policy'))
+            ->assertOk()
+            ->assertSee('Privacy Policy', false)
+            ->assertSee('WhatsApp Business API', false);
+    }
+
+    public function test_public_terms_of_service_page_renders(): void
+    {
+        $this->get(route('public.terms-of-service'))
+            ->assertOk()
+            ->assertSee('Terms of Service', false)
+            ->assertSee('WhatsApp Business', false);
+    }
+
     public function test_embed_booking_form_renders(): void
     {
         $this->get(route('embed.booking'))

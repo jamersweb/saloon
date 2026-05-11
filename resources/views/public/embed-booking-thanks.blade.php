@@ -53,6 +53,20 @@
             color: #fff;
         }
         a:hover { background: #8f5a5a; }
+        .text-link {
+            display: inline;
+            background: transparent;
+            color: #6b534d;
+            padding: 0;
+            border-radius: 0;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .text-link:hover {
+            background: transparent;
+            color: #3d2b28;
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -64,6 +78,11 @@
         <h1>Thank you</h1>
         <p>Your booking request was received. We will confirm shortly.</p>
         <p><a href="{{ route('embed.booking') }}">Book another appointment</a></p>
+        <p>
+            <a class="text-link" href="{{ route('public.privacy-policy') }}" target="_blank" rel="noreferrer">Privacy Policy</a>
+            &nbsp;|&nbsp;
+            <a class="text-link" href="{{ route('public.terms-of-service') }}" target="_blank" rel="noreferrer">Terms of Service</a>
+        </p>
     </div>
 </div>
 </body>

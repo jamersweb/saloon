@@ -239,7 +239,13 @@ export default function Booking({ services, staffProfiles, bookingRules, default
                         </div>
                         <button className="ta-btn-primary md:col-span-2" disabled={processing}>Submit Booking</button>
                     </form>
-                    <Link href={route('login')} className="text-sm text-indigo-600">Staff login</Link>
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                        <div className="flex flex-wrap items-center gap-4">
+                            <Link href={route('public.privacy-policy')} className="text-sm text-slate-600 hover:text-slate-800">Privacy Policy</Link>
+                            <Link href={route('public.terms-of-service')} className="text-sm text-slate-600 hover:text-slate-800">Terms of Service</Link>
+                        </div>
+                        <Link href={route('login')} className="text-sm text-indigo-600">Staff login</Link>
+                    </div>
                 </div>
             </div>
         </>
