@@ -128,6 +128,7 @@ class TaxInvoiceController extends Controller
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01', 'max:9999'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
+            'items.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
         ]);
 
         $invoice = DB::transaction(function () use ($data, $request, $vatRate) {
@@ -148,7 +149,8 @@ class TaxInvoiceController extends Controller
                 $computed = TaxInvoiceLineCalculator::compute(
                     (float) $row['quantity'],
                     (float) $row['unit_price'],
-                    $vatRate
+                    $vatRate,
+                    (float) ($row['discount_amount'] ?? 0)
                 );
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
@@ -156,6 +158,7 @@ class TaxInvoiceController extends Controller
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
                     'unit_price' => $row['unit_price'],
+                    'discount_amount' => $row['discount_amount'] ?? 0,
                     'line_subtotal' => $computed['line_subtotal'],
                     'tax_rate_percent' => $computed['tax_rate_percent'],
                     'line_tax' => $computed['line_tax'],
@@ -236,6 +239,7 @@ class TaxInvoiceController extends Controller
                     'description' => $item->description,
                     'quantity' => (float) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
+                    'discount_amount' => (float) $item->discount_amount,
                     'line_subtotal' => (float) $item->line_subtotal,
                     'tax_rate_percent' => (float) $item->tax_rate_percent,
                     'line_tax' => (float) $item->line_tax,
@@ -287,6 +291,7 @@ class TaxInvoiceController extends Controller
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01', 'max:9999'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
+            'items.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
         ]);
 
         DB::transaction(function () use ($invoice, $data, $vatRate) {
@@ -304,7 +309,8 @@ class TaxInvoiceController extends Controller
                 $computed = TaxInvoiceLineCalculator::compute(
                     (float) $row['quantity'],
                     (float) $row['unit_price'],
-                    $vatRate
+                    $vatRate,
+                    (float) ($row['discount_amount'] ?? 0)
                 );
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
@@ -312,6 +318,7 @@ class TaxInvoiceController extends Controller
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
                     'unit_price' => $row['unit_price'],
+                    'discount_amount' => $row['discount_amount'] ?? 0,
                     'line_subtotal' => $computed['line_subtotal'],
                     'tax_rate_percent' => $computed['tax_rate_percent'],
                     'line_tax' => $computed['line_tax'],
@@ -486,6 +493,7 @@ class TaxInvoiceController extends Controller
                     : $item->service->name,
                 'quantity' => (string) max(1, (int) ($item->service_quantity ?? 1)),
                 'unit_price' => (string) ($item->customer_package_id ? 0 : $item->service->price),
+                'discount_amount' => '0',
             ])
             ->values()
             ->all();

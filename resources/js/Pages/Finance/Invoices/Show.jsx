@@ -12,6 +12,7 @@ const blankItem = () => ({
     description: '',
     quantity: '1',
     unit_price: '',
+    discount_amount: '0',
 });
 
 export default function FinanceInvoicesShow({
@@ -43,6 +44,7 @@ export default function FinanceInvoicesShow({
                   description: r.description,
                   quantity: String(r.quantity),
                   unit_price: String(r.unit_price),
+                  discount_amount: String(r.discount_amount || 0),
               }))
             : [blankItem()],
     });
@@ -111,6 +113,7 @@ export default function FinanceInvoicesShow({
                 : item
                     ? String(item.selling_price ?? '')
                     : next[idx].unit_price,
+            discount_amount: next[idx].discount_amount || '0',
         };
         editForm.setData('items', next);
     };
@@ -275,6 +278,7 @@ export default function FinanceInvoicesShow({
                                         description: row.description,
                                         quantity: parseFloat(row.quantity) || 0,
                                         unit_price: parseFloat(row.unit_price) || 0,
+                                        discount_amount: parseFloat(row.discount_amount) || 0,
                                     })),
                                 }));
                                 editForm.put(route('finance.invoices.update', invoice.id));
@@ -323,7 +327,7 @@ export default function FinanceInvoicesShow({
                             </div>
                             <div className="space-y-3">
                                 {editForm.data.items.map((row, idx) => (
-                                    <div key={idx} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-12 md:items-end">
+                                    <div key={idx} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-13 md:items-end">
                                         <div className="md:col-span-3">
                                             <SearchableSelect
                                                 value={row.salon_service_id ? `service:${row.salon_service_id}` : ''}
@@ -332,7 +336,7 @@ export default function FinanceInvoicesShow({
                                                 placeholder="Search service or product"
                                             />
                                         </div>
-                                        <div className="md:col-span-4">
+                                        <div className="md:col-span-3">
                                             <input
                                                 className="ta-input"
                                                 value={row.description}
@@ -370,6 +374,21 @@ export default function FinanceInvoicesShow({
                                                     next[idx] = { ...next[idx], unit_price: e.target.value };
                                                     editForm.setData('items', next);
                                                 }}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <input
+                                                className="ta-input"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={row.discount_amount}
+                                                onChange={(e) => {
+                                                    const next = [...editForm.data.items];
+                                                    next[idx] = { ...next[idx], discount_amount: e.target.value };
+                                                    editForm.setData('items', next);
+                                                }}
+                                                placeholder="Discount"
                                             />
                                         </div>
                                         <div className="md:col-span-1">
@@ -415,6 +434,7 @@ export default function FinanceInvoicesShow({
                                             <th className="py-2">Description</th>
                                             <th className="py-2 text-right">Qty</th>
                                             <th className="py-2 text-right">Price</th>
+                                            <th className="py-2 text-right">Discount</th>
                                             <th className="py-2 text-right">VAT</th>
                                             <th className="py-2 text-right">Line total</th>
                                         </tr>
@@ -425,6 +445,7 @@ export default function FinanceInvoicesShow({
                                                 <td className="py-2">{row.description}</td>
                                                 <td className="py-2 text-right">{row.quantity}</td>
                                                 <td className="py-2 text-right">{money(row.unit_price, currency_code)}</td>
+                                                <td className="py-2 text-right">{money(row.discount_amount, currency_code)}</td>
                                                 <td className="py-2 text-right">{money(row.line_tax, currency_code)}</td>
                                                 <td className="py-2 text-right font-medium">{money(row.line_total, currency_code)}</td>
                                             </tr>

@@ -59,6 +59,7 @@ class FinanceTaxInvoiceTest extends TestCase
                         'description' => $service->name,
                         'quantity' => 1,
                         'unit_price' => 550,
+                        'discount_amount' => 50,
                     ],
                 ],
             ])
@@ -68,9 +69,9 @@ class FinanceTaxInvoiceTest extends TestCase
         $invoice = TaxInvoice::query()->latest()->first();
         $this->assertNotNull($invoice);
         $this->assertSame(TaxInvoice::STATUS_DRAFT, $invoice->status);
-        $this->assertEqualsWithDelta(550.0, (float) $invoice->subtotal, 0.02);
-        $this->assertEqualsWithDelta(27.5, (float) $invoice->vat_amount, 0.02);
-        $this->assertEqualsWithDelta(577.5, (float) $invoice->total, 0.02);
+        $this->assertEqualsWithDelta(500.0, (float) $invoice->subtotal, 0.02);
+        $this->assertEqualsWithDelta(25.0, (float) $invoice->vat_amount, 0.02);
+        $this->assertEqualsWithDelta(525.0, (float) $invoice->total, 0.02);
 
         $this->actingAs($user)
             ->post(route('finance.invoices.finalize', $invoice))
@@ -82,7 +83,7 @@ class FinanceTaxInvoiceTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('finance.invoices.payments.store', $invoice), [
-                'amount' => 577.5,
+                'amount' => 525,
                 'method' => 'cash',
                 'paid_at' => now()->toDateTimeString(),
             ])
@@ -133,6 +134,7 @@ class FinanceTaxInvoiceTest extends TestCase
                         'description' => $service->name,
                         'quantity' => 1,
                         'unit_price' => 100,
+                        'discount_amount' => 10,
                     ],
                 ],
             ])
@@ -193,6 +195,7 @@ class FinanceTaxInvoiceTest extends TestCase
                 'description' => $service->name,
                 'quantity' => 1,
                 'unit_price' => 100,
+                'discount_amount' => 10,
             ]],
         ])->assertSessionHasNoErrors();
 
@@ -200,7 +203,7 @@ class FinanceTaxInvoiceTest extends TestCase
 
         $this->actingAs($user)->post(route('finance.invoices.finalize', $invoice))->assertSessionHasNoErrors();
         $this->actingAs($user)->post(route('finance.invoices.payments.store', $invoice), [
-            'amount' => 105,
+            'amount' => 94.5,
             'method' => 'cash',
             'paid_at' => now()->toDateTimeString(),
         ])->assertSessionHasNoErrors();
@@ -208,7 +211,9 @@ class FinanceTaxInvoiceTest extends TestCase
         $html = TaxReceiptPdfView::shapedHtml($invoice->fresh());
 
         $this->assertStringContainsString('Payment Method', $html);
-        $this->assertStringContainsString('Cash: 105.00', $html);
+        $this->assertStringContainsString('Discount', $html);
+        $this->assertStringContainsString('10.00', $html);
+        $this->assertStringContainsString('Cash: 94.50', $html);
     }
 
     public function test_receipt_html_shows_package_membership_settlement_label(): void
@@ -254,6 +259,7 @@ class FinanceTaxInvoiceTest extends TestCase
             'description' => 'Blowdry (package session)',
             'quantity' => 1,
             'unit_price' => 0,
+            'discount_amount' => 0,
             'line_subtotal' => 0,
             'tax_rate_percent' => 5,
             'line_tax' => 0,

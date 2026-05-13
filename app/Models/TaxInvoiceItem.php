@@ -13,6 +13,7 @@ class TaxInvoiceItem extends Model
         'description',
         'quantity',
         'unit_price',
+        'discount_amount',
         'line_subtotal',
         'tax_rate_percent',
         'line_tax',
@@ -24,6 +25,7 @@ class TaxInvoiceItem extends Model
         return [
             'quantity' => 'decimal:2',
             'unit_price' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
             'line_subtotal' => 'decimal:2',
             'tax_rate_percent' => 'float',
             'line_tax' => 'decimal:2',

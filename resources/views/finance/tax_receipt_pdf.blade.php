@@ -87,13 +87,19 @@
             padding-right: 8px;
         }
         table.items .col-item {
-            width: 44%;
+            width: 34%;
         }
         table.items .col-qty {
             width: 8%;
         }
+        table.items .col-price {
+            width: 18%;
+        }
+        table.items .col-discount {
+            width: 18%;
+        }
         table.items .col-line {
-            width: 46%;
+            width: 20%;
         }
         table.items .num {
             text-align: right;
@@ -174,12 +180,16 @@
         <colgroup>
             <col class="col-item" />
             <col class="col-qty" />
+            <col class="col-price" />
+            <col class="col-discount" />
             <col class="col-line" />
         </colgroup>
         <thead>
             <tr>
                 <th>Item<br/><span class="ar" style="font-size:5.5px;">البند</span></th>
                 <th class="num">Qty</th>
+                <th class="num">Price</th>
+                <th class="num">Discount</th>
                 <th class="num">Amt<br/><span class="ar" style="font-size:5.5px;">المبلغ</span></th>
             </tr>
         </thead>
@@ -188,6 +198,8 @@
                 <tr>
                     <td>{{ $item->description }}</td>
                     <td class="num">{{ number_format((float) $item->quantity, 0) }}</td>
+                    <td class="num">{{ number_format((float) $item->unit_price, 2) }}</td>
+                    <td class="num">{{ number_format((float) $item->discount_amount, 2) }}</td>
                     <td class="num">{{ number_format((float) $item->line_total, 2) }}</td>
                 </tr>
             @endforeach
