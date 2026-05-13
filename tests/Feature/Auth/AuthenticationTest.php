@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\AttendanceLog;
 use App\Models\Role;
+use App\Models\StaffProfile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -54,6 +56,39 @@ class AuthenticationTest extends TestCase
 
         $this->assertGuest();
         $response->assertRedirect('/');
+    }
+
+    public function test_staff_logout_records_clock_out_when_missing(): void
+    {
+        $staffRole = Role::create([
+            'name' => 'staff',
+            'label' => 'Staff',
+            'permissions' => [],
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $staffRole->id,
+        ]);
+
+        $profile = StaffProfile::create([
+            'user_id' => $user->id,
+            'employee_code' => 'EMP-LOG-01',
+            'is_active' => true,
+        ]);
+
+        $log = AttendanceLog::create([
+            'staff_profile_id' => $profile->id,
+            'attendance_date' => now()->toDateString(),
+            'clock_in' => '09:00:00',
+            'clock_out' => null,
+            'late_minutes' => 0,
+        ]);
+
+        $response = $this->actingAs($user)->post('/logout');
+
+        $this->assertGuest();
+        $response->assertRedirect('/');
+        $this->assertNotNull($log->fresh()->clock_out);
     }
 
     public function test_user_is_locked_out_for_one_hour_after_four_failed_login_attempts(): void

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\AttendanceLog;
+use App\Models\StaffProfile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -42,6 +44,26 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        $user = $request->user()?->loadMissing('role');
+
+        if ($user?->hasRole('staff')) {
+            $staffProfileId = StaffProfile::query()
+                ->where('user_id', $user->id)
+                ->value('id');
+
+            if ($staffProfileId) {
+                AttendanceLog::query()
+                    ->where('staff_profile_id', $staffProfileId)
+                    ->whereNull('clock_out')
+                    ->latest('attendance_date')
+                    ->latest('id')
+                    ->limit(1)
+                    ->update([
+                        'clock_out' => now()->format('H:i:s'),
+                    ]);
+            }
+        }
+
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
