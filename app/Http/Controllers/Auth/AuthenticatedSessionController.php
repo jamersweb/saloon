@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Models\AttendanceLog;
 use App\Models\StaffProfile;
+use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -45,6 +46,7 @@ class AuthenticatedSessionController extends Controller
     public function destroy(Request $request): RedirectResponse
     {
         $user = $request->user()?->loadMissing('role');
+        $closedAttendanceLogId = null;
 
         if ($user?->hasRole('staff')) {
             $staffProfileId = StaffProfile::query()
@@ -52,17 +54,28 @@ class AuthenticatedSessionController extends Controller
                 ->value('id');
 
             if ($staffProfileId) {
-                AttendanceLog::query()
+                $openLog = AttendanceLog::query()
                     ->where('staff_profile_id', $staffProfileId)
                     ->whereNull('clock_out')
                     ->latest('attendance_date')
                     ->latest('id')
-                    ->limit(1)
-                    ->update([
+                    ->first();
+
+                if ($openLog) {
+                    $openLog->update([
                         'clock_out' => now()->format('H:i:s'),
                     ]);
+
+                    $closedAttendanceLogId = $openLog->id;
+                }
             }
         }
+
+        Audit::log($user?->id, 'auth.logout', 'User', $user?->id, [
+            'role' => $user?->role?->name,
+            'attendance_log_closed' => $closedAttendanceLogId !== null,
+            'attendance_log_id' => $closedAttendanceLogId,
+        ]);
 
         Auth::guard('web')->logout();
 

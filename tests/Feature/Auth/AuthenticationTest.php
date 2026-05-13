@@ -3,6 +3,7 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\AttendanceLog;
+use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\StaffProfile;
 use App\Models\User;
@@ -89,6 +90,12 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
         $response->assertRedirect('/');
         $this->assertNotNull($log->fresh()->clock_out);
+        $this->assertDatabaseHas('audit_logs', [
+            'user_id' => $user->id,
+            'action' => 'auth.logout',
+            'entity_type' => 'User',
+            'entity_id' => $user->id,
+        ]);
     }
 
     public function test_user_is_locked_out_for_one_hour_after_four_failed_login_attempts(): void
