@@ -19,7 +19,8 @@ class AttendanceLogController extends Controller
         $user = $request->user();
         $isStaff = $user?->hasRole('staff');
         $staffProfileId = $user?->staffProfile?->id;
-        $today = now()->toDateString();
+        $now = Carbon::now(config('app.timezone'));
+        $today = $now->toDateString();
         $filters = [
             'staff_profile_id' => $request->integer('staff_profile_id') ?: null,
             'date_from' => (string) $request->input('date_from', ''),
@@ -69,7 +70,7 @@ class AttendanceLogController extends Controller
         return Inertia::render('Attendance/Index', [
             'todayLog' => $todayLog ? [
                 'id' => $todayLog->id,
-                'attendance_date' => $todayLog->attendance_date,
+                'attendance_date' => $todayLog->attendance_date?->toDateString(),
                 'clock_in' => $todayLog->clock_in,
                 'clock_out' => $todayLog->clock_out,
             ] : null,
@@ -79,7 +80,7 @@ class AttendanceLogController extends Controller
                 ->withQueryString()
                 ->through(fn (AttendanceLog $log) => [
                     'id' => $log->id,
-                    'attendance_date' => $log->attendance_date,
+                    'attendance_date' => $log->attendance_date?->toDateString(),
                     'clock_in' => $log->clock_in,
                     'clock_in_latitude' => $log->clock_in_latitude,
                     'clock_in_longitude' => $log->clock_in_longitude,
@@ -114,8 +115,9 @@ class AttendanceLogController extends Controller
             return back()->withErrors(['staff_profile_id' => 'No staff profile found.']);
         }
 
-        $today = now()->toDateString();
-        $clockInTime = now()->format('H:i:s');
+        $now = Carbon::now(config('app.timezone'));
+        $today = $now->toDateString();
+        $clockInTime = $now->format('H:i:s');
         $schedule = StaffSchedule::query()
             ->where('staff_profile_id', $staffProfile->id)
             ->whereDate('schedule_date', $today)
@@ -159,7 +161,8 @@ class AttendanceLogController extends Controller
             return back()->withErrors(['staff_profile_id' => 'No staff profile found.']);
         }
 
-        $today = now()->toDateString();
+        $now = Carbon::now(config('app.timezone'));
+        $today = $now->toDateString();
 
         $log = AttendanceLog::query()->firstOrCreate(
             [
@@ -169,7 +172,7 @@ class AttendanceLogController extends Controller
         );
 
         $log->update([
-            'clock_out' => now()->format('H:i:s'),
+            'clock_out' => $now->format('H:i:s'),
             'notes' => $request->input('notes', $log->notes),
         ]);
 

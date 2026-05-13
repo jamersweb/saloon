@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Models\AttendanceLog;
 use App\Models\StaffProfile;
 use App\Support\Audit;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -62,8 +63,9 @@ class AuthenticatedSessionController extends Controller
                     ->first();
 
                 if ($openLog) {
+                    $now = Carbon::now(config('app.timezone'));
                     $openLog->update([
-                        'clock_out' => now()->format('H:i:s'),
+                        'clock_out' => $now->format('H:i:s'),
                     ]);
 
                     $closedAttendanceLogId = $openLog->id;
