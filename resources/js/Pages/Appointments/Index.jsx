@@ -845,7 +845,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             awaiting_checkout: rows.some((row) => row.awaiting_checkout),
             checkout_invoice_id: rows.find((row) => row.checkout_invoice_id)?.checkout_invoice_id || null,
         };
-    });
+    }).sort((a, b) => new Date(a.scheduled_start) - new Date(b.scheduled_start));
 
     return (
         <AuthenticatedLayout

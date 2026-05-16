@@ -359,11 +359,12 @@ class AppointmentController extends Controller
         ]);
 
         DB::transaction(function () use ($request, $appointment, $data): void {
+            $startedAt = now();
+
             $appointment->update([
                 'status' => Appointment::STATUS_IN_PROGRESS,
-                'arrival_time' => $appointment->arrival_time ?? now(),
-                'service_start_time' => now(),
                 'notes' => $data['service_notes'] ?? $appointment->notes,
+                ...$this->serviceStartTimingPayload($appointment, $startedAt),
             ]);
 
             $log = AppointmentServiceLog::query()->firstOrNew([
@@ -373,7 +374,7 @@ class AppointmentController extends Controller
             $log->fill([
                 'staff_profile_id' => $appointment->staff_profile_id,
                 'started_by' => $request->user()?->id,
-                'started_at' => $log->started_at ?? now(),
+                'started_at' => $log->started_at ?? $startedAt,
                 'intake_notes' => $data['intake_notes'] ?? $log->intake_notes,
                 'service_notes' => $data['service_notes'] ?? $log->service_notes,
             ]);
@@ -701,8 +702,10 @@ class AppointmentController extends Controller
         $payload = ['status' => $nextStatus];
 
         if ($nextStatus === Appointment::STATUS_IN_PROGRESS) {
-            $payload['arrival_time'] = $appointment->arrival_time ?? now();
-            $payload['service_start_time'] = now();
+            $payload = [
+                ...$payload,
+                ...$this->serviceStartTimingPayload($appointment, now()),
+            ];
         }
 
         if ($nextStatus === Appointment::STATUS_COMPLETED && ! $appointment->service_start_time) {
@@ -1235,5 +1238,31 @@ class AppointmentController extends Controller
             'awaiting_checkout' => $canCheckoutUi ? $checkout['awaiting_checkout'] : false,
             'checkout_invoice_id' => $canCheckoutUi ? $checkout['checkout_invoice_id'] : null,
         ];
+    }
+
+    /**
+     * When a future appointment is started early, treat the actual service start
+     * as the visit time so the queue, reports, and checkout use the same date.
+     *
+     * @return array<string, Carbon>
+     */
+    private function serviceStartTimingPayload(Appointment $appointment, Carbon $startedAt): array
+    {
+        $payload = [
+            'arrival_time' => $appointment->arrival_time ?? $startedAt,
+            'service_start_time' => $startedAt,
+        ];
+
+        if ($appointment->scheduled_start?->greaterThan($startedAt)) {
+            $payload['scheduled_start'] = $startedAt;
+
+            if ($appointment->scheduled_end?->greaterThan($appointment->scheduled_start)) {
+                $payload['scheduled_end'] = $startedAt
+                    ->copy()
+                    ->addSeconds($appointment->scheduled_start->diffInSeconds($appointment->scheduled_end));
+            }
+        }
+
+        return $payload;
     }
 }

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Models\AttendanceLog;
-use App\Models\StaffProfile;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -46,30 +45,25 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
-        $user = $request->user()?->loadMissing('role');
+        $user = $request->user()?->loadMissing('role', 'staffProfile');
         $closedAttendanceLogId = null;
+        $staffProfileId = $user?->staffProfile?->id;
 
-        if ($user?->hasRole('staff')) {
-            $staffProfileId = StaffProfile::query()
-                ->where('user_id', $user->id)
-                ->value('id');
+        if ($staffProfileId) {
+            $openLog = AttendanceLog::query()
+                ->where('staff_profile_id', $staffProfileId)
+                ->whereNull('clock_out')
+                ->latest('attendance_date')
+                ->latest('id')
+                ->first();
 
-            if ($staffProfileId) {
-                $openLog = AttendanceLog::query()
-                    ->where('staff_profile_id', $staffProfileId)
-                    ->whereNull('clock_out')
-                    ->latest('attendance_date')
-                    ->latest('id')
-                    ->first();
+            if ($openLog) {
+                $now = Carbon::now(config('app.timezone'));
+                $openLog->update([
+                    'clock_out' => $now->format('H:i:s'),
+                ]);
 
-                if ($openLog) {
-                    $now = Carbon::now(config('app.timezone'));
-                    $openLog->update([
-                        'clock_out' => $now->format('H:i:s'),
-                    ]);
-
-                    $closedAttendanceLogId = $openLog->id;
-                }
+                $closedAttendanceLogId = $openLog->id;
             }
         }
 

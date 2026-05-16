@@ -13,6 +13,7 @@ use App\Models\StaffProfile;
 use App\Models\StaffSchedule;
 use App\Models\User;
 use App\Support\Permissions;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
@@ -344,6 +345,53 @@ class AppointmentServiceWorkflowTest extends TestCase
                 ->where('appointments.0.id', $mine->id)
                 ->where('appointments.0.customer_name', 'My Client')
             );
+    }
+
+    public function test_starting_a_future_booking_uses_the_actual_service_time(): void
+    {
+        $actualStart = Carbon::parse('2026-05-15 12:20:29');
+
+        Carbon::setTestNow($actualStart);
+
+        try {
+            [$user, $staffProfile] = $this->createStaffUser();
+
+            $service = SalonService::create([
+                'name' => 'Protein Therapy',
+                'category' => 'Hair',
+                'duration_minutes' => 30,
+                'buffer_minutes' => 0,
+                'price' => 150,
+                'is_active' => true,
+            ]);
+
+            $appointment = Appointment::create([
+                'service_id' => $service->id,
+                'staff_profile_id' => $staffProfile->id,
+                'source' => 'admin',
+                'status' => Appointment::STATUS_CONFIRMED,
+                'scheduled_start' => '2026-05-18 12:00:00',
+                'scheduled_end' => '2026-05-18 12:30:00',
+                'customer_name' => 'Negin Nordoukhani',
+                'customer_phone' => '971509544424',
+            ]);
+
+            $this->actingAs($user)
+                ->post(route('appointments.service-start', $appointment), [
+                    'intake_notes' => '',
+                    'service_notes' => '',
+                ])
+                ->assertSessionHasNoErrors();
+
+            $appointment->refresh();
+
+            $this->assertSame(Appointment::STATUS_IN_PROGRESS, $appointment->status);
+            $this->assertSame('2026-05-15 12:20:29', $appointment->scheduled_start->format('Y-m-d H:i:s'));
+            $this->assertSame('2026-05-15 12:50:29', $appointment->scheduled_end->format('Y-m-d H:i:s'));
+            $this->assertSame('2026-05-15 12:20:29', $appointment->serviceExecution->started_at->format('Y-m-d H:i:s'));
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     private function createStaffUser(): array

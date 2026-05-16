@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\StaffProfile;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
@@ -96,6 +97,45 @@ class AuthenticationTest extends TestCase
             'entity_type' => 'User',
             'entity_id' => $user->id,
         ]);
+    }
+
+    public function test_logout_records_clock_out_for_user_with_staff_profile(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => [],
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $managerRole->id,
+        ]);
+
+        $profile = StaffProfile::create([
+            'user_id' => $user->id,
+            'employee_code' => 'EMP-LOG-02',
+            'is_active' => true,
+        ]);
+
+        $log = AttendanceLog::create([
+            'staff_profile_id' => $profile->id,
+            'attendance_date' => '2026-05-15',
+            'clock_in' => '09:00:00',
+            'clock_out' => null,
+            'late_minutes' => 0,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-05-15 18:30:00'));
+
+        try {
+            $response = $this->actingAs($user)->post('/logout');
+
+            $this->assertGuest();
+            $response->assertRedirect('/');
+            $this->assertSame('18:30:00', $log->fresh()->clock_out);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_user_is_locked_out_for_one_hour_after_four_failed_login_attempts(): void
