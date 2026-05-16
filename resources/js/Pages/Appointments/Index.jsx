@@ -1236,7 +1236,6 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                     <div key={serviceRow.id}>
                                                         <span className="font-medium text-slate-700">{serviceRow.name}</span>
                                                         {Number(serviceRow.quantity || 1) > 1 ? <span className="ml-1 text-xs text-slate-500">x{serviceRow.quantity}</span> : null}
-                                                        <span className="ml-2 text-xs text-slate-400">({serviceRow.staff_name})</span>
                                                     </div>
                                                 ))}
                                             </div>

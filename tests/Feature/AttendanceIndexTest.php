@@ -78,6 +78,7 @@ class AttendanceIndexTest extends TestCase
                 ->where('filters.per_page', 10)
                 ->where('logs.total', 1)
                 ->has('logs.data', 1)
-                ->where('logs.data.0.staff_name', 'Staff Two'));
+                ->where('logs.data.0.staff_name', 'Staff Two')
+                ->where('logs.data.0.attendance_date', now()->toDateString()));
     }
 }
