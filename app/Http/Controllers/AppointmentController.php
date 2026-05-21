@@ -111,6 +111,7 @@ class AppointmentController extends Controller
             ->get();
 
         $customerIds = $appointmentRows->pluck('customer_id')->filter()->unique()->values()->all();
+        $appointmentServiceIds = $appointmentRows->pluck('service_id')->filter()->unique()->values()->all();
 
         $appointments = $appointmentRows->map(fn (Appointment $appointment) => $this->serializeAppointment($appointment, $request));
 
@@ -144,7 +145,13 @@ class AppointmentController extends Controller
 
         return Inertia::render('Appointments/Index', [
             'appointments' => $appointments,
-            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'category', 'price', 'duration_minutes', 'buffer_minutes']),
+            'services' => SalonService::query()
+                ->where(function ($query) use ($appointmentServiceIds): void {
+                    $query->where('is_active', true)
+                        ->when($appointmentServiceIds !== [], fn ($inner) => $inner->orWhereIn('id', $appointmentServiceIds));
+                })
+                ->orderBy('name')
+                ->get(['id', 'name', 'category', 'price', 'duration_minutes', 'buffer_minutes']),
             'customers' => Customer::query()
                 ->with([
                     'packages.package.salonServices',
@@ -300,41 +307,59 @@ class AppointmentController extends Controller
 
         DB::transaction(function () use ($appointment, $data, $customer, $servicePlans, $packageSelection, &$notifiableAppointments): void {
             $visitId = $appointment->visit_id ?: (string) Str::uuid();
-            $first = $servicePlans[0];
-            $firstCovered = in_array((int) $first['service']->id, $packageSelection['covered_service_ids'], true);
-            $appointment->update([
-                ...$data,
-                'service_id' => $first['service']->id,
-                'service_quantity' => $first['service_quantity'],
-                'staff_profile_id' => $first['staff_profile_id'] ?? null,
-                'customer_id' => $customer->id,
-                'customer_package_id' => $firstCovered ? $packageSelection['customer_package']?->id : null,
-                'visit_id' => $visitId,
-                'scheduled_start' => $first['start'],
-                'scheduled_end' => $first['end'],
-            ]);
-            $notifiableAppointments[] = $appointment->fresh(['service', 'staffProfile.user']);
+            $visitAppointments = $appointment->visit_id
+                ? Appointment::query()
+                    ->where('visit_id', $appointment->visit_id)
+                    ->orderBy('scheduled_start')
+                    ->orderBy('id')
+                    ->get()
+                : collect([$appointment]);
+            $visitAppointments = $visitAppointments
+                ->sortBy(fn (Appointment $row) => ((int) $row->id === (int) $appointment->id ? '0' : '1')
+                    .'-'.($row->scheduled_start?->timestamp ?? 0)
+                    .'-'.$row->id)
+                ->values();
 
-            if (count($servicePlans) > 1) {
-                for ($i = 1; $i < count($servicePlans); $i++) {
-                    $plan = $servicePlans[$i];
-                    $covered = in_array((int) $plan['service']->id, $packageSelection['covered_service_ids'], true);
-                    $createdAppointment = Appointment::create([
-                        ...$data,
-                        'service_id' => $plan['service']->id,
-                        'service_quantity' => $plan['service_quantity'],
-                        'staff_profile_id' => $plan['staff_profile_id'] ?? null,
-                        'customer_id' => $customer->id,
-                        'customer_package_id' => $covered ? $packageSelection['customer_package']?->id : null,
-                        'visit_id' => $visitId,
-                        'booked_by' => $appointment->booked_by ?? request()->user()?->id,
-                        'scheduled_start' => $plan['start'],
-                        'scheduled_end' => $plan['end'],
-                        'source' => $appointment->source ?: ($data['source'] ?? 'admin'),
-                        'status' => $data['status'] ?? $appointment->status,
+            if ($visitAppointments->count() > count($servicePlans)) {
+                $extraAppointments = $visitAppointments->slice(count($servicePlans))->values();
+                $lockedExtra = $extraAppointments->first(fn (Appointment $extra) => $this->appointmentHasLockedServiceWork($extra));
+                if ($lockedExtra) {
+                    throw ValidationException::withMessages([
+                        'service_ids' => 'A removed service has already started, completed, or has billing/activity attached. Update it separately instead.',
                     ]);
-                    $notifiableAppointments[] = $createdAppointment->load(['service', 'staffProfile.user']);
                 }
+
+                $extraAppointments->each(fn (Appointment $extra) => $this->deleteEditableAppointment($extra));
+            }
+
+            foreach ($servicePlans as $index => $plan) {
+                $covered = in_array((int) $plan['service']->id, $packageSelection['covered_service_ids'], true);
+                $payload = [
+                    ...$data,
+                    'service_id' => $plan['service']->id,
+                    'service_quantity' => $plan['service_quantity'],
+                    'staff_profile_id' => $plan['staff_profile_id'] ?? null,
+                    'customer_id' => $customer->id,
+                    'customer_package_id' => $covered ? $packageSelection['customer_package']?->id : null,
+                    'visit_id' => $visitId,
+                    'scheduled_start' => $plan['start'],
+                    'scheduled_end' => $plan['end'],
+                ];
+
+                $targetAppointment = $visitAppointments->get($index);
+                if ($targetAppointment) {
+                    $targetAppointment->update($payload);
+                    $notifiableAppointments[] = $targetAppointment->fresh(['service', 'staffProfile.user']);
+                    continue;
+                }
+
+                $createdAppointment = Appointment::create([
+                    ...$payload,
+                    'booked_by' => $appointment->booked_by ?? request()->user()?->id,
+                    'source' => $appointment->source ?: ($data['source'] ?? 'admin'),
+                    'status' => $data['status'] ?? $appointment->status,
+                ]);
+                $notifiableAppointments[] = $createdAppointment->load(['service', 'staffProfile.user']);
             }
         });
 
@@ -1105,6 +1130,30 @@ class AppointmentController extends Controller
         $normalized = strtolower(trim($value));
 
         return preg_replace('/[^a-z0-9]+/', '', $normalized) ?? '';
+    }
+
+    private function appointmentHasLockedServiceWork(Appointment $appointment): bool
+    {
+        if (in_array($appointment->status, [Appointment::STATUS_IN_PROGRESS, Appointment::STATUS_COMPLETED], true)) {
+            return true;
+        }
+
+        return $appointment->serviceExecution()->exists()
+            || $appointment->taxInvoices()->exists()
+            || $appointment->photos()->exists()
+            || $appointment->productUsages()->exists();
+    }
+
+    private function deleteEditableAppointment(Appointment $appointment): void
+    {
+        $paths = $appointment->photos()->pluck('path')->filter()->values()->all();
+        foreach ($paths as $path) {
+            if (is_string($path) && $path !== '' && Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->delete($path);
+            }
+        }
+
+        $appointment->delete();
     }
 
     private function resolveCustomer(string $name, string $phone, ?string $email): Customer

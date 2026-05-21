@@ -510,11 +510,30 @@ export default function AppointmentsIndex({ appointments, services, customers = 
 
     const startEdit = (appt) => {
         const startStr = toDateTimeLocal(appt.scheduled_start);
+        const serviceRows = (Array.isArray(appt.grouped_services) && appt.grouped_services.length > 0)
+            ? appt.grouped_services
+            : (appt.service_id ? [{
+                service_id: appt.service_id,
+                quantity: appt.service_quantity || 1,
+                staff_profile_id: appt.staff_profile_id || '',
+                customer_package_id: appt.customer_package_id || '',
+            }] : []);
+        const selectedServiceIds = [...new Set(serviceRows
+            .map((row) => String(row.service_id || ''))
+            .filter(Boolean))];
+        const selectedServiceQuantities = Object.fromEntries(selectedServiceIds.map((serviceId) => {
+            const row = serviceRows.find((item) => String(item.service_id || '') === serviceId);
+            return [serviceId, String(row?.quantity || 1)];
+        }));
+        const staffAssignments = Object.fromEntries(serviceRows
+            .filter((row) => row.service_id && row.staff_profile_id)
+            .map((row) => [String(row.service_id), String(row.staff_profile_id)]));
+        const selectedPackageId = String(appt.customer_package_id || serviceRows.find((row) => row.customer_package_id)?.customer_package_id || '');
         setEditStartYmd(startStr.split('T')[0] || localYmd(new Date()));
         setEditingId(appt.id);
         setEditCustomerMode(appt.customer_id ? 'existing' : 'new');
         setEditSelectedCustomerId(appt.customer_id ? String(appt.customer_id) : '');
-        setEditSelectedPackageId(appt.customer_package_id ? String(appt.customer_package_id) : '');
+        setEditSelectedPackageId(selectedPackageId);
         setEditServiceSearch('');
         setEditEndManuallySet(Boolean(appt.scheduled_end));
         setEditStartMountKey((k) => k + 1);
@@ -522,15 +541,17 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             customer_name: appt.customer_name || '',
             customer_phone: appt.customer_phone || '',
             customer_email: appt.customer_email || '',
-            service_id: appt.service_id || '',
-            service_ids: appt.service_id ? [String(appt.service_id)] : [],
-            service_quantities: appt.service_id ? { [String(appt.service_id)]: String(appt.service_quantity || 1) } : {},
-            customer_package_id: appt.customer_package_id ? String(appt.customer_package_id) : '',
-            package_service_ids: appt.customer_package_id && appt.service_id ? [String(appt.service_id)] : [],
-            staff_profile_id: appt.staff_profile_id || '',
-            staff_assignments: appt.service_id && appt.staff_profile_id
-                ? { [String(appt.service_id)]: String(appt.staff_profile_id) }
-                : {},
+            service_id: selectedServiceIds[0] || '',
+            service_ids: selectedServiceIds,
+            service_quantities: selectedServiceQuantities,
+            customer_package_id: selectedPackageId,
+            package_service_ids: serviceRows
+                .filter((row) => row.customer_package_id && row.service_id)
+                .map((row) => String(row.service_id)),
+            staff_profile_id: selectedServiceIds.length === 1
+                ? String(serviceRows.find((row) => String(row.service_id || '') === selectedServiceIds[0])?.staff_profile_id || appt.staff_profile_id || '')
+                : (hasAssignmentsForAllServices(selectedServiceIds, staffAssignments) ? '' : String(appt.staff_profile_id || '')),
+            staff_assignments: staffAssignments,
             scheduled_start: startStr,
             scheduled_end: toDateTimeLocal(appt.scheduled_end),
             status: appt.status || 'confirmed',
@@ -837,10 +858,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             product_usages: productUsages,
             grouped_services: rows.map((row) => ({
                 id: row.id,
+                service_id: row.service_id,
                 name: row.service_name,
                 quantity: row.service_quantity || 1,
                 status: row.status,
+                staff_profile_id: row.staff_profile_id,
                 staff_name: row.staff_name || 'Unassigned',
+                customer_package_id: row.customer_package_id,
             })),
             awaiting_checkout: rows.some((row) => row.awaiting_checkout),
             checkout_invoice_id: rows.find((row) => row.checkout_invoice_id)?.checkout_invoice_id || null,

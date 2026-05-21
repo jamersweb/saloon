@@ -160,6 +160,86 @@ class AppointmentServiceWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_update_replaces_services_for_existing_multi_service_visit(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $manager = User::factory()->create(['role_id' => $managerRole->id]);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $originalService = SalonService::create([
+            'name' => 'Original Blowdry',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 80,
+            'is_active' => true,
+        ]);
+        $staleService = SalonService::create([
+            'name' => 'Stale Manicure',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 90,
+            'is_active' => true,
+        ]);
+        $replacementService = SalonService::create([
+            'name' => 'Replacement Blowdry Long',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 120,
+            'is_active' => true,
+        ]);
+
+        $visitId = '11111111-1111-1111-1111-111111111111';
+        $appointment = Appointment::create([
+            'visit_id' => $visitId,
+            'service_id' => $originalService->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 14:45:00',
+            'customer_name' => 'Change Mind Client',
+            'customer_phone' => '971500007777',
+        ]);
+        $staleAppointment = Appointment::create([
+            'visit_id' => $visitId,
+            'service_id' => $staleService->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 14:45:00',
+            'scheduled_end' => '2026-05-12 15:30:00',
+            'customer_name' => 'Change Mind Client',
+            'customer_phone' => '971500007777',
+        ]);
+
+        $this->actingAs($manager)->put(route('appointments.update', $appointment), [
+            'customer_name' => 'Change Mind Client',
+            'customer_phone' => '971500007777',
+            'service_id' => $replacementService->id,
+            'service_ids' => [$replacementService->id],
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 15:00:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $appointment->refresh();
+
+        $this->assertSame($replacementService->id, $appointment->service_id);
+        $this->assertSame(1, Appointment::query()->where('visit_id', $visitId)->count());
+        $this->assertDatabaseMissing('appointments', ['id' => $staleAppointment->id]);
+    }
+
     public function test_staff_can_start_service_with_before_photo_and_notes(): void
     {
         Storage::fake('public');
