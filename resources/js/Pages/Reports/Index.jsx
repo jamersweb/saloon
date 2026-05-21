@@ -1,5 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 
 const toMoney = (value, currencyCode = 'AED') => new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(value || 0));
 
@@ -64,12 +65,38 @@ function RevenueTrendChart({ data, currencyCode }) {
     );
 }
 
-export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, currencyCode = 'AED' }) {
+export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, serviceReports = [], currencyCode = 'AED' }) {
     const { auth } = usePage().props;
     const canExport = Boolean(auth?.permissions?.can_export_reports);
+    const [filterForm, setFilterForm] = useState({
+        date_from: filters.date_from || '',
+        date_to: filters.date_to || '',
+        customer_name: filters.customer_name || '',
+        invoice_number: filters.invoice_number || '',
+    });
 
-    const applyFilter = (key, value) => {
-        router.get(route('reports.index'), { ...filters, [key]: value }, { preserveState: true, replace: true });
+    const updateFilter = (key, value) => {
+        setFilterForm((current) => ({ ...current, [key]: value }));
+    };
+
+    const applyFilters = (event) => {
+        event?.preventDefault();
+        router.get(route('reports.index'), filterForm, { preserveState: true, replace: true });
+    };
+
+    const resetFilters = () => {
+        router.get(route('reports.index'), {}, { preserveState: false, replace: true });
+    };
+
+    const currentParams = (extra = {}) => {
+        const params = new URLSearchParams();
+        Object.entries({ ...filters, ...extra }).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && String(value) !== '') {
+                params.set(key, value);
+            }
+        });
+
+        return params;
     };
 
     const exportReport = (type) => {
@@ -77,16 +104,16 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
             return;
         }
 
-        const params = new URLSearchParams({ type, date_from: filters.date_from, date_to: filters.date_to });
+        const params = currentParams({ type });
         window.location.href = `${route('reports.export')}?${params.toString()}`;
     };
 
-    const exportPdf = () => {
+    const exportPdf = (report = 'summary') => {
         if (!canExport) {
             return;
         }
 
-        const params = new URLSearchParams({ date_from: filters.date_from, date_to: filters.date_to });
+        const params = currentParams({ report });
         window.location.href = `${route('reports.export.pdf')}?${params.toString()}`;
     };
 
@@ -98,16 +125,73 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
 
             <div className="space-y-6">
                 <section className="ta-card p-5">
-                    <div className="grid gap-3 lg:grid-cols-4">
-                        <div className="min-w-0"><label className="mb-1 block text-xs font-semibold uppercase text-slate-500">From</label><input className="ta-input w-full min-w-0" type="date" value={filters.date_from} onChange={(e) => applyFilter('date_from', e.target.value)} /></div>
-                        <div className="min-w-0"><label className="mb-1 block text-xs font-semibold uppercase text-slate-500">To</label><input className="ta-input w-full min-w-0" type="date" value={filters.date_to} onChange={(e) => applyFilter('date_to', e.target.value)} /></div>
-                        <div className="grid gap-2 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-3">
-                            <button className="ta-btn-primary w-full disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('appointments')}>Export Appointments</button>
-                            <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('customers')}>Customers CSV</button>
-                            <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('inventory')}>Inventory CSV</button>
-                            <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50 lg:col-span-1" disabled={!canExport} onClick={() => exportReport('loyalty')}>Loyalty CSV</button>
-                            <button className="w-full rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-700 disabled:opacity-50 sm:col-span-2 lg:col-span-2" disabled={!canExport} onClick={exportPdf}>Summary PDF</button>
+                    <form onSubmit={applyFilters} className="grid gap-3 lg:grid-cols-6">
+                        <div className="min-w-0">
+                            <label className="mb-1 block text-xs font-semibold uppercase text-slate-500">From</label>
+                            <input className="ta-input w-full min-w-0" type="date" value={filterForm.date_from} onChange={(e) => updateFilter('date_from', e.target.value)} />
                         </div>
+                        <div className="min-w-0">
+                            <label className="mb-1 block text-xs font-semibold uppercase text-slate-500">To</label>
+                            <input className="ta-input w-full min-w-0" type="date" value={filterForm.date_to} onChange={(e) => updateFilter('date_to', e.target.value)} />
+                        </div>
+                        <div className="min-w-0">
+                            <label className="mb-1 block text-xs font-semibold uppercase text-slate-500">Customer</label>
+                            <input className="ta-input w-full min-w-0" value={filterForm.customer_name} onChange={(e) => updateFilter('customer_name', e.target.value)} placeholder="Customer name" />
+                        </div>
+                        <div className="min-w-0">
+                            <label className="mb-1 block text-xs font-semibold uppercase text-slate-500">Invoice No.</label>
+                            <input className="ta-input w-full min-w-0" value={filterForm.invoice_number} onChange={(e) => updateFilter('invoice_number', e.target.value)} placeholder="Invoice number" />
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:col-span-2">
+                            <button type="submit" className="ta-btn-primary w-full">Apply Filters</button>
+                            <button type="button" className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700" onClick={resetFilters}>Reset</button>
+                        </div>
+                    </form>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                        <button className="ta-btn-primary w-full disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('appointments')}>Export Appointments</button>
+                        <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('customers')}>Customers CSV</button>
+                        <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('inventory')}>Inventory CSV</button>
+                        <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('loyalty')}>Loyalty CSV</button>
+                        <button className="w-full rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-700 disabled:opacity-50" disabled={!canExport} onClick={() => exportPdf('summary')}>Summary PDF</button>
+                        <button className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 disabled:opacity-50" disabled={!canExport} onClick={() => exportPdf('service')}>Service Report PDF</button>
+                    </div>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <h3 className="text-sm font-semibold text-slate-700">Service Reports</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th className="px-5 py-3">Date</th>
+                                    <th className="px-5 py-3">Customer</th>
+                                    <th className="px-5 py-3">Invoice No.</th>
+                                    <th className="px-5 py-3">Service</th>
+                                    <th className="px-5 py-3">Staff</th>
+                                    <th className="px-5 py-3">Service Report</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {serviceReports.length === 0 && (
+                                    <tr><td className="px-5 py-4 text-slate-500" colSpan="6">No service reports found for the selected filters.</td></tr>
+                                )}
+                                {serviceReports.map((row) => (
+                                    <tr key={row.id} className="border-t border-slate-100 align-top">
+                                        <td className="whitespace-nowrap px-5 py-3 text-slate-600">{row.date}</td>
+                                        <td className="px-5 py-3 text-slate-700">
+                                            <div className="font-medium">{row.customer_name || 'Walk-in'}</div>
+                                            {row.customer_phone ? <div className="text-xs text-slate-500">{row.customer_phone}</div> : null}
+                                        </td>
+                                        <td className="whitespace-nowrap px-5 py-3 text-slate-600">{row.invoice_number || '-'}</td>
+                                        <td className="px-5 py-3 text-slate-600">{row.service_name || '-'}</td>
+                                        <td className="px-5 py-3 text-slate-600">{row.staff_name || '-'}</td>
+                                        <td className="max-w-xl whitespace-pre-line px-5 py-3 text-slate-700">{row.service_report || '-'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </section>
 

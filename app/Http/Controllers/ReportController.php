@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\Appointment;
 use App\Models\AttendanceLog;
 use App\Models\Customer;
@@ -10,9 +9,14 @@ use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
 use App\Models\FinanceSetting;
 use App\Models\InventoryItem;
+use App\Models\TaxInvoice;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -26,13 +30,17 @@ class ReportController extends Controller
 
         $dateFrom = $request->date('date_from')?->startOfDay() ?? now()->startOfMonth();
         $dateTo = $request->date('date_to')?->endOfDay() ?? now()->endOfDay();
+        $serviceReportFilters = $this->serviceReportFilters($request);
         $report = $this->collectReportData($dateFrom, $dateTo);
+        $serviceReports = $this->collectServiceReportRows($dateFrom, $dateTo, $serviceReportFilters);
         $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
 
         return Inertia::render('Reports/Index', [
             'filters' => [
                 'date_from' => $dateFrom->toDateString(),
                 'date_to' => $dateTo->toDateString(),
+                'customer_name' => $serviceReportFilters['customer_name'],
+                'invoice_number' => $serviceReportFilters['invoice_number'],
             ],
             'overview' => $report['overview'],
             'statusBreakdown' => $report['statusBreakdown'],
@@ -41,6 +49,7 @@ class ReportController extends Controller
             'dailyRevenue' => $report['dailyRevenue'],
             'waitingTimeByStaff' => $report['waitingTimeByStaff'],
             'lateMinutesByStaff' => $report['lateMinutesByStaff'],
+            'serviceReports' => $serviceReports,
             'currencyCode' => $currencyCode,
         ]);
     }
@@ -63,19 +72,25 @@ class ReportController extends Controller
 
         switch ($data['type']) {
             case 'appointments':
-                $headers = ['ID', 'Date', 'Customer', 'Phone', 'Service', 'Status'];
-                $rows = Appointment::query()
+                $headers = ['ID', 'Date', 'Customer', 'Phone', 'Invoice No.', 'Service', 'Status', 'Service Report'];
+                $appointments = Appointment::query()
                     ->with('service:id,name')
                     ->whereBetween('scheduled_start', [$dateFrom, $dateTo])
                     ->orderBy('scheduled_start')
-                    ->get()
+                    ->get();
+
+                $invoiceLabels = $this->invoiceLabelsForAppointments($appointments);
+
+                $rows = $appointments
                     ->map(fn (Appointment $appointment) => [
                         $appointment->id,
                         optional($appointment->scheduled_start)->format('Y-m-d H:i'),
                         $appointment->customer_name,
                         $appointment->customer_phone,
+                        $invoiceLabels[$appointment->id] ?? '',
                         $appointment->service?->name,
                         $appointment->status,
+                        $appointment->notes,
                     ])
                     ->all();
                 break;
@@ -151,12 +166,34 @@ class ReportController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager');
 
         $data = $request->validate([
+            'report' => ['nullable', Rule::in(['summary', 'service'])],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
+            'customer_name' => ['nullable', 'string', 'max:255'],
+            'invoice_number' => ['nullable', 'string', 'max:100'],
         ]);
 
         $dateFrom = isset($data['date_from']) ? Carbon::parse($data['date_from'])->startOfDay() : now()->startOfMonth();
         $dateTo = isset($data['date_to']) ? Carbon::parse($data['date_to'])->endOfDay() : now()->endOfDay();
+        $serviceReportFilters = [
+            'customer_name' => trim((string) ($data['customer_name'] ?? '')),
+            'invoice_number' => trim((string) ($data['invoice_number'] ?? '')),
+        ];
+        $reportType = $data['report'] ?? 'summary';
+
+        if ($reportType === 'service') {
+            $serviceReports = $this->collectServiceReportRows($dateFrom, $dateTo, $serviceReportFilters);
+
+            $pdf = Pdf::loadView('reports.service-report-pdf', [
+                'dateFrom' => $dateFrom,
+                'dateTo' => $dateTo,
+                'filters' => $serviceReportFilters,
+                'serviceReports' => $serviceReports,
+            ])->setPaper('a4', 'landscape');
+
+            return $pdf->download(sprintf('service-reports-%s.pdf', now()->format('Ymd-His')));
+        }
+
         $report = $this->collectReportData($dateFrom, $dateTo);
         $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
 
@@ -176,8 +213,151 @@ class ReportController extends Controller
         return $pdf->download(sprintf('reports-summary-%s.pdf', now()->format('Ymd-His')));
     }
 
+    /**
+     * @return array{customer_name: string, invoice_number: string}
+     */
+    private function serviceReportFilters(Request $request): array
+    {
+        return [
+            'customer_name' => trim((string) $request->query('customer_name', '')),
+            'invoice_number' => trim((string) $request->query('invoice_number', '')),
+        ];
+    }
+
+    /**
+     * @param  array{customer_name: string, invoice_number: string}  $filters
+     * @return list<array<string, mixed>>
+     */
+    private function collectServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters): array
+    {
+        $query = Appointment::query()
+            ->with(['customer:id,name', 'service:id,name', 'staffProfile.user:id,name'])
+            ->where('status', Appointment::STATUS_COMPLETED)
+            ->whereBetween('scheduled_start', [$dateFrom, $dateTo])
+            ->orderBy('scheduled_start');
+
+        $this->applyServiceReportFilters($query, $filters);
+
+        $appointments = $query->get();
+        $invoiceLabels = $this->invoiceLabelsForAppointments($appointments);
+
+        return $appointments
+            ->map(fn (Appointment $appointment) => [
+                'id' => $appointment->id,
+                'date' => optional($appointment->scheduled_start)->format('Y-m-d H:i'),
+                'customer_name' => $appointment->customer?->name ?: $appointment->customer_name,
+                'customer_phone' => $appointment->customer_phone,
+                'invoice_number' => $invoiceLabels[$appointment->id] ?? '',
+                'service_name' => $appointment->service?->name,
+                'staff_name' => $appointment->staffProfile?->user?->name,
+                'service_report' => $appointment->notes,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Builder<Appointment>  $query
+     * @param  array{customer_name: string, invoice_number: string}  $filters
+     */
+    private function applyServiceReportFilters(Builder $query, array $filters): void
+    {
+        if ($filters['customer_name'] !== '') {
+            $customerName = $filters['customer_name'];
+
+            $query->where(function (Builder $query) use ($customerName): void {
+                $query->where('appointments.customer_name', 'like', "%{$customerName}%")
+                    ->orWhereHas('customer', fn (Builder $customerQuery) => $customerQuery->where('name', 'like', "%{$customerName}%"));
+            });
+        }
+
+        if ($filters['invoice_number'] !== '') {
+            $invoiceNumber = $filters['invoice_number'];
+
+            $query->where(function (Builder $query) use ($invoiceNumber): void {
+                $query->whereHas('taxInvoices', function (Builder $invoiceQuery) use ($invoiceNumber): void {
+                    $invoiceQuery
+                        ->where('status', '!=', TaxInvoice::STATUS_VOID)
+                        ->where('invoice_number', 'like', "%{$invoiceNumber}%");
+                })->orWhereExists(function ($subQuery) use ($invoiceNumber): void {
+                    $subQuery
+                        ->selectRaw('1')
+                        ->from('appointments as visit_appointments')
+                        ->join('tax_invoices as visit_tax_invoices', 'visit_tax_invoices.appointment_id', '=', 'visit_appointments.id')
+                        ->whereColumn('visit_appointments.visit_id', 'appointments.visit_id')
+                        ->whereNotNull('appointments.visit_id')
+                        ->where('visit_tax_invoices.status', '!=', TaxInvoice::STATUS_VOID)
+                        ->where('visit_tax_invoices.invoice_number', 'like', "%{$invoiceNumber}%");
+                });
+            });
+        }
+    }
+
+    /**
+     * @param  Collection<int, Appointment>  $appointments
+     * @return array<int, string>
+     */
+    private function invoiceLabelsForAppointments(Collection $appointments): array
+    {
+        if ($appointments->isEmpty()) {
+            return [];
+        }
+
+        $appointmentIds = $appointments->pluck('id')->all();
+        $visitIds = $appointments->pluck('visit_id')->filter()->unique()->values()->all();
+        $visitAppointmentIds = [];
+        $appointmentVisitMap = [];
+
+        if ($visitIds !== []) {
+            $appointmentVisitMap = Appointment::query()
+                ->whereIn('visit_id', $visitIds)
+                ->pluck('visit_id', 'id')
+                ->all();
+            $visitAppointmentIds = array_keys($appointmentVisitMap);
+        }
+
+        $invoices = TaxInvoice::query()
+            ->where('status', '!=', TaxInvoice::STATUS_VOID)
+            ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
+            ->orderByRaw('invoice_number IS NULL')
+            ->orderBy('invoice_number')
+            ->get(['id', 'appointment_id', 'invoice_number']);
+
+        $byAppointment = [];
+        $byVisit = [];
+
+        foreach ($invoices as $invoice) {
+            $label = $invoice->invoice_number ?: '';
+            if ($label === '') {
+                continue;
+            }
+
+            $byAppointment[$invoice->appointment_id][] = $label;
+
+            $visitId = $appointmentVisitMap[$invoice->appointment_id] ?? null;
+            if ($visitId) {
+                $byVisit[$visitId][] = $label;
+            }
+        }
+
+        $labels = [];
+        foreach ($appointments as $appointment) {
+            $invoiceNumbers = $byAppointment[$appointment->id] ?? [];
+
+            if ($invoiceNumbers === [] && $appointment->visit_id) {
+                $invoiceNumbers = $byVisit[$appointment->visit_id] ?? [];
+            }
+
+            $labels[$appointment->id] = implode(', ', array_values(array_unique($invoiceNumbers)));
+        }
+
+        return $labels;
+    }
+
     private function collectReportData(Carbon $dateFrom, Carbon $dateTo): array
     {
+        $waitingMinutesExpression = $this->minutesBetweenExpression('appointments.arrival_time', 'appointments.service_start_time');
+
         $appointmentsInRange = Appointment::query()
             ->whereBetween('scheduled_start', [$dateFrom, $dateTo]);
 
@@ -230,7 +410,7 @@ class ReportController extends Controller
             ->whereBetween('appointments.scheduled_start', [$dateFrom, $dateTo])
             ->whereNotNull('appointments.arrival_time')
             ->whereNotNull('appointments.service_start_time')
-            ->selectRaw('users.name as staff_name, AVG(TIMESTAMPDIFF(MINUTE, appointments.arrival_time, appointments.service_start_time)) as avg_waiting_minutes')
+            ->selectRaw("users.name as staff_name, AVG({$waitingMinutesExpression}) as avg_waiting_minutes")
             ->groupBy('users.name')
             ->orderByDesc('avg_waiting_minutes')
             ->limit(10)
@@ -260,7 +440,7 @@ class ReportController extends Controller
             ->whereBetween('scheduled_start', [$dateFrom, $dateTo])
             ->whereNotNull('arrival_time')
             ->whereNotNull('service_start_time')
-            ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, arrival_time, service_start_time)) as avg_waiting_minutes')
+            ->selectRaw("AVG({$this->minutesBetweenExpression('arrival_time', 'service_start_time')}) as avg_waiting_minutes")
             ->value('avg_waiting_minutes');
 
         return [
@@ -282,5 +462,14 @@ class ReportController extends Controller
             'waitingTimeByStaff' => $waitingTimeByStaff,
             'lateMinutesByStaff' => $lateMinutesByStaff,
         ];
+    }
+
+    private function minutesBetweenExpression(string $startColumn, string $endColumn): string
+    {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return "(strftime('%s', {$endColumn}) - strftime('%s', {$startColumn})) / 60.0";
+        }
+
+        return "TIMESTAMPDIFF(MINUTE, {$startColumn}, {$endColumn})";
     }
 }
