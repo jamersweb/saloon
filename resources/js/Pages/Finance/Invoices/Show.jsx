@@ -103,6 +103,9 @@ export default function FinanceInvoicesShow({
 
         return row.description || 'Custom line';
     };
+    const selectedCustomerLabel = customerOptions.find((option) => String(option.value) === String(editForm.data.customer_id))?.label
+        || editForm.data.customer_display_name
+        || 'Walk-in';
 
     const addRow = () => editForm.setData('items', [...editForm.data.items, blankItem()]);
     const removeRow = (idx) => {
@@ -310,14 +313,10 @@ export default function FinanceInvoicesShow({
                         >
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div>
-                                    <SearchableSelect
-                                        label="Customer"
-                                        value={editForm.data.customer_id}
-                                        onChange={onCustomer}
-                                        options={customerOptions}
-                                        placeholder="Search customer"
-                                        className="md:col-span-1"
-                                    />
+                                    <label className="ta-field-label">Customer</label>
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
+                                        {selectedCustomerLabel}
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="ta-field-label">Name on receipt</label>
@@ -331,15 +330,6 @@ export default function FinanceInvoicesShow({
                                 <div>
                                     <label className="ta-field-label">Cashier</label>
                                     <input className="ta-input" value={editForm.data.cashier_name} onChange={(e) => editForm.setData('cashier_name', e.target.value)} />
-                                </div>
-                                <div className="md:col-span-2">
-                                    <SearchableSelect
-                                        label="Link visit (optional)"
-                                        value={editForm.data.appointment_id}
-                                        onChange={onAppointment}
-                                        options={appointmentOptions}
-                                        placeholder="Search linked visit"
-                                    />
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center justify-between gap-3">
