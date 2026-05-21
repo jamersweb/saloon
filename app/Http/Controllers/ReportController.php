@@ -10,6 +10,7 @@ use App\Models\CustomerLoyaltyLedger;
 use App\Models\FinanceSetting;
 use App\Models\InventoryItem;
 use App\Models\TaxInvoice;
+use App\Models\TaxInvoiceItem;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -32,7 +33,6 @@ class ReportController extends Controller
         $dateTo = $request->date('date_to')?->endOfDay() ?? now()->endOfDay();
         $serviceReportFilters = $this->serviceReportFilters($request);
         $report = $this->collectReportData($dateFrom, $dateTo);
-        $serviceReports = $this->collectServiceReportRows($dateFrom, $dateTo, $serviceReportFilters);
         $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
 
         return Inertia::render('Reports/Index', [
@@ -49,7 +49,6 @@ class ReportController extends Controller
             'dailyRevenue' => $report['dailyRevenue'],
             'waitingTimeByStaff' => $report['waitingTimeByStaff'],
             'lateMinutesByStaff' => $report['lateMinutesByStaff'],
-            'serviceReports' => $serviceReports,
             'currencyCode' => $currencyCode,
         ]);
     }
@@ -183,12 +182,15 @@ class ReportController extends Controller
 
         if ($reportType === 'service') {
             $serviceReports = $this->collectServiceReportRows($dateFrom, $dateTo, $serviceReportFilters);
+            $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
 
             $pdf = Pdf::loadView('reports.service-report-pdf', [
                 'dateFrom' => $dateFrom,
                 'dateTo' => $dateTo,
+                'currencyCode' => $currencyCode,
                 'filters' => $serviceReportFilters,
                 'serviceReports' => $serviceReports,
+                'totals' => $this->serviceReportTotals($serviceReports),
             ])->setPaper('a4', 'landscape');
 
             return $pdf->download(sprintf('service-reports-%s.pdf', now()->format('Ymd-His')));
@@ -230,8 +232,11 @@ class ReportController extends Controller
      */
     private function collectServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters): array
     {
+        $financeSetting = FinanceSetting::current();
+        $vatRatePercent = (float) $financeSetting->vat_rate_percent;
+
         $query = Appointment::query()
-            ->with(['customer:id,name', 'service:id,name', 'staffProfile.user:id,name'])
+            ->with(['customer:id,name', 'service:id,name,price', 'staffProfile.user:id,name'])
             ->where('status', Appointment::STATUS_COMPLETED)
             ->whereBetween('scheduled_start', [$dateFrom, $dateTo])
             ->orderBy('scheduled_start');
@@ -240,20 +245,147 @@ class ReportController extends Controller
 
         $appointments = $query->get();
         $invoiceLabels = $this->invoiceLabelsForAppointments($appointments);
+        $invoiceItems = $this->invoiceItemsForAppointments($appointments);
 
         return $appointments
-            ->map(fn (Appointment $appointment) => [
-                'id' => $appointment->id,
-                'date' => optional($appointment->scheduled_start)->format('Y-m-d H:i'),
-                'customer_name' => $appointment->customer?->name ?: $appointment->customer_name,
-                'customer_phone' => $appointment->customer_phone,
-                'invoice_number' => $invoiceLabels[$appointment->id] ?? '',
-                'service_name' => $appointment->service?->name,
-                'staff_name' => $appointment->staffProfile?->user?->name,
-                'service_report' => $appointment->notes,
-            ])
+            ->map(function (Appointment $appointment) use ($invoiceLabels, $invoiceItems, $vatRatePercent): array {
+                $serviceName = $appointment->service?->name;
+                $item = $this->matchingInvoiceItemForAppointment(
+                    $appointment,
+                    $invoiceItems[$appointment->id] ?? collect()
+                );
+
+                $quantity = max(1.0, (float) ($item?->quantity ?? $appointment->service_quantity ?? 1));
+                $unitPrice = $item
+                    ? (float) $item->unit_price
+                    : ($appointment->customer_package_id ? 0.0 : (float) ($appointment->service?->price ?? 0));
+                $discountAmount = $item ? (float) $item->discount_amount : 0.0;
+                $subtotal = $item ? (float) $item->line_subtotal : max(0.0, ($quantity * $unitPrice) - $discountAmount);
+                $tax = $item ? (float) $item->line_tax : round($subtotal * ($vatRatePercent / 100), 2);
+                $total = $item ? (float) $item->line_total : round($subtotal + $tax, 2);
+
+                return [
+                    'id' => $appointment->id,
+                    'date' => optional($appointment->scheduled_start)->format('Y-m-d H:i'),
+                    'customer_name' => $appointment->customer?->name ?: $appointment->customer_name,
+                    'customer_phone' => $appointment->customer_phone,
+                    'invoice_number' => $invoiceLabels[$appointment->id] ?? '',
+                    'service_name' => $serviceName,
+                    'quantity' => $quantity,
+                    'unit_price' => round($unitPrice, 2),
+                    'discount_amount' => round($discountAmount, 2),
+                    'subtotal' => round($subtotal, 2),
+                    'tax' => round($tax, 2),
+                    'total' => round($total, 2),
+                    'staff_name' => $appointment->staffProfile?->user?->name,
+                    'service_report' => $appointment->notes,
+                ];
+            })
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{service_count: int, service_quantity: float, subtotal: float, tax: float, total: float}
+     */
+    private function serviceReportTotals(array $rows): array
+    {
+        return [
+            'service_count' => count($rows),
+            'service_quantity' => round(array_sum(array_map(fn (array $row) => (float) ($row['quantity'] ?? 0), $rows)), 2),
+            'subtotal' => round(array_sum(array_map(fn (array $row) => (float) ($row['subtotal'] ?? 0), $rows)), 2),
+            'tax' => round(array_sum(array_map(fn (array $row) => (float) ($row['tax'] ?? 0), $rows)), 2),
+            'total' => round(array_sum(array_map(fn (array $row) => (float) ($row['total'] ?? 0), $rows)), 2),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, Appointment>  $appointments
+     * @return array<int, Collection<int, TaxInvoiceItem>>
+     */
+    private function invoiceItemsForAppointments(Collection $appointments): array
+    {
+        if ($appointments->isEmpty()) {
+            return [];
+        }
+
+        $appointmentIds = $appointments->pluck('id')->all();
+        $visitIds = $appointments->pluck('visit_id')->filter()->unique()->values()->all();
+        $visitAppointmentIds = [];
+        $appointmentVisitMap = [];
+
+        if ($visitIds !== []) {
+            $appointmentVisitMap = Appointment::query()
+                ->whereIn('visit_id', $visitIds)
+                ->pluck('visit_id', 'id')
+                ->all();
+            $visitAppointmentIds = array_keys($appointmentVisitMap);
+        }
+
+        $invoices = TaxInvoice::query()
+            ->with('items')
+            ->where('status', '!=', TaxInvoice::STATUS_VOID)
+            ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
+            ->orderByRaw('invoice_number IS NULL')
+            ->orderBy('invoice_number')
+            ->get();
+
+        $byAppointment = [];
+        $byVisit = [];
+
+        foreach ($invoices as $invoice) {
+            $byAppointment[$invoice->appointment_id] = ($byAppointment[$invoice->appointment_id] ?? collect())->concat($invoice->items);
+
+            $visitId = $appointmentVisitMap[$invoice->appointment_id] ?? null;
+            if ($visitId) {
+                $byVisit[$visitId] = ($byVisit[$visitId] ?? collect())->concat($invoice->items);
+            }
+        }
+
+        $items = [];
+        foreach ($appointments as $appointment) {
+            $appointmentItems = $byAppointment[$appointment->id] ?? collect();
+
+            if ($appointmentItems->isEmpty() && $appointment->visit_id) {
+                $appointmentItems = $byVisit[$appointment->visit_id] ?? collect();
+            }
+
+            $items[$appointment->id] = $appointmentItems->values();
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  Collection<int, TaxInvoiceItem>  $invoiceItems
+     */
+    private function matchingInvoiceItemForAppointment(Appointment $appointment, Collection $invoiceItems): ?TaxInvoiceItem
+    {
+        if ($invoiceItems->isEmpty()) {
+            return null;
+        }
+
+        $serviceId = (int) $appointment->service_id;
+        $serviceName = mb_strtolower(trim((string) $appointment->service?->name));
+
+        $serviceIdMatch = $invoiceItems->first(
+            fn (TaxInvoiceItem $item) => (int) $item->salon_service_id === $serviceId
+        );
+
+        if ($serviceIdMatch) {
+            return $serviceIdMatch;
+        }
+
+        $descriptionMatch = $invoiceItems->first(
+            fn (TaxInvoiceItem $item) => $serviceName !== '' && mb_strtolower(trim((string) $item->description)) === $serviceName
+        );
+
+        if ($descriptionMatch) {
+            return $descriptionMatch;
+        }
+
+        return $invoiceItems->count() === 1 ? $invoiceItems->first() : null;
     }
 
     /**

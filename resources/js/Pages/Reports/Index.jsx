@@ -65,7 +65,7 @@ function RevenueTrendChart({ data, currencyCode }) {
     );
 }
 
-export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, serviceReports = [], currencyCode = 'AED' }) {
+export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, currencyCode = 'AED' }) {
     const { auth } = usePage().props;
     const canExport = Boolean(auth?.permissions?.can_export_reports);
     const [filterForm, setFilterForm] = useState({
@@ -154,44 +154,6 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                         <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('loyalty')}>Loyalty CSV</button>
                         <button className="w-full rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-700 disabled:opacity-50" disabled={!canExport} onClick={() => exportPdf('summary')}>Summary PDF</button>
                         <button className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 disabled:opacity-50" disabled={!canExport} onClick={() => exportPdf('service')}>Service Report PDF</button>
-                    </div>
-                </section>
-
-                <section className="ta-card overflow-hidden">
-                    <div className="border-b border-slate-200 px-5 py-4">
-                        <h3 className="text-sm font-semibold text-slate-700">Service Reports</h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                                <tr>
-                                    <th className="px-5 py-3">Date</th>
-                                    <th className="px-5 py-3">Customer</th>
-                                    <th className="px-5 py-3">Invoice No.</th>
-                                    <th className="px-5 py-3">Service</th>
-                                    <th className="px-5 py-3">Staff</th>
-                                    <th className="px-5 py-3">Service Report</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {serviceReports.length === 0 && (
-                                    <tr><td className="px-5 py-4 text-slate-500" colSpan="6">No service reports found for the selected filters.</td></tr>
-                                )}
-                                {serviceReports.map((row) => (
-                                    <tr key={row.id} className="border-t border-slate-100 align-top">
-                                        <td className="whitespace-nowrap px-5 py-3 text-slate-600">{row.date}</td>
-                                        <td className="px-5 py-3 text-slate-700">
-                                            <div className="font-medium">{row.customer_name || 'Walk-in'}</div>
-                                            {row.customer_phone ? <div className="text-xs text-slate-500">{row.customer_phone}</div> : null}
-                                        </td>
-                                        <td className="whitespace-nowrap px-5 py-3 text-slate-600">{row.invoice_number || '-'}</td>
-                                        <td className="px-5 py-3 text-slate-600">{row.service_name || '-'}</td>
-                                        <td className="px-5 py-3 text-slate-600">{row.staff_name || '-'}</td>
-                                        <td className="max-w-xl whitespace-pre-line px-5 py-3 text-slate-700">{row.service_report || '-'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
                     </div>
                 </section>
 
