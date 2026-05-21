@@ -7,6 +7,21 @@ import { useMemo, useState } from 'react';
 const money = (value, currency = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(value || 0));
 
+const lineTotals = (row, vatRatePercent = 0) => {
+    const quantity = Number(row.quantity || 0);
+    const unitPrice = Number(row.unit_price || 0);
+    const discount = Number(row.discount_amount || 0);
+    const subtotal = quantity * unitPrice;
+    const taxable = Math.max(0, subtotal - discount);
+    const vat = taxable * (Number(vatRatePercent || 0) / 100);
+
+    return {
+        subtotal,
+        vat,
+        total: taxable + vat,
+    };
+};
+
 const blankItem = () => ({
     salon_service_id: '',
     description: '',
@@ -80,6 +95,14 @@ export default function FinanceInvoicesShow({
         ...services.map((s) => ({ value: `service:${s.id}`, label: s.name })),
         ...inventory_items.map((item) => ({ value: `inventory:${item.id}`, label: `${item.name}${item.sku ? ` (${item.sku})` : ''}` })),
     ]), [services, inventory_items]);
+
+    const selectedLineName = (row) => {
+        if (row.salon_service_id && serviceById[String(row.salon_service_id)]?.name) {
+            return serviceById[String(row.salon_service_id)].name;
+        }
+
+        return row.description || 'Custom line';
+    };
 
     const addRow = () => editForm.setData('items', [...editForm.data.items, blankItem()]);
     const removeRow = (idx) => {
@@ -319,85 +342,121 @@ export default function FinanceInvoicesShow({
                                     />
                                 </div>
                             </div>
-                            <div className="flex items-center justify-between">
-                                <label className="ta-field-label">Lines</label>
-                                <button type="button" className="text-sm text-indigo-600 hover:underline" onClick={addRow}>
-                                    + Add line
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <label className="ta-field-label">Services and items used</label>
+                                    <p className="text-xs text-slate-500">Each line below is what the client will see on the invoice.</p>
+                                </div>
+                                <button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100" onClick={addRow}>
+                                    + Add service/item
                                 </button>
                             </div>
                             <div className="space-y-3">
-                                {editForm.data.items.map((row, idx) => (
-                                    <div key={idx} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-13 md:items-end">
-                                        <div className="md:col-span-3">
-                                            <SearchableSelect
-                                                value={row.salon_service_id ? `service:${row.salon_service_id}` : ''}
-                                                onChange={(serviceId) => applyService(idx, serviceId)}
-                                                options={serviceOptions}
-                                                placeholder="Search service or product"
-                                            />
+                                {editForm.data.items.map((row, idx) => {
+                                    const totals = lineTotals(row, vat_rate_percent);
+                                    const lineName = selectedLineName(row);
+
+                                    return (
+                                        <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50/40 p-4">
+                                            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Line {idx + 1}</p>
+                                                    <h4 className="mt-1 break-words text-base font-semibold text-slate-900">{lineName}</h4>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        {row.salon_service_id ? 'Selected service' : 'Custom service or product'} shown on the invoice.
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-xs uppercase text-slate-500">Line total</p>
+                                                    <p className="text-lg font-semibold text-slate-900">{money(totals.total, currency_code)}</p>
+                                                    <button type="button" className="mt-1 text-xs font-medium text-red-600 hover:underline" onClick={() => removeRow(idx)}>
+                                                        Remove line
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="grid gap-3 lg:grid-cols-12 lg:items-start">
+                                                <div className="lg:col-span-3">
+                                                    <SearchableSelect
+                                                        label="Choose service or product"
+                                                        value={row.salon_service_id ? `service:${row.salon_service_id}` : ''}
+                                                        onChange={(serviceId) => applyService(idx, serviceId)}
+                                                        options={serviceOptions}
+                                                        placeholder="Search service or product"
+                                                    />
+                                                </div>
+                                                <div className="lg:col-span-4">
+                                                    <label className="ta-field-label">Service name on invoice</label>
+                                                    <input
+                                                        className="ta-input"
+                                                        value={row.description}
+                                                        onChange={(e) => {
+                                                            const next = [...editForm.data.items];
+                                                            next[idx] = { ...next[idx], description: e.target.value };
+                                                            editForm.setData('items', next);
+                                                        }}
+                                                        placeholder="Example: Blowdry Curly/Wavy with Iron Short"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div className="lg:col-span-1">
+                                                    <label className="ta-field-label">Qty</label>
+                                                    <input
+                                                        className="ta-input"
+                                                        type="number"
+                                                        min="0.01"
+                                                        step="0.01"
+                                                        value={row.quantity}
+                                                        onChange={(e) => {
+                                                            const next = [...editForm.data.items];
+                                                            next[idx] = { ...next[idx], quantity: e.target.value };
+                                                            editForm.setData('items', next);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="lg:col-span-1">
+                                                    <label className="ta-field-label">Price</label>
+                                                    <input
+                                                        className="ta-input"
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={row.unit_price}
+                                                        onChange={(e) => {
+                                                            const next = [...editForm.data.items];
+                                                            next[idx] = { ...next[idx], unit_price: e.target.value };
+                                                            editForm.setData('items', next);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="lg:col-span-1">
+                                                    <label className="ta-field-label">Discount</label>
+                                                    <input
+                                                        className="ta-input"
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={row.discount_amount}
+                                                        onChange={(e) => {
+                                                            const next = [...editForm.data.items];
+                                                            next[idx] = { ...next[idx], discount_amount: e.target.value };
+                                                            editForm.setData('items', next);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 lg:col-span-2">
+                                                    <div className="flex justify-between gap-2">
+                                                        <span>Net</span>
+                                                        <span className="font-medium text-slate-800">{money(Math.max(0, totals.subtotal - Number(row.discount_amount || 0)), currency_code)}</span>
+                                                    </div>
+                                                    <div className="mt-1 flex justify-between gap-2">
+                                                        <span>VAT</span>
+                                                        <span className="font-medium text-slate-800">{money(totals.vat, currency_code)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="md:col-span-3">
-                                            <input
-                                                className="ta-input"
-                                                value={row.description}
-                                                onChange={(e) => {
-                                                    const next = [...editForm.data.items];
-                                                    next[idx] = { ...next[idx], description: e.target.value };
-                                                    editForm.setData('items', next);
-                                                }}
-                                                required
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <input
-                                                className="ta-input"
-                                                type="number"
-                                                min="0.01"
-                                                step="0.01"
-                                                value={row.quantity}
-                                                onChange={(e) => {
-                                                    const next = [...editForm.data.items];
-                                                    next[idx] = { ...next[idx], quantity: e.target.value };
-                                                    editForm.setData('items', next);
-                                                }}
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <input
-                                                className="ta-input"
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                value={row.unit_price}
-                                                onChange={(e) => {
-                                                    const next = [...editForm.data.items];
-                                                    next[idx] = { ...next[idx], unit_price: e.target.value };
-                                                    editForm.setData('items', next);
-                                                }}
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <input
-                                                className="ta-input"
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                value={row.discount_amount}
-                                                onChange={(e) => {
-                                                    const next = [...editForm.data.items];
-                                                    next[idx] = { ...next[idx], discount_amount: e.target.value };
-                                                    editForm.setData('items', next);
-                                                }}
-                                                placeholder="Discount"
-                                            />
-                                        </div>
-                                        <div className="md:col-span-1">
-                                            <button type="button" className="text-xs text-red-600" onClick={() => removeRow(idx)}>
-                                                Remove
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                             <textarea className="ta-input min-h-[60px]" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />
                             <div className="flex flex-wrap gap-2">
@@ -426,12 +485,13 @@ export default function FinanceInvoicesShow({
                 ) : (
                     <>
                         <section className="ta-card p-5">
-                            <h3 className="mb-3 text-sm font-semibold text-slate-700">Line items</h3>
+                            <h3 className="mb-1 text-sm font-semibold text-slate-700">Services used</h3>
+                            <p className="mb-3 text-xs text-slate-500">These are the services and items included in this invoice.</p>
                             <div className="overflow-x-auto">
                                 <table className="min-w-full text-sm">
                                     <thead className="text-left text-xs uppercase text-slate-500">
                                         <tr>
-                                            <th className="py-2">Description</th>
+                                            <th className="py-2">Service / item</th>
                                             <th className="py-2 text-right">Qty</th>
                                             <th className="py-2 text-right">Price</th>
                                             <th className="py-2 text-right">Discount</th>

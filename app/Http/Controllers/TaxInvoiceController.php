@@ -14,6 +14,7 @@ use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
 use App\Services\AppointmentVisitService;
 use App\Services\GiftCardService;
+use App\Services\TaxInvoiceDraftFromAppointmentService;
 use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoiceLineCalculator;
 use App\Services\TaxInvoicePaymentService;
@@ -180,6 +181,8 @@ class TaxInvoiceController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'reception');
         $this->authorizeInvoiceAccess($request, $invoice);
+
+        $invoice = $this->refreshDraftIfMissingVisitItems($invoice, $request);
 
         $invoice->load(['items.salonService:id,name', 'customer.membershipCards.type:id,name', 'customer:id,name,phone,email', 'appointment.service:id,name', 'payments.createdBy:id,name']);
 
@@ -475,6 +478,44 @@ class TaxInvoiceController extends Controller
             'vat_amount' => round($invoice->items->sum('line_tax'), 2),
             'total' => round($invoice->items->sum('line_total'), 2),
         ]);
+    }
+
+    private function refreshDraftIfMissingVisitItems(TaxInvoice $invoice, Request $request): TaxInvoice
+    {
+        if (! $invoice->isEditable() || ! $invoice->appointment_id) {
+            return $invoice;
+        }
+
+        $appointment = Appointment::query()
+            ->with(['service:id,name,price', 'customer:id,name'])
+            ->find($invoice->appointment_id);
+
+        if (! $appointment) {
+            return $invoice;
+        }
+
+        $visitAppointments = $this->appointmentVisitService
+            ->forAppointment($appointment)
+            ->loadMissing([
+                'service:id,name,price',
+                'productUsages:id,appointment_id,inventory_item_id,quantity,notes',
+                'productUsages.item:id,name,sku,selling_price,cost_price',
+            ]);
+
+        $expectedLineCount = $visitAppointments
+            ->filter(fn (Appointment $visitAppointment) => $visitAppointment->service !== null)
+            ->count()
+            + $visitAppointments->sum(fn (Appointment $visitAppointment) => $visitAppointment->productUsages->filter(fn ($usage) => $usage->item !== null)->count());
+
+        if ($expectedLineCount <= 1 || $invoice->items()->count() >= $expectedLineCount) {
+            return $invoice;
+        }
+
+        return app(TaxInvoiceDraftFromAppointmentService::class)->create(
+            $appointment,
+            $request->user()?->id,
+            $invoice->cashier_name ?: $request->user()?->name
+        );
     }
 
     /**

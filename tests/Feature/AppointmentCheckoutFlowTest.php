@@ -13,6 +13,8 @@ use App\Models\StaffProfile;
 use App\Models\TaxInvoice;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class AppointmentCheckoutFlowTest extends TestCase
@@ -171,6 +173,82 @@ class AppointmentCheckoutFlowTest extends TestCase
         $this->actingAs($reception)
             ->get(route('finance.invoices.show', $invoice))
             ->assertOk();
+    }
+
+    public function test_opening_existing_draft_refreshes_missing_multi_service_visit_lines(): void
+    {
+        $reception = $this->seedReceptionUser();
+        FinanceSetting::current();
+
+        $staffProfile = StaffProfile::create([
+            'user_id' => $reception->id,
+            'employee_code' => 'CHK-MULTI-1',
+            'is_active' => true,
+        ]);
+        $customer = Customer::create([
+            'customer_code' => 'CHK-CUST-MULTI',
+            'name' => 'Multi Service Client',
+            'phone' => '5551117777',
+            'is_active' => true,
+        ]);
+        $services = collect(['Blowdry Curly/wavy w/ Iron Short', 'Acrylic powder refill', 'Baby Polish'])
+            ->map(fn (string $name, int $index) => SalonService::create([
+                'name' => $name,
+                'category' => 'Hair',
+                'duration_minutes' => 30,
+                'buffer_minutes' => 0,
+                'price' => 100 + ($index * 25),
+                'is_active' => true,
+            ]));
+        $visitId = (string) Str::uuid();
+
+        $appointments = $services->values()->map(fn (SalonService $service, int $index) => Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'visit_id' => $visitId,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => now()->subHours(2)->addMinutes($index * 30),
+            'scheduled_end' => now()->subHours(2)->addMinutes(($index + 1) * 30),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]));
+        $primaryAppointment = $appointments->first();
+
+        $invoice = TaxInvoice::create([
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'status' => TaxInvoice::STATUS_DRAFT,
+            'appointment_id' => $primaryAppointment->id,
+            'subtotal' => 100,
+            'vat_amount' => 5,
+            'total' => 105,
+            'cashier_name' => $reception->name,
+            'created_by' => $reception->id,
+            'notes' => 'Created from appointment #'.$primaryAppointment->id,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $services->first()->id,
+            'description' => $services->first()->name,
+            'quantity' => 1,
+            'unit_price' => 100,
+            'line_subtotal' => 100,
+            'tax_rate_percent' => 5,
+            'line_tax' => 5,
+            'line_total' => 105,
+        ]);
+
+        $this->actingAs($reception)
+            ->get(route('finance.invoices.show', $invoice))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Finance/Invoices/Show')
+                ->has('invoice.items', 3)
+                ->where('invoice.items.0.description', 'Blowdry Curly/wavy w/ Iron Short')
+                ->where('invoice.items.1.description', 'Acrylic powder refill')
+                ->where('invoice.items.2.description', 'Baby Polish')
+            );
     }
 
     public function test_reception_can_open_checkout_for_completed_visit_that_has_no_invoice_yet(): void
