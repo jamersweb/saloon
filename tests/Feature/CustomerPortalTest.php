@@ -251,6 +251,36 @@ class CustomerPortalTest extends TestCase
         $this->assertNotNull($portalToken->revoked_at);
     }
 
+    public function test_inactive_customer_portal_token_returns_not_found_without_changing_staff_sessions(): void
+    {
+        config([
+            'customer_portal.idle_timeout_minutes' => 60,
+            'session.lifetime' => 10080,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-PORTAL-IDLE',
+            'name' => 'Idle Portal Customer',
+            'phone' => '5554003010',
+            'is_active' => true,
+        ]);
+
+        $portalToken = CustomerPortalToken::create([
+            'customer_id' => $customer->id,
+            'token' => 'idle-portal-token',
+            'expires_at' => now()->addDays(60),
+            'last_accessed_at' => now()->subMinutes(61),
+        ]);
+
+        $this->get(route('customer.portal.show', $portalToken->token))
+            ->assertNotFound();
+
+        $portalToken->refresh();
+
+        $this->assertNotNull($portalToken->revoked_at);
+        $this->assertSame(10080, (int) config('session.lifetime'));
+    }
+
     public function test_customer_profile_exposes_available_packages_and_can_assign_one(): void
     {
         $managerRole = Role::create([

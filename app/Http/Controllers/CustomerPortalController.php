@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Appointment;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyLedger;
 use App\Models\CustomerMembershipCard;
-use App\Models\Appointment;
 use App\Services\CustomerPortalService;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -59,6 +59,7 @@ class CustomerPortalController extends Controller
                 Appointment::STATUS_PENDING,
                 Appointment::STATUS_CONFIRMED,
                 Appointment::STATUS_IN_PROGRESS,
+                Appointment::STATUS_COMPLETED,
             ], true))
             ->sortByDesc('scheduled_start')
             ->take(20)

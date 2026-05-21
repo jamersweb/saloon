@@ -135,12 +135,12 @@ class CustomerController extends Controller
             'birthday' => ['nullable', 'date'],
             'allergies' => ['nullable', 'string'],
             'notes' => ['nullable', 'string'],
-            'acquisition_source' => ['nullable', 'string', 'in:' . implode(',', self::ACQUISITION_SOURCES)],
+            'acquisition_source' => ['nullable', 'string', 'in:'.implode(',', self::ACQUISITION_SOURCES)],
         ]);
 
         $customer = Customer::create([
             ...$data,
-            'customer_code' => 'CUST-' . now()->format('Ymd') . '-' . random_int(1000, 9999),
+            'customer_code' => 'CUST-'.now()->format('Ymd').'-'.random_int(1000, 9999),
             'is_active' => true,
         ]);
 
@@ -160,7 +160,7 @@ class CustomerController extends Controller
             'birthday' => ['nullable', 'date'],
             'allergies' => ['nullable', 'string'],
             'notes' => ['nullable', 'string'],
-            'acquisition_source' => ['nullable', 'string', 'in:' . implode(',', self::ACQUISITION_SOURCES)],
+            'acquisition_source' => ['nullable', 'string', 'in:'.implode(',', self::ACQUISITION_SOURCES)],
         ]);
 
         $customer->update($data);
@@ -186,9 +186,8 @@ class CustomerController extends Controller
         $customer->loadMissing(self::PROFILE_RELATIONS);
 
         $currentCard = $customer->membershipCards->firstWhere('status', 'active') ?? $customer->membershipCards->first();
-        $activePortalToken = $customer->portalTokens->first(function ($token) {
-            return $token->revoked_at === null && (! $token->expires_at || $token->expires_at->isFuture());
-        });
+        $customerPortalService = app(CustomerPortalService::class);
+        $activePortalToken = $customer->portalTokens->first(fn ($token) => $customerPortalService->isActive($token));
 
         return [
             'id' => $customer->id,
