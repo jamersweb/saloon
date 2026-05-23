@@ -828,6 +828,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
 
         return { staff, cards };
     });
+    const appointmentQueueSortDirection = ['today', 'upcoming'].includes(String(statusFilter || '')) ? 'asc' : 'desc';
     const appointmentQueueRows = Array.from(appointments.reduce((map, appt) => {
         const groupKey = String(appt.visit_id || appt.id);
         const existing = map.get(groupKey);
@@ -869,7 +870,16 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             awaiting_checkout: rows.some((row) => row.awaiting_checkout),
             checkout_invoice_id: rows.find((row) => row.checkout_invoice_id)?.checkout_invoice_id || null,
         };
-    }).sort((a, b) => new Date(a.scheduled_start) - new Date(b.scheduled_start));
+    }).sort((a, b) => {
+        const aTime = new Date(a.scheduled_start).getTime();
+        const bTime = new Date(b.scheduled_start).getTime();
+        const safeATime = Number.isNaN(aTime) ? 0 : aTime;
+        const safeBTime = Number.isNaN(bTime) ? 0 : bTime;
+
+        return appointmentQueueSortDirection === 'asc'
+            ? safeATime - safeBTime
+            : safeBTime - safeATime;
+    });
 
     return (
         <AuthenticatedLayout
@@ -1209,6 +1219,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                     <div className="flex flex-wrap gap-2">
                         {[
                             { value: '', label: 'All' },
+                            { value: 'today', label: 'Today' },
+                            { value: 'needs_pay', label: 'Needs Pay' },
                             { value: 'pending', label: 'Pending' },
                             { value: 'confirmed', label: 'Confirmed' },
                             { value: 'upcoming', label: 'Upcoming' },

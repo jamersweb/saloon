@@ -6,11 +6,13 @@ use App\Models\Appointment;
 use App\Models\BookingRule;
 use App\Models\CommunicationLog;
 use App\Models\Customer;
+use App\Models\InvoicePayment;
 use App\Models\InventoryItem;
 use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
 use App\Models\StaffSchedule;
+use App\Models\TaxInvoice;
 use App\Models\User;
 use App\Support\Permissions;
 use Carbon\Carbon;
@@ -427,6 +429,117 @@ class AppointmentServiceWorkflowTest extends TestCase
             );
     }
 
+    public function test_appointment_index_can_filter_today(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-23 11:00:00'));
+
+        try {
+            $manager = $this->createManagerUser();
+            $service = SalonService::create([
+                'name' => 'Gel Polish',
+                'category' => 'Nails',
+                'duration_minutes' => 45,
+                'buffer_minutes' => 0,
+                'price' => 120,
+                'is_active' => true,
+            ]);
+
+            Appointment::create([
+                'service_id' => $service->id,
+                'source' => 'admin',
+                'status' => Appointment::STATUS_CONFIRMED,
+                'scheduled_start' => '2026-05-22 14:00:00',
+                'scheduled_end' => '2026-05-22 14:45:00',
+                'customer_name' => 'Old Client',
+                'customer_phone' => '5550000001',
+            ]);
+
+            $today = Appointment::create([
+                'service_id' => $service->id,
+                'source' => 'admin',
+                'status' => Appointment::STATUS_CONFIRMED,
+                'scheduled_start' => '2026-05-23 15:00:00',
+                'scheduled_end' => '2026-05-23 15:45:00',
+                'customer_name' => 'Today Client',
+                'customer_phone' => '5550000002',
+            ]);
+
+            $this->actingAs($manager)
+                ->get(route('appointments.index', ['status' => 'today']))
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component('Appointments/Index')
+                    ->has('appointments', 1)
+                    ->where('appointments.0.id', $today->id)
+                    ->where('appointments.0.customer_name', 'Today Client')
+                );
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_appointment_index_can_filter_needs_pay(): void
+    {
+        $manager = $this->createManagerUser();
+        $service = SalonService::create([
+            'name' => 'Hair Treatment',
+            'category' => 'Hair',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 200,
+            'is_active' => true,
+        ]);
+
+        $needsPay = Appointment::create([
+            'service_id' => $service->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => now()->subHour(),
+            'scheduled_end' => now(),
+            'customer_name' => 'Needs Pay Client',
+            'customer_phone' => '5550000003',
+        ]);
+
+        $paid = Appointment::create([
+            'service_id' => $service->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => now()->subHours(2),
+            'scheduled_end' => now()->subHour(),
+            'customer_name' => 'Paid Client',
+            'customer_phone' => '5550000004',
+        ]);
+
+        $invoice = TaxInvoice::create([
+            'appointment_id' => $paid->id,
+            'customer_display_name' => 'Paid Client',
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'subtotal' => 200,
+            'vat_amount' => 0,
+            'total' => 200,
+            'issued_at' => now(),
+            'created_by' => $manager->id,
+        ]);
+
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 200,
+            'method' => InvoicePayment::METHOD_CASH,
+            'paid_at' => now(),
+            'created_by' => $manager->id,
+        ]);
+
+        $this->actingAs($manager)
+            ->get(route('appointments.index', ['status' => 'needs_pay']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Appointments/Index')
+                ->has('appointments', 1)
+                ->where('appointments.0.id', $needsPay->id)
+                ->where('appointments.0.awaiting_checkout', true)
+            );
+    }
+
     public function test_starting_a_future_booking_uses_the_actual_service_time(): void
     {
         $actualStart = Carbon::parse('2026-05-15 12:20:29');
@@ -472,6 +585,17 @@ class AppointmentServiceWorkflowTest extends TestCase
         } finally {
             Carbon::setTestNow();
         }
+    }
+
+    private function createManagerUser(): User
+    {
+        $role = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+
+        return User::factory()->create(['role_id' => $role->id]);
     }
 
     private function createStaffUser(): array

@@ -85,10 +85,21 @@ class AppointmentController extends Controller
     public function index(Request $request): Response
     {
         $status = $request->string('status')->toString();
+        $today = now();
+        $todayStart = $today->copy()->startOfDay();
+        $todayEnd = $today->copy()->endOfDay();
         $rules = BookingRule::current();
         $user = $request->user();
         $isStaff = $user?->hasRole('staff') ?? false;
         $staffProfileId = $user?->staffProfile?->id;
+        $appointmentStatuses = [
+            Appointment::STATUS_PENDING,
+            Appointment::STATUS_CONFIRMED,
+            Appointment::STATUS_IN_PROGRESS,
+            Appointment::STATUS_COMPLETED,
+            Appointment::STATUS_CANCELLED,
+            Appointment::STATUS_NO_SHOW,
+        ];
 
         $appointmentRows = Appointment::query()
             ->with([
@@ -101,19 +112,25 @@ class AppointmentController extends Controller
                 'taxInvoices.payments',
             ])
             ->when($isStaff, fn ($query) => $query->where('staff_profile_id', $staffProfileId ?: 0))
+            ->when($status === 'today', function ($query) use ($todayStart, $todayEnd): void {
+                $query->whereBetween('scheduled_start', [$todayStart, $todayEnd]);
+            })
             ->when($status === 'upcoming', function ($query): void {
                 $query->where('scheduled_start', '>=', now())
                     ->whereIn('status', [Appointment::STATUS_PENDING, Appointment::STATUS_CONFIRMED, Appointment::STATUS_IN_PROGRESS]);
             })
-            ->when($status && $status !== 'upcoming', fn ($query) => $query->where('status', $status))
-            ->orderByDesc('scheduled_start')
-            ->limit(200)
+            ->when($status === 'needs_pay', fn ($query) => $query->where('status', Appointment::STATUS_COMPLETED))
+            ->when(in_array($status, $appointmentStatuses, true), fn ($query) => $query->where('status', $status))
+            ->when(in_array($status, ['today', 'upcoming'], true), fn ($query) => $query->orderBy('scheduled_start'), fn ($query) => $query->orderByDesc('scheduled_start'))
+            ->limit($status === 'needs_pay' ? 500 : 200)
             ->get();
 
         $customerIds = $appointmentRows->pluck('customer_id')->filter()->unique()->values()->all();
         $appointmentServiceIds = $appointmentRows->pluck('service_id')->filter()->unique()->values()->all();
 
-        $appointments = $appointmentRows->map(fn (Appointment $appointment) => $this->serializeAppointment($appointment, $request));
+        $appointments = $appointmentRows
+            ->map(fn (Appointment $appointment) => $this->serializeAppointment($appointment, $request))
+            ->when($status === 'needs_pay', fn ($rows) => $rows->filter(fn (array $appointment) => $appointment['awaiting_checkout'])->values());
 
         if ($customerIds !== []) {
             $giftCardService = app(GiftCardService::class);
