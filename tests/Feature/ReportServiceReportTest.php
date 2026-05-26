@@ -76,6 +76,92 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(147.0, $rows[0]['total']);
     }
 
+    public function test_service_report_uses_visit_invoice_line_when_invoice_service_variant_was_changed(): void
+    {
+        [$firstAppointment, $invoice] = $this->completedAppointmentWithInvoice('Maryam Albooshi', 'RCT00033');
+
+        $firstAppointment->service->update([
+            'name' => 'Blowdry Curly/wavy w/ Iron Medium',
+            'price' => 150,
+        ]);
+
+        $longService = SalonService::create([
+            'name' => 'Blowdry Curly/wavy w/ Iron Long',
+            'category' => 'Hair',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 175,
+            'is_active' => true,
+        ]);
+        $fullHair = SalonService::create([
+            'name' => 'Full hair',
+            'category' => 'Hair',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 425,
+            'is_active' => true,
+        ]);
+        $visitId = 'visit-rct00033';
+
+        $firstAppointment->update(['visit_id' => $visitId]);
+        $secondAppointment = Appointment::create([
+            'customer_id' => $firstAppointment->customer_id,
+            'service_id' => $fullHair->id,
+            'staff_profile_id' => $firstAppointment->staff_profile_id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => '2026-05-21 18:45:00',
+            'scheduled_end' => '2026-05-21 19:45:00',
+            'customer_name' => $firstAppointment->customer_name,
+            'customer_phone' => $firstAppointment->customer_phone,
+            'notes' => 'done',
+            'visit_id' => $visitId,
+        ]);
+
+        $invoice->update([
+            'appointment_id' => $firstAppointment->id,
+            'subtotal' => 600,
+            'vat_amount' => 30,
+            'total' => 630,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $longService->id,
+            'description' => 'Blowdry Curly/wavy w/ Iron Long',
+            'quantity' => 1,
+            'unit_price' => 175,
+            'discount_amount' => 0,
+            'line_subtotal' => 175,
+            'tax_rate_percent' => 5,
+            'line_tax' => 8.75,
+            'line_total' => 183.75,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $fullHair->id,
+            'description' => 'Full hair',
+            'quantity' => 1,
+            'unit_price' => 425,
+            'discount_amount' => 0,
+            'line_subtotal' => 425,
+            'tax_rate_percent' => 5,
+            'line_tax' => 21.25,
+            'line_total' => 446.25,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = collect($method->invoke(app(ReportController::class), Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(), [
+            'customer_name' => 'Maryam',
+            'invoice_number' => 'RCT00033',
+        ]))->keyBy('id');
+
+        $this->assertSame(175.0, $rows[$firstAppointment->id]['unit_price']);
+        $this->assertSame(175.0, $rows[$firstAppointment->id]['subtotal']);
+        $this->assertSame(8.75, $rows[$firstAppointment->id]['tax']);
+        $this->assertSame(183.75, $rows[$firstAppointment->id]['total']);
+        $this->assertSame(425.0, $rows[$secondAppointment->id]['subtotal']);
+    }
+
     public function test_appointments_csv_export_includes_invoice_number_and_service_report(): void
     {
         $manager = $this->managerUser();

@@ -331,30 +331,119 @@ class ReportController extends Controller
             ->orderBy('invoice_number')
             ->get();
 
-        $byAppointment = [];
-        $byVisit = [];
+        $reportAppointmentsById = $appointments->keyBy('id');
+        $reportAppointmentsByVisit = $appointments
+            ->filter(fn (Appointment $appointment) => $appointment->visit_id)
+            ->groupBy('visit_id')
+            ->map(fn (Collection $visitAppointments) => $visitAppointments
+                ->sortBy([
+                    ['scheduled_start', 'asc'],
+                    ['id', 'asc'],
+                ])
+                ->values());
 
+        $items = [];
         foreach ($invoices as $invoice) {
-            $byAppointment[$invoice->appointment_id] = ($byAppointment[$invoice->appointment_id] ?? collect())->concat($invoice->items);
+            $invoiceAppointment = $reportAppointmentsById->get($invoice->appointment_id);
+            $visitId = $appointmentVisitMap[$invoice->appointment_id] ?? $invoiceAppointment?->visit_id;
+            $invoiceAppointments = $visitId
+                ? ($reportAppointmentsByVisit->get($visitId) ?? collect())
+                : ($invoiceAppointment ? collect([$invoiceAppointment]) : collect());
 
-            $visitId = $appointmentVisitMap[$invoice->appointment_id] ?? null;
-            if ($visitId) {
-                $byVisit[$visitId] = ($byVisit[$visitId] ?? collect())->concat($invoice->items);
+            if ($invoiceAppointments->isEmpty()) {
+                continue;
+            }
+
+            foreach ($this->assignInvoiceItemsToAppointments($invoiceAppointments, $invoice->items) as $appointmentId => $appointmentItems) {
+                $items[$appointmentId] = ($items[$appointmentId] ?? collect())->concat($appointmentItems);
             }
         }
 
-        $items = [];
         foreach ($appointments as $appointment) {
-            $appointmentItems = $byAppointment[$appointment->id] ?? collect();
-
-            if ($appointmentItems->isEmpty() && $appointment->visit_id) {
-                $appointmentItems = $byVisit[$appointment->visit_id] ?? collect();
-            }
-
-            $items[$appointment->id] = $appointmentItems->values();
+            $items[$appointment->id] = ($items[$appointment->id] ?? collect())->values();
         }
 
         return $items;
+    }
+
+    /**
+     * @param  Collection<int, Appointment>  $appointments
+     * @param  Collection<int, TaxInvoiceItem>  $invoiceItems
+     * @return array<int, Collection<int, TaxInvoiceItem>>
+     */
+    private function assignInvoiceItemsToAppointments(Collection $appointments, Collection $invoiceItems): array
+    {
+        $appointments = $appointments
+            ->sortBy([
+                ['scheduled_start', 'asc'],
+                ['id', 'asc'],
+            ])
+            ->values();
+
+        $remainingItems = $invoiceItems->values();
+        $pendingAppointments = $appointments;
+        $assignments = [];
+
+        $assignBy = function (callable $matches) use (&$pendingAppointments, &$remainingItems, &$assignments): void {
+            $stillPending = collect();
+
+            foreach ($pendingAppointments as $appointment) {
+                $matchedKey = null;
+                $matchedItem = null;
+
+                foreach ($remainingItems as $key => $item) {
+                    if ($matches($appointment, $item)) {
+                        $matchedKey = $key;
+                        $matchedItem = $item;
+                        break;
+                    }
+                }
+
+                if ($matchedItem) {
+                    $assignments[$appointment->id] = collect([$matchedItem]);
+                    $remainingItems->forget($matchedKey);
+                } else {
+                    $stillPending->push($appointment);
+                }
+            }
+
+            $pendingAppointments = $stillPending->values();
+            $remainingItems = $remainingItems->values();
+        };
+
+        $assignBy(fn (Appointment $appointment, TaxInvoiceItem $item): bool => (int) $appointment->service_id > 0
+            && (int) $item->salon_service_id === (int) $appointment->service_id);
+
+        $assignBy(function (Appointment $appointment, TaxInvoiceItem $item): bool {
+            $serviceName = mb_strtolower(trim((string) $appointment->service?->name));
+
+            return $serviceName !== ''
+                && mb_strtolower(trim((string) $item->description)) === $serviceName;
+        });
+
+        if ($pendingAppointments->isNotEmpty()) {
+            $fallbackItems = $remainingItems
+                ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id !== null)
+                ->values();
+
+            if ($fallbackItems->isEmpty()) {
+                $fallbackItems = $remainingItems->values();
+            }
+
+            foreach ($pendingAppointments->values() as $index => $appointment) {
+                $item = $fallbackItems->get($index);
+
+                if ($item) {
+                    $assignments[$appointment->id] = collect([$item]);
+                }
+            }
+        }
+
+        foreach ($appointments as $appointment) {
+            $assignments[$appointment->id] = $assignments[$appointment->id] ?? collect();
+        }
+
+        return $assignments;
     }
 
     /**
