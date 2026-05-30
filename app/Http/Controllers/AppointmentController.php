@@ -211,7 +211,7 @@ class AppointmentController extends Controller
         $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
 
         $start = Carbon::parse($data['scheduled_start']);
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities, $staffAssignments);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, null, $serviceQuantities, $staffAssignments);
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start, enforceSlotInterval: false, enforceMinAdvance: false)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
@@ -238,10 +238,10 @@ class AppointmentController extends Controller
 
         $customer = $this->resolveCustomer(
             $data['customer_name'],
-            $data['customer_phone'],
+            $data['customer_phone'] ?? '',
             $data['customer_email'] ?? null,
         );
-        $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer->id);
+        $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer?->id);
 
         $created = [];
         DB::transaction(function () use ($request, $data, $customer, $servicePlans, $packageSelection, &$created): void {
@@ -253,7 +253,7 @@ class AppointmentController extends Controller
                     'service_id' => $plan['service']->id,
                     'service_quantity' => $plan['service_quantity'],
                     'staff_profile_id' => $plan['staff_profile_id'] ?? null,
-                    'customer_id' => $customer->id,
+                    'customer_id' => $customer?->id,
                     'customer_package_id' => $isPackageCovered ? $packageSelection['customer_package']?->id : null,
                     'visit_id' => $visitId,
                     'booked_by' => $request->user()?->id,
@@ -292,7 +292,7 @@ class AppointmentController extends Controller
         $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
 
         $start = Carbon::parse($data['scheduled_start']);
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities, $staffAssignments);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, null, $serviceQuantities, $staffAssignments);
 
         foreach ($servicePlans as $idx => $plan) {
             if ($timeRangeError = $this->validateTimeRange($plan['start'], $plan['end'])) {
@@ -315,10 +315,10 @@ class AppointmentController extends Controller
 
         $customer = $this->resolveCustomer(
             $data['customer_name'],
-            $data['customer_phone'],
+            $data['customer_phone'] ?? '',
             $data['customer_email'] ?? null,
         );
-        $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer->id, $appointment->id);
+        $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer?->id, $appointment->id);
 
         $notifiableAppointments = [];
 
@@ -356,7 +356,7 @@ class AppointmentController extends Controller
                     'service_id' => $plan['service']->id,
                     'service_quantity' => $plan['service_quantity'],
                     'staff_profile_id' => $plan['staff_profile_id'] ?? null,
-                    'customer_id' => $customer->id,
+                    'customer_id' => $customer?->id,
                     'customer_package_id' => $covered ? $packageSelection['customer_package']?->id : null,
                     'visit_id' => $visitId,
                     'scheduled_start' => $plan['start'],
@@ -797,7 +797,7 @@ class AppointmentController extends Controller
 
     private function validatePayload(Request $request, bool $isUpdate = false): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'service_id' => ['nullable', 'exists:salon_services,id'],
             'service_ids' => ['nullable', 'array', 'min:1'],
             'service_ids.*' => ['integer', 'exists:salon_services,id'],
@@ -823,11 +823,15 @@ class AppointmentController extends Controller
             'arrival_time' => ['nullable', 'date'],
             'service_start_time' => ['nullable', 'date'],
             'customer_name' => ['required', 'string', 'max:255'],
-            'customer_phone' => ['required', 'string', 'max:30'],
+            'customer_phone' => ['nullable', 'string', 'max:30'],
             'customer_email' => ['nullable', 'email', 'max:255'],
             'notes' => ['nullable', 'string'],
             'cancellation_reason' => ['nullable', 'string'],
         ]);
+
+        $data['customer_phone'] = trim((string) ($data['customer_phone'] ?? ''));
+
+        return $data;
     }
 
     /**
@@ -989,11 +993,7 @@ class AppointmentController extends Controller
             }
 
             $itemStart = $runInParallel ? $start->copy() : $cursor->copy();
-            if ($idx === 0 && count($serviceIds) === 1 && ! empty($requestedEnd)) {
-                $itemEnd = Carbon::parse($requestedEnd);
-            } else {
-                $itemEnd = $itemStart->copy()->addMinutes((int) $service->duration_minutes + (int) $service->buffer_minutes);
-            }
+            $itemEnd = $itemStart->copy()->addMinutes((int) $service->duration_minutes + (int) $service->buffer_minutes);
 
             $plans[] = [
                 'service' => $service,
@@ -1173,8 +1173,14 @@ class AppointmentController extends Controller
         $appointment->delete();
     }
 
-    private function resolveCustomer(string $name, string $phone, ?string $email): Customer
+    private function resolveCustomer(string $name, ?string $phone, ?string $email): ?Customer
     {
+        $phone = trim((string) $phone);
+
+        if ($phone === '') {
+            return null;
+        }
+
         $customer = Customer::firstOrCreate(
             ['phone' => $phone],
             [

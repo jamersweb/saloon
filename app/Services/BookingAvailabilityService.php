@@ -126,12 +126,8 @@ class BookingAvailabilityService
             ->whereNotIn('status', [Appointment::STATUS_COMPLETED, Appointment::STATUS_CANCELLED, Appointment::STATUS_NO_SHOW])
             ->when($ignoreAppointmentId, fn ($query) => $query->where('id', '!=', $ignoreAppointmentId))
             ->where(function ($query) use ($start, $end) {
-                $query->whereBetween('scheduled_start', [$start, $end])
-                    ->orWhereBetween('scheduled_end', [$start, $end])
-                    ->orWhere(function ($nested) use ($start, $end) {
-                        $nested->where('scheduled_start', '<=', $start)
-                            ->where('scheduled_end', '>=', $end);
-                    });
+                $query->where('scheduled_start', '<', $end)
+                    ->where('scheduled_end', '>', $start);
             })
             ->orderBy('scheduled_start')
             ->first();

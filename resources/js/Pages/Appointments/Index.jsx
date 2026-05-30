@@ -47,14 +47,14 @@ const formatHourLabel = (hour) => {
 const formatMoney = (value, currencyCode = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2 }).format(Number(value || 0));
 const appointmentCategoryCardPalettes = {
-    hair: { backgroundColor: '#fef3c7', borderColor: '#fcd34d', color: '#854d0e' },
-    makeup: { backgroundColor: '#fce7f3', borderColor: '#f9a8d4', color: '#9d174d' },
-    threading: { backgroundColor: '#f3e8ff', borderColor: '#d8b4fe', color: '#6b21a8' },
-    eyelash: { backgroundColor: '#e0f2fe', borderColor: '#7dd3fc', color: '#0c4a6e' },
-    waxing: { backgroundColor: '#dcfce7', borderColor: '#86efac', color: '#166534' },
-    nails: { backgroundColor: '#ffedd5', borderColor: '#fdba74', color: '#9a3412' },
-    hair_extension: { backgroundColor: '#dbeafe', borderColor: '#93c5fd', color: '#1d4ed8' },
-    default: { backgroundColor: '#f8fafc', borderColor: '#cbd5e1', color: '#334155' },
+    hair: { backgroundColor: '#fbbf24', borderColor: '#d97706', color: '#451a03' },
+    makeup: { backgroundColor: '#f472b6', borderColor: '#be185d', color: '#500724' },
+    threading: { backgroundColor: '#c084fc', borderColor: '#7e22ce', color: '#3b0764' },
+    eyelash: { backgroundColor: '#38bdf8', borderColor: '#0369a1', color: '#082f49' },
+    waxing: { backgroundColor: '#4ade80', borderColor: '#15803d', color: '#052e16' },
+    nails: { backgroundColor: '#fb923c', borderColor: '#c2410c', color: '#431407' },
+    hair_extension: { backgroundColor: '#60a5fa', borderColor: '#1d4ed8', color: '#172554' },
+    default: { backgroundColor: '#cbd5e1', borderColor: '#64748b', color: '#0f172a' },
 };
 const resolveAppointmentCategoryPalette = (value) => {
     const text = String(value || '').trim().toLowerCase();
@@ -949,7 +949,11 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 );
                                 const [ymd] = v.split('T');
                                 if (ymd) setCreateStartYmd(ymd);
-                                createForm.setData('scheduled_start', v);
+                                createForm.setData((prev) => ({
+                                    ...prev,
+                                    scheduled_start: v,
+                                    scheduled_end: calculateSuggestedEnd(v, prev.service_ids),
+                                }));
                             });
                             createForm.post(route('appointments.store'), {
                                 onSuccess: () => {
@@ -1050,8 +1054,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             {fieldError(createForm, 'customer_name')}
                         </div>
                         <div>
-                            <label className="ta-field-label">{createCustomerMode === 'existing' ? 'Phone number' : 'Phone'}</label>
-                            <input className="ta-input" value={createForm.data.customer_phone} onChange={(e) => createForm.setData('customer_phone', e.target.value)} required disabled={createCustomerMode === 'existing' && !createSelectedCustomerId} />
+                            <label className="ta-field-label">{createCustomerMode === 'existing' ? 'Phone number' : 'Phone (optional)'}</label>
+                            <input className="ta-input" value={createForm.data.customer_phone} onChange={(e) => createForm.setData('customer_phone', e.target.value)} disabled={createCustomerMode === 'existing' && !createSelectedCustomerId} />
                             {fieldError(createForm, 'customer_phone')}
                         </div>
                         <div>
@@ -1124,13 +1128,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         ) : null}
                         {createHasMultipleServices ? (
                             <div>
-                                <label className="ta-field-label">Default Staff Profile</label>
+                                <label className="ta-field-label">Staff</label>
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">Hidden for multi-service bookings. Assign staff per service below.</div>
                             </div>
                         ) : (
                             <div>
-                                <SearchableSelect label="Default Staff Profile" value={createForm.data.staff_profile_id} onChange={(id) => createForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
-                                <p className="mt-1 text-xs font-semibold text-slate-700">Optional default for all selected services.</p>
+                                <SearchableSelect label="Staff" value={createForm.data.staff_profile_id} onChange={(id) => createForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
+                                <p className="mt-1 text-xs font-semibold text-slate-700">Select staff or leave auto / unassigned.</p>
                                 {fieldError(createForm, 'staff_profile_id')}
                             </div>
                         )}
@@ -1189,7 +1193,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         ) : null}
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
-                            <p className="mb-1 text-xs font-semibold text-slate-700">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. Walk-ins can start from the current time, and future bookings can be scheduled up to the booking horizon.</p>
+                            <p className="mb-1 text-xs font-semibold text-slate-700">Walk-ins can start from the current time; future bookings can be scheduled up to the booking horizon.</p>
                             <input
                                 key={`create-start-${createStartMount}`}
                                 ref={createStartRef}
@@ -1202,11 +1206,6 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 required
                             />
                             {fieldError(createForm, 'scheduled_start')}
-                        </div>
-                        <div>
-                            <label className="ta-field-label">Scheduled End</label>
-                            <input className="ta-input" type="datetime-local" value={createForm.data.scheduled_end} onInput={(e) => handleCreateEndChange(e.currentTarget.value)} min={createSalonBounds.min} max={createSalonBounds.max} />
-                            {fieldError(createForm, 'scheduled_end')}
                         </div>
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={createForm.data.status} onChange={(e) => createForm.setData('status', e.target.value)}><option value="confirmed">confirmed</option><option value="pending">pending</option></select>{fieldError(createForm, 'status')}</div>
                         <div className="md:col-span-4"><input className="ta-input" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(createForm, 'notes')}</div>
@@ -1628,7 +1627,11 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 );
                                 const [ymd] = v.split('T');
                                 if (ymd) setEditStartYmd(ymd);
-                                editForm.setData('scheduled_start', v);
+                                editForm.setData((prev) => ({
+                                    ...prev,
+                                    scheduled_start: v,
+                                    scheduled_end: calculateSuggestedEnd(v, prev.service_ids),
+                                }));
                             });
                             editForm.put(route('appointments.update', editingId), {
                                 onSuccess: () => {
@@ -1713,7 +1716,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                             </div>
                         ) : null}
                         <div><label className="ta-field-label">{editCustomerMode === 'existing' ? 'Name' : 'Full name'}</label><input className="ta-input" value={editForm.data.customer_name} onChange={(e) => editForm.setData('customer_name', e.target.value)} required />{fieldError(editForm, 'customer_name')}</div>
-                        <div><label className="ta-field-label">{editCustomerMode === 'existing' ? 'Phone number' : 'Phone'}</label><input className="ta-input" value={editForm.data.customer_phone} onChange={(e) => editForm.setData('customer_phone', e.target.value)} required />{fieldError(editForm, 'customer_phone')}</div>
+                        <div><label className="ta-field-label">{editCustomerMode === 'existing' ? 'Phone number' : 'Phone (optional)'}</label><input className="ta-input" value={editForm.data.customer_phone} onChange={(e) => editForm.setData('customer_phone', e.target.value)} />{fieldError(editForm, 'customer_phone')}</div>
                         <div><label className="ta-field-label">Email</label><input className="ta-input" type="email" value={editForm.data.customer_email} onChange={(e) => editForm.setData('customer_email', e.target.value)} />{fieldError(editForm, 'customer_email')}</div>
                         <div>
                             <label className="ta-field-label">Services</label>
@@ -1763,13 +1766,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         ) : null}
                         {editHasMultipleServices ? (
                             <div>
-                                <label className="ta-field-label">Default Staff Profile</label>
+                                <label className="ta-field-label">Staff</label>
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">Hidden for multi-service bookings. Assign staff per service below.</div>
                             </div>
                         ) : (
                             <div>
-                                <SearchableSelect label="Default Staff Profile" value={editForm.data.staff_profile_id} onChange={(id) => editForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
-                                <p className="mt-1 text-xs font-semibold text-slate-700">Optional default for all selected services.</p>
+                                <SearchableSelect label="Staff" value={editForm.data.staff_profile_id} onChange={(id) => editForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
+                                <p className="mt-1 text-xs font-semibold text-slate-700">Select staff or leave auto / unassigned.</p>
                                 {fieldError(editForm, 'staff_profile_id')}
                             </div>
                         )}
@@ -1829,7 +1832,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
-                            <p className="mb-1 text-xs font-semibold text-slate-700">Same-day visit: keep start and end within {bookingRules?.opening_time || '09:00'}–{bookingRules?.closing_time || '22:00'}; the visit must end by closing. Walk-ins can start from the current time, and future bookings can be scheduled up to the booking horizon.</p>
+                            <p className="mb-1 text-xs font-semibold text-slate-700">Walk-ins can start from the current time; future bookings can be scheduled up to the booking horizon.</p>
                             <input
                                 key={`edit-start-${editStartMountKey}`}
                                 ref={editStartRef}
@@ -1842,11 +1845,6 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 required
                             />
                             {fieldError(editForm, 'scheduled_start')}
-                        </div>
-                        <div>
-                            <label className="ta-field-label">Scheduled End</label>
-                            <input className="ta-input" type="datetime-local" value={editForm.data.scheduled_end} onInput={(e) => handleEditEndChange(e.currentTarget.value)} min={editEndSalonBounds.min} max={editEndSalonBounds.max} />
-                            {fieldError(editForm, 'scheduled_end')}
                         </div>
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
                         <div className="md:col-span-2 flex justify-end gap-2 pt-2">
