@@ -578,15 +578,14 @@ class ReportController extends Controller
     private function collectReportData(Carbon $dateFrom, Carbon $dateTo): array
     {
         $waitingMinutesExpression = $this->minutesBetweenExpression('appointments.arrival_time', 'appointments.service_start_time');
+        $serviceReportRows = $this->collectServiceReportRows($dateFrom, $dateTo, [
+            'customer_name' => '',
+            'invoice_number' => '',
+        ]);
+        $serviceReportTotals = $this->serviceReportTotals($serviceReportRows);
 
         $appointmentsInRange = Appointment::query()
             ->whereBetween('scheduled_start', [$dateFrom, $dateTo]);
-
-        $completedRevenue = Appointment::query()
-            ->join('salon_services', 'appointments.service_id', '=', 'salon_services.id')
-            ->where('appointments.status', Appointment::STATUS_COMPLETED)
-            ->whereBetween('appointments.scheduled_start', [$dateFrom, $dateTo])
-            ->sum('salon_services.price');
 
         $statusBreakdown = (clone $appointmentsInRange)
             ->selectRaw('status, COUNT(*) as total')
@@ -597,7 +596,7 @@ class ReportController extends Controller
         $servicePerformance = Appointment::query()
             ->join('salon_services', 'appointments.service_id', '=', 'salon_services.id')
             ->whereBetween('appointments.scheduled_start', [$dateFrom, $dateTo])
-            ->selectRaw('salon_services.name as service_name, COUNT(*) as total, SUM(CASE WHEN appointments.status = ? THEN salon_services.price ELSE 0 END) as revenue', [Appointment::STATUS_COMPLETED])
+            ->selectRaw('salon_services.name as service_name, COUNT(*) as total, SUM(CASE WHEN appointments.status = ? THEN salon_services.price * appointments.service_quantity ELSE 0 END) as revenue', [Appointment::STATUS_COMPLETED])
             ->groupBy('salon_services.name')
             ->orderByDesc('total')
             ->limit(8)
@@ -619,7 +618,7 @@ class ReportController extends Controller
             ->join('salon_services', 'appointments.service_id', '=', 'salon_services.id')
             ->where('appointments.status', Appointment::STATUS_COMPLETED)
             ->whereBetween('appointments.scheduled_start', [$dateFrom, $dateTo])
-            ->selectRaw('DATE(appointments.scheduled_start) as date, SUM(salon_services.price) as revenue')
+            ->selectRaw('DATE(appointments.scheduled_start) as date, SUM(salon_services.price * appointments.service_quantity) as revenue')
             ->groupByRaw('DATE(appointments.scheduled_start)')
             ->orderBy('date')
             ->get()
@@ -667,7 +666,8 @@ class ReportController extends Controller
         return [
             'overview' => [
                 'appointments_total' => (clone $appointmentsInRange)->count(),
-                'completed_revenue' => (float) $completedRevenue,
+                'completed_services' => (int) $serviceReportTotals['service_count'],
+                'completed_revenue' => (float) $serviceReportTotals['total'],
                 'new_customers' => Customer::query()->whereBetween('created_at', [$dateFrom, $dateTo])->count(),
                 'inventory_items' => InventoryItem::query()->count(),
                 'inventory_low_stock' => InventoryItem::query()->whereColumn('stock_quantity', '<=', 'reorder_level')->count(),
