@@ -179,7 +179,15 @@ class CrmAutomationController extends Controller
                     'recipient' => $log->recipient,
                     'status' => $log->status,
                     'provider_status' => $log->provider_status,
+                    'provider' => $log->provider,
+                    'provider_message_id' => $log->provider_message_id,
+                    'error_message' => $log->error_message,
+                    'attempt_count' => $log->attempt_count,
+                    'queued_at' => $log->queued_at?->toIso8601String(),
+                    'accepted_at' => $log->accepted_at?->toIso8601String(),
                     'sent_at' => $log->sent_at,
+                    'failed_at' => $log->failed_at?->toIso8601String(),
+                    'created_at' => $log->created_at?->toIso8601String(),
                 ]),
             'contacts' => $contacts
                 ->paginate($contactFilters['per_page'], ['*'], 'contact_page')
