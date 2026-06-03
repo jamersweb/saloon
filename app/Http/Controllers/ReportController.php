@@ -9,6 +9,7 @@ use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
 use App\Models\FinanceSetting;
 use App\Models\InventoryItem;
+use App\Models\InvoicePayment;
 use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -663,11 +664,20 @@ class ReportController extends Controller
             ->selectRaw("AVG({$this->minutesBetweenExpression('arrival_time', 'service_start_time')}) as avg_waiting_minutes")
             ->value('avg_waiting_minutes');
 
+        $paymentTotals = InvoicePayment::query()
+            ->whereBetween('paid_at', [$dateFrom, $dateTo])
+            ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD])
+            ->selectRaw('method, SUM(amount) as total')
+            ->groupBy('method')
+            ->pluck('total', 'method');
+
         return [
             'overview' => [
                 'appointments_total' => (clone $appointmentsInRange)->count(),
                 'completed_services' => (int) $serviceReportTotals['service_count'],
                 'completed_revenue' => (float) $serviceReportTotals['total'],
+                'cash_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CASH] ?? 0), 2),
+                'card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CARD] ?? 0), 2),
                 'new_customers' => Customer::query()->whereBetween('created_at', [$dateFrom, $dateTo])->count(),
                 'inventory_items' => InventoryItem::query()->count(),
                 'inventory_low_stock' => InventoryItem::query()->whereColumn('stock_quantity', '<=', 'reorder_level')->count(),

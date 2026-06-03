@@ -27,7 +27,7 @@
             @foreach($overview as $key => $value)
                 <td class="card">
                     <div class="card-label">{{ str_replace('_', ' ', $key) }}</div>
-                    <div class="card-value">{{ $key === 'completed_revenue' ? $currencyCode . ' ' . number_format((float) $value, 2) : $value }}</div>
+                    <div class="card-value">{{ str_contains($key, 'revenue') || str_contains($key, 'payment') ? $currencyCode . ' ' . number_format((float) $value, 2) : $value }}</div>
                 </td>
             @endforeach
         </tr>

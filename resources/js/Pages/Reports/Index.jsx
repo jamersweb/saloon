@@ -3,6 +3,7 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
 const toMoney = (value, currencyCode = 'AED') => new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(value || 0));
+const isMoneyMetric = (key) => key.includes('revenue') || key.includes('payment');
 
 function HorizontalBarChart({ rows, labelKey, valueKey, colorClass }) {
     const max = Math.max(...rows.map((row) => Number(row[valueKey] || 0)), 1);
@@ -161,7 +162,7 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                     {Object.entries(overview).map(([key, value]) => (
                         <div key={key} className="ta-card p-4">
                             <p className="text-xs uppercase text-slate-500">{key.replaceAll('_', ' ')}</p>
-                            <p className="mt-1 text-xl font-semibold text-slate-800">{key.includes('revenue') ? toMoney(value, currencyCode) : value}</p>
+                            <p className="mt-1 text-xl font-semibold text-slate-800">{isMoneyMetric(key) ? toMoney(value, currencyCode) : value}</p>
                         </div>
                     ))}
                 </section>
