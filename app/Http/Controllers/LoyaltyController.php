@@ -424,7 +424,8 @@ class LoyaltyController extends Controller
 
         $data = $request->validate([
             'assigned_customer_id' => ['nullable', 'exists:customers,id'],
-            'initial_value' => ['required', 'numeric', 'min:0.01'],
+            'initial_value' => ['nullable', Rule::requiredIf(fn () => ! $request->boolean('random_voucher')), 'numeric', 'min:0.01'],
+            'random_voucher' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string'],
             'nfc_uid' => [
                 'nullable',
@@ -437,17 +438,21 @@ class LoyaltyController extends Controller
 
         $customer = ! empty($data['assigned_customer_id']) ? Customer::find((int) $data['assigned_customer_id']) : null;
 
-        $giftCard = $giftCardService->issue(
-            $customer,
-            (float) $data['initial_value'],
-            $request->user()?->id,
-            $data['notes'] ?? null,
-            $data['nfc_uid'] ?? null,
-        );
+        $giftCard = $request->boolean('random_voucher')
+            ? $giftCardService->issueRandomVoucher($customer, $request->user()?->id, $data['notes'] ?? null, $data['nfc_uid'] ?? null)
+            : $giftCardService->issue(
+                $customer,
+                (float) $data['initial_value'],
+                $request->user()?->id,
+                $data['notes'] ?? null,
+                $data['nfc_uid'] ?? null,
+            );
 
         Audit::log($request->user()?->id, 'gift_card.issued', 'GiftCard', $giftCard->id);
 
-        return back()->with('status', 'Gift card issued.');
+        return back()->with('status', $request->boolean('random_voucher')
+            ? 'Gift voucher issued for AED '.number_format((float) $giftCard->initial_value, 2).'.'
+            : 'Gift card issued.');
     }
 
     public function assignGiftCard(Request $request): RedirectResponse

@@ -405,6 +405,19 @@ class TaxInvoiceController extends Controller
 
         $invoice->refresh();
 
+        $paymentService = app(TaxInvoicePaymentService::class);
+        if (($data['method'] ?? null) !== InvoicePayment::METHOD_GIFT_CARD) {
+            $paymentService->applyAutoVoucher($invoice, $request->user());
+            $invoice->refresh();
+            $remainingBalance = $invoice->balanceDue();
+            if ($remainingBalance <= 0.009) {
+                return back()->with('status', 'Gift voucher applied and invoice paid.');
+            }
+            if ((float) $data['amount'] > $remainingBalance) {
+                $data['amount'] = $remainingBalance;
+            }
+        }
+
         if (($data['method'] ?? null) === InvoicePayment::METHOD_GIFT_CARD && empty($data['gift_card_id']) && $invoice->customer_id) {
             app(GiftCardService::class)->backfillGiftCardsForCustomer((int) $invoice->customer_id, $request->user()?->id);
             $eligibleAssignedCards = GiftCard::query()
@@ -419,7 +432,7 @@ class TaxInvoiceController extends Controller
             }
         }
 
-        app(TaxInvoicePaymentService::class)->record($invoice, [
+        $paymentService->record($invoice, [
             'amount' => $data['amount'],
             'method' => $data['method'],
             'paid_at' => $data['paid_at'],

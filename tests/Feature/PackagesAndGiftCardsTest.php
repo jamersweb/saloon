@@ -115,6 +115,37 @@ class PackagesAndGiftCardsTest extends TestCase
         ]);
     }
 
+    public function test_staff_can_issue_random_gift_voucher(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-GIFT-VOUCHER',
+            'name' => 'Voucher Customer',
+            'phone' => '5558189999',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.gift-cards.store'), [
+                'assigned_customer_id' => $customer->id,
+                'random_voucher' => true,
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status');
+
+        $giftCard = $customer->giftCards()->firstOrFail();
+
+        $this->assertContains((float) $giftCard->initial_value, GiftCardService::RANDOM_VOUCHER_VALUES);
+        $this->assertSame($giftCard->initial_value, $giftCard->remaining_value);
+        $this->assertStringContainsString('Random gift voucher', (string) $giftCard->notes);
+    }
+
     public function test_manager_can_create_update_and_delete_service_package_with_services(): void
     {
         $managerRole = Role::create([

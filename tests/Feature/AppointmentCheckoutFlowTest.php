@@ -117,6 +117,46 @@ class AppointmentCheckoutFlowTest extends TestCase
         $this->assertLessThan(0.02, $invoice->balanceDue());
     }
 
+    public function test_reception_finish_and_pay_with_cash_auto_deducts_assigned_gift_voucher(): void
+    {
+        $reception = $this->seedReceptionUser();
+        $appointment = $this->inProgressAppointment($reception);
+        $appointment->service->update(['price' => 400]);
+
+        $giftCard = GiftCard::create([
+            'code' => 'GIFT-CHK-AUTO-100',
+            'assigned_customer_id' => $appointment->customer_id,
+            'initial_value' => 100,
+            'remaining_value' => 100,
+            'status' => 'active',
+            'issued_by' => $reception->id,
+            'notes' => 'Random gift voucher.',
+        ]);
+
+        $this->actingAs($reception)
+            ->post(route('appointments.service-complete', $appointment), [
+                'service_report' => 'Done.',
+                'finish_and_pay' => true,
+                'checkout_payment_method' => InvoicePayment::METHOD_CASH,
+                'checkout_paid_at' => now()->format('Y-m-d\TH:i'),
+                'products' => [],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->where('appointment_id', $appointment->id)->firstOrFail();
+        $payments = $invoice->payments()->orderBy('id')->get();
+
+        $this->assertSame(TaxInvoice::STATUS_FINALIZED, $invoice->status);
+        $this->assertEqualsWithDelta(420.0, (float) $invoice->total, 0.02);
+        $this->assertCount(2, $payments);
+        $this->assertSame(InvoicePayment::METHOD_GIFT_CARD, $payments[0]->method);
+        $this->assertEqualsWithDelta(100.0, (float) $payments[0]->amount, 0.02);
+        $this->assertSame(InvoicePayment::METHOD_CASH, $payments[1]->method);
+        $this->assertEqualsWithDelta(320.0, (float) $payments[1]->amount, 0.02);
+        $this->assertLessThan(0.02, $invoice->fresh()->balanceDue());
+        $this->assertSame('0.00', $giftCard->fresh()->remaining_value);
+    }
+
     public function test_reception_can_finish_and_pay_with_gift_card(): void
     {
         $reception = $this->seedReceptionUser();

@@ -738,13 +738,25 @@ class AppointmentController extends Controller
                     }
                 }
 
-                app(TaxInvoicePaymentService::class)->record($invoice, [
-                    'amount' => (float) $invoice->total,
-                    'method' => $method,
-                    'paid_at' => $paidAt,
-                    'reference_note' => 'Finish & pay · appointment #'.$appointment->id,
-                    'gift_card_id' => $method === InvoicePayment::METHOD_GIFT_CARD ? (int) $data['checkout_gift_card_id'] : null,
-                ], $user);
+                $paymentService = app(TaxInvoicePaymentService::class);
+                if ($method !== InvoicePayment::METHOD_GIFT_CARD) {
+                    $paymentService->applyAutoVoucher($invoice, $user);
+                    $invoice->refresh();
+                }
+
+                $amountToPay = $method === InvoicePayment::METHOD_GIFT_CARD
+                    ? (float) $invoice->total
+                    : $invoice->balanceDue();
+
+                if ($amountToPay > 0.009) {
+                    $paymentService->record($invoice, [
+                        'amount' => $amountToPay,
+                        'method' => $method,
+                        'paid_at' => $paidAt,
+                        'reference_note' => 'Finish & pay - appointment #'.$appointment->id,
+                        'gift_card_id' => $method === InvoicePayment::METHOD_GIFT_CARD ? (int) $data['checkout_gift_card_id'] : null,
+                    ], $user);
+                }
             }
         });
 

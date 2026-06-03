@@ -6,6 +6,8 @@ use App\Mail\TaxInvoiceReceiptMail;
 use App\Models\Customer;
 use App\Models\CustomerMembershipCard;
 use App\Models\FinanceSetting;
+use App\Models\GiftCard;
+use App\Models\InvoicePayment;
 use App\Models\MembershipCardType;
 use App\Models\Role;
 use App\Models\SalonService;
@@ -156,6 +158,142 @@ class FinanceTaxInvoiceTest extends TestCase
         Mail::assertSent(TaxInvoiceReceiptMail::class, function (TaxInvoiceReceiptMail $mail) {
             return $mail->hasTo('guest@example.com');
         });
+    }
+
+    public function test_assigned_gift_voucher_auto_deducts_before_cash_payment_when_invoice_total_reaches_minimum(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+        $user = User::factory()->create(['role_id' => $ownerRole->id]);
+
+        FinanceSetting::current();
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-VOUCHER-1',
+            'name' => 'Voucher Invoice Customer',
+            'phone' => '5553332211',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Color Package',
+            'category' => 'Hair',
+            'duration_minutes' => 120,
+            'buffer_minutes' => 0,
+            'price' => 400,
+            'is_active' => true,
+        ]);
+
+        $giftCard = GiftCard::create([
+            'code' => 'GIFT-AUTO-100',
+            'assigned_customer_id' => $customer->id,
+            'initial_value' => 100,
+            'remaining_value' => 100,
+            'status' => 'active',
+            'issued_by' => $user->id,
+            'notes' => 'Random gift voucher.',
+        ]);
+
+        $this->actingAs($user)->post(route('finance.invoices.store'), [
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'items' => [[
+                'salon_service_id' => $service->id,
+                'description' => $service->name,
+                'quantity' => 1,
+                'unit_price' => 400,
+                'discount_amount' => 0,
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->latest()->firstOrFail();
+        $this->actingAs($user)->post(route('finance.invoices.finalize', $invoice))->assertSessionHasNoErrors();
+        $invoice->refresh();
+
+        $this->actingAs($user)->post(route('finance.invoices.payments.store', $invoice), [
+            'amount' => $invoice->total,
+            'method' => InvoicePayment::METHOD_CASH,
+            'paid_at' => now()->toDateTimeString(),
+        ])->assertSessionHasNoErrors();
+
+        $payments = $invoice->fresh()->payments()->orderBy('id')->get();
+
+        $this->assertCount(2, $payments);
+        $this->assertSame(InvoicePayment::METHOD_GIFT_CARD, $payments[0]->method);
+        $this->assertEqualsWithDelta(100.0, (float) $payments[0]->amount, 0.02);
+        $this->assertSame(InvoicePayment::METHOD_CASH, $payments[1]->method);
+        $this->assertEqualsWithDelta((float) $invoice->total - 100.0, (float) $payments[1]->amount, 0.02);
+        $this->assertLessThan(0.02, $invoice->fresh()->balanceDue());
+        $this->assertSame('0.00', $giftCard->fresh()->remaining_value);
+        $this->assertSame('redeemed', $giftCard->fresh()->status);
+    }
+
+    public function test_assigned_gift_voucher_does_not_auto_deduct_when_invoice_total_is_below_minimum(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+        $user = User::factory()->create(['role_id' => $ownerRole->id]);
+
+        FinanceSetting::current();
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-VOUCHER-LOW',
+            'name' => 'Low Total Voucher Customer',
+            'phone' => '5553332299',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Blowdry',
+            'category' => 'Hair',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 200,
+            'is_active' => true,
+        ]);
+
+        $giftCard = GiftCard::create([
+            'code' => 'GIFT-AUTO-LOW',
+            'assigned_customer_id' => $customer->id,
+            'initial_value' => 100,
+            'remaining_value' => 100,
+            'status' => 'active',
+            'issued_by' => $user->id,
+            'notes' => 'Random gift voucher.',
+        ]);
+
+        $this->actingAs($user)->post(route('finance.invoices.store'), [
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'items' => [[
+                'salon_service_id' => $service->id,
+                'description' => $service->name,
+                'quantity' => 1,
+                'unit_price' => 200,
+                'discount_amount' => 0,
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->latest()->firstOrFail();
+        $this->actingAs($user)->post(route('finance.invoices.finalize', $invoice))->assertSessionHasNoErrors();
+        $invoice->refresh();
+
+        $this->actingAs($user)->post(route('finance.invoices.payments.store', $invoice), [
+            'amount' => $invoice->total,
+            'method' => InvoicePayment::METHOD_CASH,
+            'paid_at' => now()->toDateTimeString(),
+        ])->assertSessionHasNoErrors();
+
+        $payments = $invoice->fresh()->payments()->get();
+
+        $this->assertCount(1, $payments);
+        $this->assertSame(InvoicePayment::METHOD_CASH, $payments->first()->method);
+        $this->assertSame('100.00', $giftCard->fresh()->remaining_value);
+        $this->assertSame('active', $giftCard->fresh()->status);
     }
 
     public function test_receipt_html_shows_payment_method_label(): void

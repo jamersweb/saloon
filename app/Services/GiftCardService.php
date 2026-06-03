@@ -13,8 +13,15 @@ use Illuminate\Validation\ValidationException;
 
 class GiftCardService
 {
+    public const VOUCHER_MINIMUM_INVOICE_TOTAL = 300.00;
+
+    /** @var list<float> */
+    public const RANDOM_VOUCHER_VALUES = [100.00, 200.00, 300.00];
+
     /** @var array<string, string> */
     private const GIFT_CARD_SERIES_STARTS = [
+        '100.00' => '3602565010010010',
+        '200.00' => '3602566010010010',
         '300.00' => '3602567010010010',
         '500.00' => '3602568010020010',
         '1000.00' => '3602569010030010',
@@ -39,6 +46,14 @@ class GiftCardService
                 'notes' => $notes,
             ]);
         });
+    }
+
+    public function issueRandomVoucher(?Customer $customer, ?int $issuedBy = null, ?string $notes = null, ?string $nfcUid = null): GiftCard
+    {
+        $value = self::RANDOM_VOUCHER_VALUES[array_rand(self::RANDOM_VOUCHER_VALUES)];
+        $voucherNotes = trim(($notes ? $notes.PHP_EOL : '').'Random gift voucher. Auto-applies when invoice total is at least AED '.number_format(self::VOUCHER_MINIMUM_INVOICE_TOTAL, 2).'.');
+
+        return $this->issue($customer, $value, $issuedBy, $voucherNotes, $nfcUid);
     }
 
     public function ensureGiftCardFromMembershipCard(CustomerMembershipCard $membershipCard, ?int $issuedBy = null): ?GiftCard
@@ -314,6 +329,13 @@ class GiftCardService
                 'created_by' => $createdBy,
             ]);
         });
+    }
+
+    public function isAutoVoucher(GiftCard $giftCard): bool
+    {
+        $initialValue = round((float) $giftCard->initial_value, 2);
+
+        return in_array($initialValue, self::RANDOM_VOUCHER_VALUES, true);
     }
 
     public function topUpFromMembershipCard(CustomerMembershipCard $membershipCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null): GiftCardTransaction

@@ -90,4 +90,46 @@ class TaxInvoicePaymentService
             ]);
         });
     }
+
+    public function applyAutoVoucher(TaxInvoice $invoice, User $user): ?InvoicePayment
+    {
+        if ($invoice->status !== TaxInvoice::STATUS_FINALIZED || $invoice->customer_id === null) {
+            return null;
+        }
+
+        $invoice->refresh();
+        if ((float) $invoice->total + 0.009 < GiftCardService::VOUCHER_MINIMUM_INVOICE_TOTAL || $invoice->balanceDue() <= 0.009) {
+            return null;
+        }
+
+        $voucher = GiftCard::query()
+            ->where('status', 'active')
+            ->where('assigned_customer_id', $invoice->customer_id)
+            ->where('remaining_value', '>', 0)
+            ->where('notes', 'like', '%Random gift voucher%')
+            ->whereIn('initial_value', array_map(
+                fn (float $value): string => number_format($value, 2, '.', ''),
+                GiftCardService::RANDOM_VOUCHER_VALUES,
+            ))
+            ->orderByDesc('remaining_value')
+            ->orderBy('id')
+            ->first();
+
+        if (! $voucher) {
+            return null;
+        }
+
+        $amount = min((float) $voucher->remaining_value, $invoice->balanceDue());
+        if ($amount <= 0) {
+            return null;
+        }
+
+        return $this->record($invoice, [
+            'amount' => $amount,
+            'method' => InvoicePayment::METHOD_GIFT_CARD,
+            'paid_at' => now(),
+            'reference_note' => 'Auto gift voucher',
+            'gift_card_id' => $voucher->id,
+        ], $user);
+    }
 }
