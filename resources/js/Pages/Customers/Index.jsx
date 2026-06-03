@@ -102,7 +102,7 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
                     <h3 className="mb-3 text-sm font-semibold text-slate-700">Create Customer</h3>
                     <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); createForm.post(route('customers.store'), { onSuccess: () => createForm.reset() }); }}>
                         <div><label className="ta-field-label">Name</label><input className="ta-input" placeholder="Name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
-                        <div><label className="ta-field-label">Phone</label><input className="ta-input" placeholder="Phone" value={createForm.data.phone} onChange={(e) => createForm.setData('phone', e.target.value)} required />{fieldError(createForm, 'phone')}</div>
+                        <div><label className="ta-field-label">Phone (optional)</label><input className="ta-input" placeholder="Phone" value={createForm.data.phone} onChange={(e) => createForm.setData('phone', e.target.value)} />{fieldError(createForm, 'phone')}</div>
                         <div><label className="ta-field-label">Email</label><input className="ta-input" placeholder="Email" value={createForm.data.email} onChange={(e) => createForm.setData('email', e.target.value)} />{fieldError(createForm, 'email')}</div>
                         <div>
                             <label className="ta-field-label">How They Found Us</label>
@@ -182,7 +182,7 @@ export default function CustomersIndex({ customers, selectedCustomer, history, f
 
                             <form className="grid gap-3 md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); editForm.put(route('customers.update', selectedCustomer.id)); }}>
                                 <div><label className="ta-field-label">Name</label><input className="ta-input" value={editForm.data.name} onChange={(e) => editForm.setData('name', e.target.value)} required />{fieldError(editForm, 'name')}</div>
-                                <div><label className="ta-field-label">Phone</label><input className="ta-input" value={editForm.data.phone} onChange={(e) => editForm.setData('phone', e.target.value)} required />{fieldError(editForm, 'phone')}</div>
+                                <div><label className="ta-field-label">Phone (optional)</label><input className="ta-input" value={editForm.data.phone} onChange={(e) => editForm.setData('phone', e.target.value)} />{fieldError(editForm, 'phone')}</div>
                                 <div><label className="ta-field-label">Email</label><input className="ta-input" value={editForm.data.email} onChange={(e) => editForm.setData('email', e.target.value)} placeholder="Email" />{fieldError(editForm, 'email')}</div>
                                 <div><label className="ta-field-label">Birthday</label><input className="ta-input" type="date" value={editForm.data.birthday || ''} onChange={(e) => editForm.setData('birthday', e.target.value)} />{fieldError(editForm, 'birthday')}</div>
                                 <div className="md:col-span-2">

@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Appointment;
 use App\Models\BookingRule;
 use App\Models\LeaveRequest;
 use App\Models\StaffProfile;
@@ -118,30 +117,6 @@ class BookingAvailabilityService
 
         if ($onLeave) {
             return 'Selected staff is on approved leave.';
-        }
-
-        $conflictingAppointment = Appointment::query()
-            ->with('staffProfile.user:id,name')
-            ->where('staff_profile_id', $staffProfileId)
-            ->whereNotIn('status', [Appointment::STATUS_COMPLETED, Appointment::STATUS_CANCELLED, Appointment::STATUS_NO_SHOW])
-            ->when($ignoreAppointmentId, fn ($query) => $query->where('id', '!=', $ignoreAppointmentId))
-            ->where(function ($query) use ($start, $end) {
-                $query->where('scheduled_start', '<', $end)
-                    ->where('scheduled_end', '>', $start);
-            })
-            ->orderBy('scheduled_start')
-            ->first();
-
-        if ($conflictingAppointment) {
-            $staffName = $conflictingAppointment->staffProfile?->user?->name ?: 'Selected staff';
-            $customerName = $conflictingAppointment->customer_name ?: 'another client';
-            $conflictStart = optional($conflictingAppointment->scheduled_start)?->format('M j, g:i A');
-            $conflictEnd = optional($conflictingAppointment->scheduled_end)?->format('g:i A');
-            $timeLabel = $conflictStart && $conflictEnd
-                ? "{$conflictStart} - {$conflictEnd}"
-                : 'that time';
-
-            return "{$staffName} is busy with {$customerName} ({$timeLabel}).";
         }
 
         return null;

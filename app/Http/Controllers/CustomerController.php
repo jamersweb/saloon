@@ -130,7 +130,7 @@ class CustomerController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['required', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
             'birthday' => ['nullable', 'date'],
             'allergies' => ['nullable', 'string'],
@@ -140,6 +140,7 @@ class CustomerController extends Controller
 
         $customer = Customer::create([
             ...$data,
+            'phone' => $data['phone'] ?? '',
             'customer_code' => 'CUST-'.now()->format('Ymd').'-'.random_int(1000, 9999),
             'is_active' => true,
         ]);
@@ -155,7 +156,7 @@ class CustomerController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['required', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
             'birthday' => ['nullable', 'date'],
             'allergies' => ['nullable', 'string'],
@@ -163,7 +164,10 @@ class CustomerController extends Controller
             'acquisition_source' => ['nullable', 'string', 'in:'.implode(',', self::ACQUISITION_SOURCES)],
         ]);
 
-        $customer->update($data);
+        $customer->update([
+            ...$data,
+            'phone' => $data['phone'] ?? '',
+        ]);
 
         Audit::log($request->user()?->id, 'customer.updated', 'Customer', $customer->id);
 

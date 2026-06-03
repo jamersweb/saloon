@@ -443,8 +443,8 @@ class AppointmentController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
-        if ($appointment->status !== Appointment::STATUS_IN_PROGRESS || ! $appointment->canTransitionTo(Appointment::STATUS_COMPLETED)) {
-            return back()->withErrors(['service' => 'Only in-progress appointments can be completed.']);
+        if (! in_array($appointment->status, [Appointment::STATUS_CONFIRMED, Appointment::STATUS_IN_PROGRESS], true)) {
+            return back()->withErrors(['service' => 'Only confirmed or in-progress appointments can be completed.']);
         }
 
         $request->merge([
@@ -463,10 +463,23 @@ class AppointmentController extends Controller
                 })
                 ->values()
                 ->all(),
+            'additional_services' => collect($request->input('additional_services', []))
+                ->filter(function ($service) {
+                    $serviceId = $service['service_id'] ?? null;
+                    $staffId = $service['staff_profile_id'] ?? null;
+                    $quantityRaw = $service['quantity'] ?? null;
+                    $quantity = filled($quantityRaw) ? (int) $quantityRaw : null;
+
+                    return filled($serviceId)
+                        || filled($staffId)
+                        || ($quantity !== null && $quantity !== 1);
+                })
+                ->values()
+                ->all(),
         ]);
 
         $data = $request->validate([
-            'service_report' => ['required', 'string'],
+            'service_report' => ['nullable', 'string'],
             'completion_notes' => ['nullable', 'string'],
             'materials_used' => ['nullable', 'string'],
             'after_photo' => ['nullable', 'image', 'max:5120'],
@@ -474,6 +487,10 @@ class AppointmentController extends Controller
             'products.*.inventory_item_id' => ['required_with:products', 'exists:inventory_items,id'],
             'products.*.quantity' => ['required_with:products', 'integer', 'min:1'],
             'products.*.notes' => ['nullable', 'string'],
+            'additional_services' => ['nullable', 'array'],
+            'additional_services.*.service_id' => ['required_with:additional_services', 'exists:salon_services,id'],
+            'additional_services.*.quantity' => ['required_with:additional_services', 'integer', 'min:1'],
+            'additional_services.*.staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'exclude_loyalty_earn' => ['nullable', 'boolean'],
             'create_tax_invoice_draft' => ['nullable', 'boolean'],
             'finish_and_pay' => ['nullable', 'boolean'],
@@ -506,8 +523,11 @@ class AppointmentController extends Controller
         $createdTaxInvoiceId = null;
 
         DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager, $packageBalanceService, &$createdTaxInvoiceId, $canInvoice, $finishAndPay, $user): void {
+            $visitId = $appointment->visit_id ?: (string) Str::uuid();
+
             $appointment->update([
                 'status' => Appointment::STATUS_COMPLETED,
+                'visit_id' => $visitId,
                 'exclude_loyalty_earn' => (bool) ($data['exclude_loyalty_earn'] ?? false),
             ]);
 
@@ -553,8 +573,53 @@ class AppointmentController extends Controller
             }
 
             $appointment->update([
-                'notes' => $data['service_report'],
+                'notes' => $data['service_report'] ?? $appointment->notes,
             ]);
+
+            foreach ($data['additional_services'] ?? [] as $additionalService) {
+                $service = SalonService::query()->find((int) $additionalService['service_id']);
+                if (! $service) {
+                    continue;
+                }
+
+                $extraStart = $appointment->scheduled_start?->copy() ?? now();
+                $durationMinutes = max(1, (int) ($service->duration_minutes ?? 0) + (int) ($service->buffer_minutes ?? 0));
+                $extraEnd = $extraStart->copy()->addMinutes($durationMinutes);
+
+                $extraAppointment = Appointment::create([
+                    'customer_id' => $appointment->customer_id,
+                    'customer_package_id' => null,
+                    'visit_id' => $visitId,
+                    'service_id' => $service->id,
+                    'service_quantity' => max(1, (int) ($additionalService['quantity'] ?? 1)),
+                    'staff_profile_id' => filled($additionalService['staff_profile_id'] ?? null) ? (int) $additionalService['staff_profile_id'] : $appointment->staff_profile_id,
+                    'booked_by' => $request->user()?->id,
+                    'source' => $appointment->source ?: 'admin',
+                    'status' => Appointment::STATUS_COMPLETED,
+                    'scheduled_start' => $extraStart,
+                    'scheduled_end' => $extraEnd,
+                    'arrival_time' => $appointment->arrival_time,
+                    'service_start_time' => $appointment->service_start_time ?? $extraStart,
+                    'customer_name' => $appointment->customer_name,
+                    'customer_phone' => $appointment->customer_phone,
+                    'customer_email' => $appointment->customer_email,
+                    'notes' => $data['service_report'] ?? null,
+                    'exclude_loyalty_earn' => (bool) ($data['exclude_loyalty_earn'] ?? false),
+                ]);
+
+                AppointmentServiceLog::create([
+                    'appointment_id' => $extraAppointment->id,
+                    'staff_profile_id' => $extraAppointment->staff_profile_id,
+                    'started_by' => $request->user()?->id,
+                    'started_at' => $extraAppointment->service_start_time ?? $extraStart,
+                    'completed_by' => $request->user()?->id,
+                    'completed_at' => now(),
+                    'service_notes' => null,
+                    'completion_notes' => $data['completion_notes'] ?? null,
+                    'materials_used' => $data['materials_used'] ?? null,
+                    'intake_notes' => null,
+                ]);
+            }
 
             $appointment->refresh();
             $loyaltyService->earnFromCompletedAppointment($appointment, $request->user()?->id);

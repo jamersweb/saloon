@@ -47,14 +47,14 @@ const formatHourLabel = (hour) => {
 const formatMoney = (value, currencyCode = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2 }).format(Number(value || 0));
 const appointmentCategoryCardPalettes = {
-    hair: { backgroundColor: '#fbbf24', borderColor: '#d97706', color: '#451a03' },
-    makeup: { backgroundColor: '#f472b6', borderColor: '#be185d', color: '#500724' },
-    threading: { backgroundColor: '#c084fc', borderColor: '#7e22ce', color: '#3b0764' },
-    eyelash: { backgroundColor: '#38bdf8', borderColor: '#0369a1', color: '#082f49' },
-    waxing: { backgroundColor: '#4ade80', borderColor: '#15803d', color: '#052e16' },
-    nails: { backgroundColor: '#fb923c', borderColor: '#c2410c', color: '#431407' },
-    hair_extension: { backgroundColor: '#60a5fa', borderColor: '#1d4ed8', color: '#172554' },
-    default: { backgroundColor: '#cbd5e1', borderColor: '#64748b', color: '#0f172a' },
+    hair: { backgroundColor: '#facc15', borderColor: '#a16207', color: '#000000' },
+    makeup: { backgroundColor: '#fb7185', borderColor: '#be123c', color: '#000000' },
+    threading: { backgroundColor: '#a78bfa', borderColor: '#6d28d9', color: '#000000' },
+    eyelash: { backgroundColor: '#22d3ee', borderColor: '#0891b2', color: '#000000' },
+    waxing: { backgroundColor: '#4ade80', borderColor: '#16a34a', color: '#000000' },
+    nails: { backgroundColor: '#fb923c', borderColor: '#ea580c', color: '#000000' },
+    hair_extension: { backgroundColor: '#60a5fa', borderColor: '#2563eb', color: '#000000' },
+    default: { backgroundColor: '#e2e8f0', borderColor: '#64748b', color: '#000000' },
 };
 const resolveAppointmentCategoryPalette = (value) => {
     const text = String(value || '').trim().toLowerCase();
@@ -153,8 +153,6 @@ const hasAssignmentsForAllServices = (serviceIds, staffAssignments) => {
 
     return selected.every((serviceId) => String(staffAssignments?.[serviceId] || '').trim() !== '');
 };
-const isBlockingAppointmentStatus = (status) => !['completed', 'cancelled', 'no_show'].includes(String(status || '').toLowerCase());
-const intervalsOverlap = (startA, endA, startB, endB) => startA < endB && endA > startB;
 const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const sameLocalDate = (a, ymd) => {
     if (!a || !ymd) return false;
@@ -312,6 +310,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         checkout_paid_at: new Date().toISOString().slice(0, 16),
         after_photo: null,
         products: [],
+        additional_services: [],
     });
 
     useEffect(() => {
@@ -586,6 +585,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
             checkout_gift_card_id: '',
             checkout_paid_at: new Date().toISOString().slice(0, 16),
             after_photo: null,
+            additional_services: [],
             products: appt.product_usages?.length
                 ? appt.product_usages.map((usage) => ({
                     inventory_item_id: String(inventoryItems.find((item) => item.name === usage.item_name)?.id || ''),
@@ -648,31 +648,11 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const editStartForAvailability = editStartRef.current?.value || editForm.data.scheduled_start || '';
     const editEndForAvailability = editForm.data.scheduled_end || calculateSuggestedEnd(editStartForAvailability, editSelectedServices);
 
-    const buildStaffAvailabilityMap = (startValue, endValue, ignoreAppointmentId = null) => {
-        const start = new Date(startValue);
-        const end = new Date(endValue || startValue);
-        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return {};
-        const normalizedEnd = end > start ? end : new Date(start.getTime() + (30 * 60 * 1000));
-
+    const buildStaffAvailabilityMap = () => {
         return Object.fromEntries(staffProfiles.map((staff) => {
-            const conflictingAppointment = appointments.find((appt) => {
-                if (ignoreAppointmentId && String(appt.id) === String(ignoreAppointmentId)) return false;
-                if (String(appt.staff_profile_id || '') !== String(staff.id)) return false;
-                if (!isBlockingAppointmentStatus(appt.status)) return false;
-
-                const apptStart = new Date(appt.scheduled_start);
-                const apptEnd = new Date(appt.scheduled_end || appt.scheduled_start);
-                if (Number.isNaN(apptStart.getTime()) || Number.isNaN(apptEnd.getTime())) return false;
-                const normalizedApptEnd = apptEnd > apptStart ? apptEnd : new Date(apptStart.getTime() + (30 * 60 * 1000));
-
-                return intervalsOverlap(start, normalizedEnd, apptStart, normalizedApptEnd);
-            });
-
             return [String(staff.id), {
-                busy: Boolean(conflictingAppointment),
-                label: conflictingAppointment
-                    ? `Busy${conflictingAppointment.customer_name ? ` - ${conflictingAppointment.customer_name}` : ''}`
-                    : 'Available',
+                busy: false,
+                label: 'Available',
             }];
         }));
     };
@@ -754,6 +734,11 @@ export default function AppointmentsIndex({ appointments, services, customers = 
 
     const addProductRow = () => completeForm.setData('products', [...completeForm.data.products, { inventory_item_id: '', quantity: 1, notes: '' }]);
     const removeProductRow = (index) => completeForm.setData('products', completeForm.data.products.filter((_, rowIndex) => rowIndex !== index));
+    const updateAdditionalServiceRow = (index, field, value) => {
+        completeForm.setData('additional_services', (completeForm.data.additional_services || []).map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+    };
+    const addAdditionalServiceRow = () => completeForm.setData('additional_services', [...(completeForm.data.additional_services || []), { service_id: '', staff_profile_id: '', quantity: 1 }]);
+    const removeAdditionalServiceRow = (index) => completeForm.setData('additional_services', (completeForm.data.additional_services || []).filter((_, rowIndex) => rowIndex !== index));
 
     const createSalonBounds = adminStartBoundsForYmd(createStartYmd, bookingRules);
     const editSalonBounds = adminStartBoundsForYmd(editStartYmd, bookingRules);
@@ -783,7 +768,26 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         })
         .filter((line) => String(line.inventory_item_id || '') !== '');
     const selectedProductsAmount = selectedProductLines.reduce((sum, line) => sum + line.lineTotal, 0);
-    const previewTotalAmount = completingServiceAmount + selectedProductsAmount;
+    const selectedAdditionalServiceLines = (completeForm.data.additional_services || [])
+        .map((row) => {
+            const service = services.find((item) => String(item.id) === String(row.service_id));
+            const staff = staffProfiles.find((item) => String(item.id) === String(row.staff_profile_id));
+            const quantity = Math.max(1, Number(row.quantity || 1));
+            const unitPrice = Number(service?.price || 0);
+            const lineTotal = quantity * unitPrice;
+
+            return {
+                service_id: row.service_id,
+                label: service ? service.name : 'Unknown service',
+                staffName: staff?.name || 'Same staff',
+                quantity,
+                unitPrice,
+                lineTotal,
+            };
+        })
+        .filter((line) => String(line.service_id || '') !== '');
+    const selectedAdditionalServicesAmount = selectedAdditionalServiceLines.reduce((sum, line) => sum + line.lineTotal, 0);
+    const previewTotalAmount = completingServiceAmount + selectedProductsAmount + selectedAdditionalServicesAmount;
     const completingCustomerHasGiftCards = (completingCustomer?.active_gift_cards || []).length > 0
         && Number(completingCustomer?.gift_card_balance || 0) > 0;
     const completingCustomerGiftBalance = Number(completingCustomer?.gift_card_balance || 0);
@@ -1296,8 +1300,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                         <td className="px-5 py-3">
                                             <div className="flex flex-wrap gap-2">
                                                 {!isStaff ? <button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEdit(a)}>Edit</button> : null}
-                                                {a.status === 'confirmed' && <button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700" onClick={() => openStartService(a)}>Start Service</button>}
-                                                {a.status === 'in_progress' && (
+                                                {['confirmed', 'in_progress'].includes(a.status) && (
                                                     <button className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700" onClick={() => openCompleteService(a)}>
                                                         {canCheckout ? 'Finish / Pay' : 'Finish Service'}
                                                     </button>
@@ -1404,8 +1407,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                         className="grid gap-3 md:grid-cols-2"
                     >
                         <div className="md:col-span-2">
-                            <label className="ta-field-label">Service Report</label>
-                            <textarea className="ta-input min-h-[120px]" value={completeForm.data.service_report} onChange={(e) => completeForm.setData('service_report', e.target.value)} required />
+                            <label className="ta-field-label">Service Report (optional)</label>
+                            <textarea className="ta-input min-h-[120px]" value={completeForm.data.service_report} onChange={(e) => completeForm.setData('service_report', e.target.value)} />
                             {fieldError(completeForm, 'service_report')}
                         </div>
                         <div>
@@ -1478,6 +1481,16 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 ))
                                             ) : (
                                                 <div className="mt-1 text-xs text-slate-500">No extra products selected.</div>
+                                            )}
+                                            {selectedAdditionalServiceLines.length > 0 ? (
+                                                selectedAdditionalServiceLines.map((line, idx) => (
+                                                    <div key={`${line.service_id}-${idx}`} className="mt-1 flex items-center justify-between text-xs text-slate-600">
+                                                        <span>{line.label} x {line.quantity} - {line.staffName}</span>
+                                                        <span>{formatMoney(line.lineTotal, currencyCode)}</span>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="mt-1 text-xs text-slate-500">No additional services selected.</div>
                                             )}
                                             <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
                                                 <span>Estimated total</span>
@@ -1559,6 +1572,57 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                 {fieldError(completeForm, 'finish_and_pay')}
                             </div>
                         ) : null}
+                        <div className="md:col-span-2 space-y-3 rounded-xl border border-slate-200 p-4">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-slate-700">Additional Services</h4>
+                                <button type="button" className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700" onClick={addAdditionalServiceRow}>Add Service</button>
+                            </div>
+                            {(completeForm.data.additional_services || []).length === 0 ? (
+                                <div className="text-xs text-slate-500">No additional services selected.</div>
+                            ) : null}
+                            {(completeForm.data.additional_services || []).map((row, index) => {
+                                const selected = services.find((service) => String(service.id) === String(row.service_id));
+                                const quantity = Math.max(1, Number(row.quantity || 1));
+                                const unitPrice = Number(selected?.price || 0);
+
+                                return (
+                                    <div key={index} className="grid gap-3 md:grid-cols-12">
+                                        <div className="md:col-span-5">
+                                            <label className="ta-field-label">Service</label>
+                                            <select className="ta-input" value={row.service_id} onChange={(e) => updateAdditionalServiceRow(index, 'service_id', e.target.value)}>
+                                                <option value="">Select service</option>
+                                                {services.map((service) => (
+                                                    <option key={service.id} value={service.id}>
+                                                        {service.name} - {formatMoney(service.price, currencyCode)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {fieldError(completeForm, `additional_services.${index}.service_id`)}
+                                        </div>
+                                        <div className="md:col-span-3">
+                                            <label className="ta-field-label">Staff</label>
+                                            <select className="ta-input" value={row.staff_profile_id} onChange={(e) => updateAdditionalServiceRow(index, 'staff_profile_id', e.target.value)}>
+                                                <option value="">Same staff</option>
+                                                {staffProfiles.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
+                                            </select>
+                                            {fieldError(completeForm, `additional_services.${index}.staff_profile_id`)}
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="ta-field-label">Qty</label>
+                                            <input className="ta-input" type="number" min="1" value={row.quantity} onChange={(e) => updateAdditionalServiceRow(index, 'quantity', e.target.value)} />
+                                            {fieldError(completeForm, `additional_services.${index}.quantity`)}
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="ta-field-label">Amount</label>
+                                            <div className="flex gap-2">
+                                                <div className="ta-input flex items-center">{formatMoney(unitPrice * quantity, currencyCode)}</div>
+                                                <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" onClick={() => removeAdditionalServiceRow(index)}>Remove</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                         <div className="md:col-span-2 space-y-3 rounded-xl border border-slate-200 p-4">
                             <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-semibold text-slate-700">Products Used</h4>
@@ -1955,11 +2019,10 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                 type="button"
                                                 onClick={() => {
                                                     setShowBoardView(false);
-                                                    if (appt.status === 'confirmed') openStartService(appt);
-                                                    else if (appt.status === 'in_progress' || appt.status === 'completed') openCompleteService(appt);
+                                                    if (appt.status === 'confirmed' || appt.status === 'in_progress' || appt.status === 'completed') openCompleteService(appt);
                                                     else startEdit(appt);
                                                 }}
-                                                className="absolute overflow-hidden rounded-xl border p-2 text-left shadow-lg transition hover:scale-[1.01]"
+                                                className="absolute overflow-hidden rounded-lg border p-2 text-left shadow-lg transition hover:scale-[1.01]"
                                                 style={{
                                                     ...appt.cardStyle,
                                                     top: `${appt.top}%`,
@@ -1969,13 +2032,13 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                                                     zIndex: appt.zIndex,
                                                 }}
                                             >
-                                                <div className="text-[11px] font-semibold text-slate-600">{appt.timeLabel}</div>
-                                                <div className="mt-1 text-sm font-semibold">{appt.customer_name}</div>
-                                                <div className="text-xs text-slate-700">{appt.service_name}</div>
-                                                {!appt.isPaid ? <div className="mt-1 text-[11px] font-medium text-slate-600">{appt.category}</div> : null}
-                                                {appt.customer_package_id ? <div className="mt-1 text-[11px] font-medium text-emerald-700">Package session</div> : null}
-                                                {appt.isPaid ? <div className="mt-1 text-[11px] font-medium text-emerald-700">Paid</div> : null}
-                                                {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-medium text-amber-700">Needs payment</div> : null}
+                                                <div className="text-xs font-black text-black">{appt.timeLabel}</div>
+                                                <div className="mt-1 text-base font-black leading-tight text-black">{appt.customer_name}</div>
+                                                <div className="text-sm font-extrabold leading-tight text-black">{appt.service_name}</div>
+                                                {!appt.isPaid ? <div className="mt-1 text-sm font-black uppercase leading-tight text-black">{appt.category}</div> : null}
+                                                {appt.customer_package_id ? <div className="mt-1 text-xs font-black text-black">Package session</div> : null}
+                                                {appt.isPaid ? <div className="mt-1 text-xs font-black text-black">Paid</div> : null}
+                                                {appt.awaiting_checkout ? <div className="mt-1 text-xs font-black text-black">Needs payment</div> : null}
                                             </button>
                                         ))}
                                     </div>
