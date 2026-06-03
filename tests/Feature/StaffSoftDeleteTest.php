@@ -109,12 +109,12 @@ class StaffSoftDeleteTest extends TestCase
         $removed->delete();
 
         $this->actingAs($manager)
-            ->get(route('staff.index', ['show_deleted' => 1]))
+            ->get(route('staff.index', ['show_deleted' => 1, 'search' => 'removed-list']))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Staff/Index')
                 ->where('showDeleted', true)
-                ->has('staffProfiles', 1)
-                ->where('staffProfiles.0.id', $removed->id));
+                ->has('staffProfiles.data', 1)
+                ->where('staffProfiles.data.0.id', $removed->id));
     }
 }

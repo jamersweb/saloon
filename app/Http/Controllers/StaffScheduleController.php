@@ -40,11 +40,11 @@ class StaffScheduleController extends Controller
 
         $rules = BookingRule::current();
         $today = Carbon::today();
-        $visibleRangeStart = $today->copy()->startOfMonth()->toDateString();
+        $visibleRangeStart = $filters['date_from'] !== ''
+            ? Carbon::parse($filters['date_from'])->toDateString()
+            : $today->toDateString();
         $visibleHorizonDays = max(90, (int) $rules->max_advance_days);
         $visibleRangeEnd = $today->copy()->addDays($visibleHorizonDays - 1)->toDateString();
-        $currentMonthStart = $today->copy()->startOfMonth()->toDateString();
-        $nextMonthStart = $today->copy()->addMonthNoOverflow()->startOfMonth()->toDateString();
 
         return Inertia::render('Schedules/Index', [
             'bookingRules' => [
@@ -82,11 +82,7 @@ class StaffScheduleController extends Controller
                 ->when($filters['date_to'] !== '', fn ($query) => $query->whereDate('schedule_date', '<=', $filters['date_to']))
                 ->when($filters['day_off'] === 'day_off', fn ($query) => $query->where('is_day_off', true))
                 ->when($filters['day_off'] === 'working', fn ($query) => $query->where('is_day_off', false))
-                ->orderByRaw(
-                    'CASE WHEN schedule_date >= ? AND schedule_date < ? THEN 0 ELSE 1 END ASC',
-                    [$currentMonthStart, $nextMonthStart]
-                )
-                ->orderByDesc('schedule_date')
+                ->orderBy('schedule_date')
                 ->orderBy('staff_profile_id')
                 ->paginate($filters['per_page'])
                 ->withQueryString()

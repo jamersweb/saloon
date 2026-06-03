@@ -11,6 +11,7 @@ use App\Support\Permissions;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class StaffScheduleAutoFillAndLeaveTest extends TestCase
@@ -156,6 +157,45 @@ class StaffScheduleAutoFillAndLeaveTest extends TestCase
             ->assertSessionHas('status');
 
         $this->assertGreaterThanOrEqual(7, StaffSchedule::query()->count());
+    }
+
+    public function test_schedule_index_starts_from_today_by_default(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-03 10:00:00'));
+
+        try {
+            $manager = $this->makeManagerUser();
+            $staff = StaffProfile::create([
+                'user_id' => User::factory()->create()->id,
+                'employee_code' => 'STF-TODAY',
+                'is_active' => true,
+            ]);
+
+            StaffSchedule::create([
+                'staff_profile_id' => $staff->id,
+                'schedule_date' => '2026-06-02',
+                'start_time' => '09:00:00',
+                'end_time' => '17:00:00',
+                'is_day_off' => false,
+            ]);
+            $today = StaffSchedule::create([
+                'staff_profile_id' => $staff->id,
+                'schedule_date' => '2026-06-03',
+                'start_time' => '09:00:00',
+                'end_time' => '17:00:00',
+                'is_day_off' => false,
+            ]);
+
+            $this->actingAs($manager)
+                ->get(route('schedules.index'))
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component('Schedules/Index')
+                    ->where('schedules.data.0.id', $today->id)
+                );
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_manager_can_fill_schedule_gaps_via_http_month(): void

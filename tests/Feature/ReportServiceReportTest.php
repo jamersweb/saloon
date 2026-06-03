@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Controllers\ReportController;
 use App\Models\Appointment;
 use App\Models\Customer;
+use App\Models\InvoicePayment;
 use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
@@ -182,6 +183,46 @@ class ReportServiceReportTest extends TestCase
         $this->assertStringContainsString('Service Report', $csv);
         $this->assertStringContainsString('INV-2026-0007', $csv);
         $this->assertStringContainsString('Client requested soft layers and a blowdry finish.', $csv);
+    }
+
+    public function test_sales_report_overview_includes_cash_and_card_payment_totals(): void
+    {
+        $manager = $this->managerUser();
+        [, $invoice] = $this->completedAppointmentWithInvoice('Payment Client', 'INV-PAY-1');
+
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 100,
+            'method' => InvoicePayment::METHOD_CASH,
+            'paid_at' => '2026-05-21 12:00:00',
+            'created_by' => $manager->id,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 75,
+            'method' => InvoicePayment::METHOD_CARD,
+            'paid_at' => '2026-05-21 13:00:00',
+            'created_by' => $manager->id,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 25,
+            'method' => InvoicePayment::METHOD_CASH,
+            'paid_at' => '2026-05-22 12:00:00',
+            'created_by' => $manager->id,
+        ]);
+
+        $this->actingAs($manager)
+            ->get(route('reports.index', [
+                'date_from' => '2026-05-21',
+                'date_to' => '2026-05-21',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Reports/Index')
+                ->where('overview.cash_total_payment', 100)
+                ->where('overview.card_total_payment', 75)
+            );
     }
 
     /**

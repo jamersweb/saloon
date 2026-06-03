@@ -16,7 +16,7 @@ class AppointmentConflictMessageTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_store_returns_detailed_staff_conflict_message(): void
+    public function test_store_allows_same_staff_to_handle_overlapping_clients(): void
     {
         $role = Role::create(['name' => 'manager', 'label' => 'Manager']);
         $user = User::factory()->create(['role_id' => $role->id]);
@@ -75,8 +75,11 @@ class AppointmentConflictMessageTest extends TestCase
             'status' => 'confirmed',
         ]);
 
-        $response->assertSessionHasErrors([
-            'staff_profile_id' => 'Mona Bassagh is busy with Sara Ali (Apr 28, 5:30 PM - 6:30 PM).',
-        ]);
+        $response->assertSessionHasNoErrors();
+
+        $this->assertSame(2, Appointment::query()
+            ->where('staff_profile_id', $staff->id)
+            ->where('service_id', $service->id)
+            ->count());
     }
 }

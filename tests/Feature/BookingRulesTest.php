@@ -131,10 +131,10 @@ class BookingRulesTest extends TestCase
         $appointment = Appointment::query()->where('customer_phone', '5553334444')->latest()->first();
 
         $this->assertNotNull($appointment);
-        $this->assertSame($staffTwo->id, $appointment->staff_profile_id);
+        $this->assertSame($staffOne->id, $appointment->staff_profile_id);
     }
 
-    public function test_appointment_update_rejects_end_time_before_start_time(): void
+    public function test_appointment_update_uses_service_duration_instead_of_manual_end_time(): void
     {
         $ownerRole = Role::create(['name' => 'owner', 'label' => 'Owner']);
         $user = User::factory()->create(['role_id' => $ownerRole->id]);
@@ -185,7 +185,7 @@ class BookingRulesTest extends TestCase
             'status' => Appointment::STATUS_CONFIRMED,
         ]);
 
-        $response->assertSessionHasErrors(['scheduled_end']);
+        $response->assertSessionHasNoErrors();
 
         $appointment->refresh();
         $this->assertTrue($appointment->scheduled_end->equalTo($start->copy()->addHour()));

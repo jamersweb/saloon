@@ -16,6 +16,7 @@ use App\Models\SalonService;
 use App\Models\StaffProfile;
 use App\Models\TaxInvoice;
 use App\Services\BookingAvailabilityService;
+use App\Services\AppointmentVisitService;
 use App\Services\DueServiceManager;
 use App\Services\GiftCardService;
 use App\Services\LoyaltyService;
@@ -524,6 +525,14 @@ class AppointmentController extends Controller
 
         DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager, $packageBalanceService, &$createdTaxInvoiceId, $canInvoice, $finishAndPay, $user): void {
             $visitId = $appointment->visit_id ?: (string) Str::uuid();
+            if (! $appointment->visit_id) {
+                $implicitVisit = app(AppointmentVisitService::class)->forAppointment($appointment);
+                Appointment::query()
+                    ->whereIn('id', $implicitVisit->pluck('id'))
+                    ->whereNull('visit_id')
+                    ->update(['visit_id' => $visitId]);
+                $appointment->refresh();
+            }
 
             $appointment->update([
                 'status' => Appointment::STATUS_COMPLETED,

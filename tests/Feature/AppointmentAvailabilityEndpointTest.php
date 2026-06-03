@@ -16,7 +16,7 @@ class AppointmentAvailabilityEndpointTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_staff_availability_endpoint_marks_busy_and_available_staff(): void
+    public function test_staff_availability_endpoint_allows_overlapping_client_assignments(): void
     {
         $role = Role::create(['name' => 'manager', 'label' => 'Manager']);
         $user = User::factory()->create(['role_id' => $role->id]);
@@ -77,7 +77,7 @@ class AppointmentAvailabilityEndpointTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('staff.0.id', $busyStaff->id)
-            ->assertJsonPath('staff.0.available', false)
+            ->assertJsonPath('staff.0.available', true)
             ->assertJsonPath('staff.1.id', $freeStaff->id)
             ->assertJsonPath('staff.1.available', true);
     }

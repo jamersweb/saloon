@@ -242,6 +242,127 @@ class AppointmentServiceWorkflowTest extends TestCase
         $this->assertDatabaseMissing('appointments', ['id' => $staleAppointment->id]);
     }
 
+    public function test_staff_can_be_assigned_to_multiple_clients_at_same_time(): void
+    {
+        Queue::fake();
+
+        $manager = $this->createManagerUser();
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staffUser = User::factory()->create(['role_id' => $manager->role_id, 'name' => 'Parallel Staff']);
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-PARALLEL',
+            'is_active' => true,
+        ]);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '22:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Parallel Blowdry',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 150,
+            'is_active' => true,
+        ]);
+
+        Appointment::create([
+            'customer_name' => 'First Client',
+            'customer_phone' => '971500000001',
+            'service_id' => $service->id,
+            'staff_profile_id' => $staff->id,
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 14:45:00',
+            'source' => 'admin',
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.store'), [
+            'customer_name' => 'Second Client',
+            'customer_phone' => '971500000002',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'staff_profile_id' => $staff->id,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 14:45:00',
+            'status' => Appointment::STATUS_CONFIRMED,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(2, Appointment::query()
+            ->where('staff_profile_id', $staff->id)
+            ->where('service_id', $service->id)
+            ->where('scheduled_start', '2026-05-12 14:00:00')
+            ->count());
+    }
+
+    public function test_single_client_can_repeat_same_service_with_quantity(): void
+    {
+        Queue::fake();
+
+        $manager = $this->createManagerUser();
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staffUser = User::factory()->create(['role_id' => $manager->role_id, 'name' => 'Repeat Staff']);
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-REPEAT',
+            'is_active' => true,
+        ]);
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '22:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Repeat Wash',
+            'duration_minutes' => 20,
+            'buffer_minutes' => 0,
+            'price' => 50,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.store'), [
+            'customer_name' => 'Repeat Client',
+            'customer_phone' => '',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'service_quantities' => [$service->id => 3],
+            'staff_profile_id' => $staff->id,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 15:00:00',
+            'status' => Appointment::STATUS_CONFIRMED,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('appointments', [
+            'customer_name' => 'Repeat Client',
+            'service_id' => $service->id,
+            'service_quantity' => 3,
+        ]);
+    }
+
     public function test_staff_can_start_service_with_before_photo_and_notes(): void
     {
         Storage::fake('public');
@@ -372,6 +493,83 @@ class AppointmentServiceWorkflowTest extends TestCase
         $photo = $appointment->photos()->where('type', 'after')->first();
         $this->assertNotNull($photo);
         Storage::disk('public')->assertExists($photo->path);
+    }
+
+    public function test_confirmed_service_can_be_completed_with_optional_report_and_additional_service_billing(): void
+    {
+        $manager = $this->createManagerUser();
+
+        $primaryService = SalonService::create([
+            'name' => 'Base Service',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 200,
+            'is_active' => true,
+        ]);
+        $extraService = SalonService::create([
+            'name' => 'Added Service',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 80,
+            'is_active' => true,
+        ]);
+        $staffUser = User::factory()->create(['role_id' => $manager->role_id, 'name' => 'Extra Staff']);
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-EXTRA',
+            'is_active' => true,
+        ]);
+        $customer = Customer::create([
+            'customer_code' => 'CUST-EXTRA',
+            'name' => 'Billing Customer',
+            'phone' => '',
+            'is_active' => true,
+        ]);
+        $appointment = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $primaryService->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 15:00:00',
+            'customer_name' => $customer->name,
+            'customer_phone' => '',
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.service-complete', $appointment), [
+            'service_report' => '',
+            'create_tax_invoice_draft' => true,
+            'additional_services' => [
+                [
+                    'service_id' => $extraService->id,
+                    'staff_profile_id' => $staff->id,
+                    'quantity' => 2,
+                ],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $appointment->refresh();
+        $this->assertSame(Appointment::STATUS_COMPLETED, $appointment->status);
+        $this->assertNotNull($appointment->visit_id);
+
+        $extraAppointment = Appointment::query()
+            ->where('visit_id', $appointment->visit_id)
+            ->where('service_id', $extraService->id)
+            ->first();
+
+        $this->assertNotNull($extraAppointment);
+        $this->assertSame(2, $extraAppointment->service_quantity);
+        $this->assertSame($staff->id, $extraAppointment->staff_profile_id);
+
+        $invoice = TaxInvoice::query()->where('appointment_id', $appointment->id)->first();
+        $this->assertNotNull($invoice);
+        $this->assertSame(360.0, (float) $invoice->subtotal);
+        $this->assertDatabaseHas('tax_invoice_items', [
+            'tax_invoice_id' => $invoice->id,
+            'salon_service_id' => $extraService->id,
+            'quantity' => 2,
+            'unit_price' => '80.00',
+        ]);
     }
 
     public function test_staff_only_sees_their_own_appointments_on_the_appointments_screen(): void
