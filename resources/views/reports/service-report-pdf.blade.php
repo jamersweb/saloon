@@ -62,6 +62,14 @@
                 <div class="card-label">Final Earning</div>
                 <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['total'], 2) }}</div>
             </td>
+            <td class="card">
+                <div class="card-label">Cash Total Payment</div>
+                <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['cash_total_payment'], 2) }}</div>
+            </td>
+            <td class="card">
+                <div class="card-label">Card Total Payment</div>
+                <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['card_total_payment'], 2) }}</div>
+            </td>
         </tr>
     </table>
 

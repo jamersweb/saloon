@@ -183,6 +183,7 @@ class ReportController extends Controller
 
         if ($reportType === 'service') {
             $serviceReports = $this->collectServiceReportRows($dateFrom, $dateTo, $serviceReportFilters);
+            $servicePaymentTotals = $this->paymentTotalsForServiceRows($dateFrom, $dateTo, $serviceReports);
             $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
 
             $pdf = Pdf::loadView('reports.service-report-pdf', [
@@ -191,7 +192,7 @@ class ReportController extends Controller
                 'currencyCode' => $currencyCode,
                 'filters' => $serviceReportFilters,
                 'serviceReports' => $serviceReports,
-                'totals' => $this->serviceReportTotals($serviceReports),
+                'totals' => $this->serviceReportTotals($serviceReports, $servicePaymentTotals),
             ])->setPaper('a4', 'landscape');
 
             return $pdf->download(sprintf('service-reports-%s.pdf', now()->format('Ymd-His')));
@@ -246,10 +247,11 @@ class ReportController extends Controller
 
         $appointments = $query->get();
         $invoiceLabels = $this->invoiceLabelsForAppointments($appointments);
+        $invoiceIds = $this->invoiceIdsForAppointments($appointments);
         $invoiceItems = $this->invoiceItemsForAppointments($appointments);
 
         return $appointments
-            ->map(function (Appointment $appointment) use ($invoiceLabels, $invoiceItems, $vatRatePercent): array {
+            ->map(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $vatRatePercent): array {
                 $serviceName = $appointment->service?->name;
                 $item = $this->matchingInvoiceItemForAppointment(
                     $appointment,
@@ -271,6 +273,7 @@ class ReportController extends Controller
                     'customer_name' => $appointment->customer?->name ?: $appointment->customer_name,
                     'customer_phone' => $appointment->customer_phone,
                     'invoice_number' => $invoiceLabels[$appointment->id] ?? '',
+                    'invoice_ids' => $invoiceIds[$appointment->id] ?? [],
                     'service_name' => $serviceName,
                     'quantity' => $quantity,
                     'unit_price' => round($unitPrice, 2),
@@ -288,9 +291,10 @@ class ReportController extends Controller
 
     /**
      * @param  list<array<string, mixed>>  $rows
-     * @return array{service_count: int, service_quantity: float, subtotal: float, tax: float, total: float}
+     * @param  array{cash_total_payment?: float, card_total_payment?: float}  $paymentTotals
+     * @return array{service_count: int, service_quantity: float, subtotal: float, tax: float, total: float, cash_total_payment: float, card_total_payment: float}
      */
-    private function serviceReportTotals(array $rows): array
+    private function serviceReportTotals(array $rows, array $paymentTotals = []): array
     {
         return [
             'service_count' => count($rows),
@@ -298,7 +302,32 @@ class ReportController extends Controller
             'subtotal' => round(array_sum(array_map(fn (array $row) => (float) ($row['subtotal'] ?? 0), $rows)), 2),
             'tax' => round(array_sum(array_map(fn (array $row) => (float) ($row['tax'] ?? 0), $rows)), 2),
             'total' => round(array_sum(array_map(fn (array $row) => (float) ($row['total'] ?? 0), $rows)), 2),
+            'cash_total_payment' => round((float) ($paymentTotals['cash_total_payment'] ?? 0), 2),
+            'card_total_payment' => round((float) ($paymentTotals['card_total_payment'] ?? 0), 2),
         ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{cash_total_payment: float, card_total_payment: float}
+     */
+    private function paymentTotalsForServiceRows(Carbon $dateFrom, Carbon $dateTo, array $rows): array
+    {
+        $invoiceIds = collect($rows)
+            ->flatMap(fn (array $row) => $row['invoice_ids'] ?? [])
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($invoiceIds === []) {
+            return [
+                'cash_total_payment' => 0.0,
+                'card_total_payment' => 0.0,
+            ];
+        }
+
+        return $this->paymentTotals($dateFrom, $dateTo, $invoiceIds);
     }
 
     /**
@@ -576,6 +605,62 @@ class ReportController extends Controller
         return $labels;
     }
 
+    /**
+     * @param  Collection<int, Appointment>  $appointments
+     * @return array<int, list<int>>
+     */
+    private function invoiceIdsForAppointments(Collection $appointments): array
+    {
+        if ($appointments->isEmpty()) {
+            return [];
+        }
+
+        $appointmentIds = $appointments->pluck('id')->all();
+        $visitIds = $appointments->pluck('visit_id')->filter()->unique()->values()->all();
+        $visitAppointmentIds = [];
+        $appointmentVisitMap = [];
+
+        if ($visitIds !== []) {
+            $appointmentVisitMap = Appointment::query()
+                ->whereIn('visit_id', $visitIds)
+                ->pluck('visit_id', 'id')
+                ->all();
+            $visitAppointmentIds = array_keys($appointmentVisitMap);
+        }
+
+        $invoices = TaxInvoice::query()
+            ->where('status', '!=', TaxInvoice::STATUS_VOID)
+            ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
+            ->orderByRaw('invoice_number IS NULL')
+            ->orderBy('invoice_number')
+            ->get(['id', 'appointment_id']);
+
+        $byAppointment = [];
+        $byVisit = [];
+
+        foreach ($invoices as $invoice) {
+            $byAppointment[$invoice->appointment_id][] = (int) $invoice->id;
+
+            $visitId = $appointmentVisitMap[$invoice->appointment_id] ?? null;
+            if ($visitId) {
+                $byVisit[$visitId][] = (int) $invoice->id;
+            }
+        }
+
+        $ids = [];
+        foreach ($appointments as $appointment) {
+            $invoiceIds = $byAppointment[$appointment->id] ?? [];
+
+            if ($invoiceIds === [] && $appointment->visit_id) {
+                $invoiceIds = $byVisit[$appointment->visit_id] ?? [];
+            }
+
+            $ids[$appointment->id] = array_values(array_unique($invoiceIds));
+        }
+
+        return $ids;
+    }
+
     private function collectReportData(Carbon $dateFrom, Carbon $dateTo): array
     {
         $waitingMinutesExpression = $this->minutesBetweenExpression('appointments.arrival_time', 'appointments.service_start_time');
@@ -664,20 +749,15 @@ class ReportController extends Controller
             ->selectRaw("AVG({$this->minutesBetweenExpression('arrival_time', 'service_start_time')}) as avg_waiting_minutes")
             ->value('avg_waiting_minutes');
 
-        $paymentTotals = InvoicePayment::query()
-            ->whereBetween('paid_at', [$dateFrom, $dateTo])
-            ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD])
-            ->selectRaw('method, SUM(amount) as total')
-            ->groupBy('method')
-            ->pluck('total', 'method');
+        $paymentTotals = $this->paymentTotals($dateFrom, $dateTo);
 
         return [
             'overview' => [
                 'appointments_total' => (clone $appointmentsInRange)->count(),
                 'completed_services' => (int) $serviceReportTotals['service_count'],
                 'completed_revenue' => (float) $serviceReportTotals['total'],
-                'cash_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CASH] ?? 0), 2),
-                'card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CARD] ?? 0), 2),
+                'cash_total_payment' => $paymentTotals['cash_total_payment'],
+                'card_total_payment' => $paymentTotals['card_total_payment'],
                 'new_customers' => Customer::query()->whereBetween('created_at', [$dateFrom, $dateTo])->count(),
                 'inventory_items' => InventoryItem::query()->count(),
                 'inventory_low_stock' => InventoryItem::query()->whereColumn('stock_quantity', '<=', 'reorder_level')->count(),
@@ -692,6 +772,31 @@ class ReportController extends Controller
             'dailyRevenue' => $dailyRevenue,
             'waitingTimeByStaff' => $waitingTimeByStaff,
             'lateMinutesByStaff' => $lateMinutesByStaff,
+        ];
+    }
+
+    /**
+     * @param  list<int>|null  $invoiceIds
+     * @return array{cash_total_payment: float, card_total_payment: float}
+     */
+    private function paymentTotals(Carbon $dateFrom, Carbon $dateTo, ?array $invoiceIds = null): array
+    {
+        $query = InvoicePayment::query()
+            ->whereBetween('paid_at', [$dateFrom, $dateTo])
+            ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD]);
+
+        if ($invoiceIds !== null) {
+            $query->whereIn('tax_invoice_id', $invoiceIds);
+        }
+
+        $paymentTotals = $query
+            ->selectRaw('method, SUM(amount) as total')
+            ->groupBy('method')
+            ->pluck('total', 'method');
+
+        return [
+            'cash_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CASH] ?? 0), 2),
+            'card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CARD] ?? 0), 2),
         ];
     }
 

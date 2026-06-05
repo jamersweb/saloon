@@ -225,6 +225,63 @@ class ReportServiceReportTest extends TestCase
             );
     }
 
+    public function test_service_report_totals_include_filtered_cash_and_card_payment_totals(): void
+    {
+        $manager = $this->managerUser();
+        [, $invoice] = $this->completedAppointmentWithInvoice('Payment Client', 'INV-PAY-1');
+        [, $otherInvoice] = $this->completedAppointmentWithInvoice('Other Client', 'INV-PAY-2');
+
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 100,
+            'method' => InvoicePayment::METHOD_CASH,
+            'paid_at' => '2026-05-21 12:00:00',
+            'created_by' => $manager->id,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 75,
+            'method' => InvoicePayment::METHOD_CARD,
+            'paid_at' => '2026-05-21 13:00:00',
+            'created_by' => $manager->id,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 25,
+            'method' => InvoicePayment::METHOD_CASH,
+            'paid_at' => '2026-05-22 12:00:00',
+            'created_by' => $manager->id,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $otherInvoice->id,
+            'amount' => 500,
+            'method' => InvoicePayment::METHOD_CARD,
+            'paid_at' => '2026-05-21 14:00:00',
+            'created_by' => $manager->id,
+        ]);
+
+        $controller = app(ReportController::class);
+        $dateFrom = Carbon::parse('2026-05-21')->startOfDay();
+        $dateTo = Carbon::parse('2026-05-21')->endOfDay();
+
+        $rowsMethod = new ReflectionMethod(ReportController::class, 'collectServiceReportRows');
+        $rowsMethod->setAccessible(true);
+        $paymentTotalsMethod = new ReflectionMethod(ReportController::class, 'paymentTotalsForServiceRows');
+        $paymentTotalsMethod->setAccessible(true);
+        $totalsMethod = new ReflectionMethod(ReportController::class, 'serviceReportTotals');
+        $totalsMethod->setAccessible(true);
+
+        $rows = $rowsMethod->invoke($controller, $dateFrom, $dateTo, [
+            'customer_name' => 'Payment Client',
+            'invoice_number' => 'INV-PAY-1',
+        ]);
+        $paymentTotals = $paymentTotalsMethod->invoke($controller, $dateFrom, $dateTo, $rows);
+        $totals = $totalsMethod->invoke($controller, $rows, $paymentTotals);
+
+        $this->assertSame(100.0, $totals['cash_total_payment']);
+        $this->assertSame(75.0, $totals['card_total_payment']);
+    }
+
     /**
      * @return array{Appointment, TaxInvoice}
      */
