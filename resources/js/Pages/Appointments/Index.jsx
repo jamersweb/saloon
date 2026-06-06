@@ -136,6 +136,13 @@ const normalizeServiceQuantities = (serviceIds, serviceQuantities) => {
 
     return next;
 };
+const filterServiceMap = (serviceIds, map) => {
+    const allowed = new Set((serviceIds || []).map((id) => String(id)));
+
+    return Object.fromEntries(
+        Object.entries(map || {}).filter(([serviceId, value]) => allowed.has(String(serviceId)) && value !== undefined && value !== null && value !== ''),
+    );
+};
 const estimateSelectedServicesTotal = (serviceIds, serviceQuantities, services, coveredServiceIds = []) => {
     const covered = new Set((coveredServiceIds || []).map((id) => String(id)));
 
@@ -146,6 +153,22 @@ const estimateSelectedServicesTotal = (serviceIds, serviceQuantities, services, 
         const quantity = Math.max(1, Number(serviceQuantities?.[String(serviceId)] || 1));
         return sum + (Number(service.price || 0) * quantity);
     }, 0);
+};
+const addMinutesToDateTimeLocal = (value, minutes) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    date.setMinutes(date.getMinutes() + Number(minutes || 0));
+
+    return toDateTimeLocal(date);
+};
+const formatTimeFromDateTimeLocal = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 };
 const hasAssignmentsForAllServices = (serviceIds, staffAssignments) => {
     const selected = (serviceIds || []).map((id) => String(id));
@@ -286,6 +309,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [boardStaffFilter, setBoardStaffFilter] = useState('all');
     const [calendarQuickAction, setCalendarQuickAction] = useState(null);
     const [calendarDrawer, setCalendarDrawer] = useState(null);
+    const [calendarServiceEditorId, setCalendarServiceEditorId] = useState('');
     const [createStaffAvailability, setCreateStaffAvailability] = useState({});
     const [editStaffAvailability, setEditStaffAvailability] = useState({});
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
@@ -297,8 +321,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [editStartYmd, setEditStartYmd] = useState(() => localYmd(new Date()));
     const [editStartMountKey, setEditStartMountKey] = useState(0);
 
-    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
-    const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, service_starts: {}, service_durations: {}, service_extra_minutes: {}, service_unit_prices: {}, service_discount_amounts: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, service_starts: {}, service_durations: {}, service_extra_minutes: {}, service_unit_prices: {}, service_discount_amounts: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
     const blockForm = useForm({ staff_profile_id: '', title: 'Blocked time', starts_at: '', ends_at: '', notes: '' });
     const startForm = useForm({ intake_notes: '', service_notes: '', before_photo: null });
     const completeForm = useForm({
@@ -372,6 +396,34 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         return endStr;
     };
 
+    const calculateSuggestedEndWithServiceMeta = (startValue, serviceIds, formData = createForm.data) => {
+        if (!startValue || !Array.isArray(serviceIds) || serviceIds.length === 0) return '';
+
+        const startDate = new Date(startValue);
+        if (Number.isNaN(startDate.getTime())) return '';
+
+        const totalMinutes = serviceIds.reduce((sum, id) => {
+            const service = services.find((s) => String(s.id) === String(id));
+            if (!service) return sum;
+            const key = String(id);
+            const baseDuration = Math.max(1, Number(formData.service_durations?.[key] || service.duration_minutes || 0));
+            const extraMinutes = Math.max(0, Number(formData.service_extra_minutes?.[key] || 0));
+
+            return sum + baseDuration + extraMinutes + Number(service.buffer_minutes || 0);
+        }, 0);
+        if (totalMinutes <= 0) return '';
+
+        startDate.setMinutes(startDate.getMinutes() + totalMinutes);
+
+        let endStr = toDateTimeLocal(startDate);
+        endStr = clampDateTimeLocalToSalon(endStr, bookingRules, slotIntervalMinutes);
+        if (startValue && dateTimeLocalCompare(endStr, startValue) < 0) {
+            endStr = clampDateTimeLocalToSalon(startValue, bookingRules, slotIntervalMinutes);
+        }
+
+        return endStr;
+    };
+
     const handleCreateServiceChange = (nextIds) => {
         createForm.clearErrors('service_id', 'service_ids', 'staff_profile_id', 'staff_assignments');
         const startVal = createStartRef.current?.value || createForm.data.scheduled_start || '';
@@ -387,11 +439,16 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 };
             })(),
             service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
+            service_starts: filterServiceMap(nextIds, prev.service_starts),
+            service_durations: filterServiceMap(nextIds, prev.service_durations),
+            service_extra_minutes: filterServiceMap(nextIds, prev.service_extra_minutes),
+            service_unit_prices: filterServiceMap(nextIds, prev.service_unit_prices),
+            service_discount_amounts: filterServiceMap(nextIds, prev.service_discount_amounts),
             package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
             scheduled_end: !createEndManuallySet || !prev.scheduled_end
-                ? calculateSuggestedEnd(startVal, nextIds)
+                ? calculateSuggestedEndWithServiceMeta(startVal, nextIds, prev)
                 : prev.scheduled_end,
         }));
     };
@@ -451,6 +508,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 };
             })(),
             service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
+            service_starts: filterServiceMap(nextIds, prev.service_starts),
+            service_durations: filterServiceMap(nextIds, prev.service_durations),
+            service_extra_minutes: filterServiceMap(nextIds, prev.service_extra_minutes),
+            service_unit_prices: filterServiceMap(nextIds, prev.service_unit_prices),
+            service_discount_amounts: filterServiceMap(nextIds, prev.service_discount_amounts),
             package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
             service_ids: nextIds,
             service_id: nextIds[0] || '',
@@ -468,7 +530,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             ...prev,
             scheduled_start: clamped,
             scheduled_end: !createEndManuallySet || !prev.scheduled_end
-                ? calculateSuggestedEnd(clamped, prev.service_ids)
+                ? calculateSuggestedEndWithServiceMeta(clamped, prev.service_ids, prev)
                 : prev.scheduled_end,
         }));
         if (createStartRef.current && createStartRef.current.value !== clamped) {
@@ -548,6 +610,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             service_id: '',
             service_ids: [],
             service_quantities: {},
+            service_starts: {},
+            service_durations: {},
+            service_extra_minutes: {},
+            service_unit_prices: {},
+            service_discount_amounts: {},
             customer_package_id: '',
             package_service_ids: [],
             staff_profile_id: quickAction.staffId || '',
@@ -557,8 +624,49 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             status: 'confirmed',
             notes: groupMode ? 'Group appointment' : '',
         });
+        setCalendarServiceEditorId('');
         setCalendarDrawer(groupMode ? 'group' : 'appointment');
         setCalendarQuickAction(null);
+    };
+
+    const updateCreateServiceMeta = (serviceId, updates) => {
+        const sid = String(serviceId);
+        createForm.setData((prev) => {
+            const nextData = {
+                ...prev,
+                service_starts: { ...(prev.service_starts || {}) },
+                service_durations: { ...(prev.service_durations || {}) },
+                service_extra_minutes: { ...(prev.service_extra_minutes || {}) },
+                service_unit_prices: { ...(prev.service_unit_prices || {}) },
+                service_discount_amounts: { ...(prev.service_discount_amounts || {}) },
+                service_quantities: { ...(prev.service_quantities || {}) },
+                staff_assignments: { ...(prev.staff_assignments || {}) },
+            };
+
+            if (updates.start !== undefined) {
+                nextData.service_starts[sid] = updates.start;
+                if (String(prev.service_ids?.[0] || '') === sid) {
+                    nextData.scheduled_start = updates.start;
+                }
+            }
+            if (updates.duration !== undefined) nextData.service_durations[sid] = Math.max(1, Number(updates.duration || 1));
+            if (updates.extra !== undefined) nextData.service_extra_minutes[sid] = Math.max(0, Number(updates.extra || 0));
+            if (updates.unitPrice !== undefined) nextData.service_unit_prices[sid] = Math.max(0, Number(updates.unitPrice || 0));
+            if (updates.discountAmount !== undefined) nextData.service_discount_amounts[sid] = Math.max(0, Number(updates.discountAmount || 0));
+            if (updates.quantity !== undefined) nextData.service_quantities[sid] = Math.max(1, Number(updates.quantity || 1));
+            if (updates.staffId !== undefined) {
+                if (updates.staffId) {
+                    nextData.staff_assignments[sid] = updates.staffId;
+                } else {
+                    delete nextData.staff_assignments[sid];
+                }
+                nextData.staff_profile_id = prev.service_ids?.length === 1 ? (updates.staffId || '') : (hasAssignmentsForAllServices(prev.service_ids || [], nextData.staff_assignments) ? '' : prev.staff_profile_id);
+            }
+
+            nextData.scheduled_end = calculateSuggestedEndWithServiceMeta(nextData.scheduled_start, nextData.service_ids, nextData);
+
+            return nextData;
+        });
     };
 
     const seedBlockedTimeFromCalendar = (quickAction = calendarQuickAction) => {
@@ -593,6 +701,21 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             const row = serviceRows.find((item) => String(item.service_id || '') === serviceId);
             return [serviceId, String(row?.quantity || 1)];
         }));
+        const selectedServiceStarts = Object.fromEntries(serviceRows
+            .filter((row) => row.service_id && row.scheduled_start)
+            .map((row) => [String(row.service_id), toDateTimeLocal(row.scheduled_start)]));
+        const selectedServiceDurations = Object.fromEntries(serviceRows
+            .filter((row) => row.service_id && row.service_duration_minutes)
+            .map((row) => [String(row.service_id), String(row.service_duration_minutes)]));
+        const selectedServiceExtraMinutes = Object.fromEntries(serviceRows
+            .filter((row) => row.service_id && Number(row.service_extra_minutes || 0) > 0)
+            .map((row) => [String(row.service_id), String(row.service_extra_minutes)]));
+        const selectedServiceUnitPrices = Object.fromEntries(serviceRows
+            .filter((row) => row.service_id && row.service_unit_price !== null && row.service_unit_price !== undefined)
+            .map((row) => [String(row.service_id), String(row.service_unit_price)]));
+        const selectedServiceDiscountAmounts = Object.fromEntries(serviceRows
+            .filter((row) => row.service_id && Number(row.service_discount_amount || 0) > 0)
+            .map((row) => [String(row.service_id), String(row.service_discount_amount)]));
         const staffAssignments = Object.fromEntries(serviceRows
             .filter((row) => row.service_id && row.staff_profile_id)
             .map((row) => [String(row.service_id), String(row.staff_profile_id)]));
@@ -612,6 +735,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             service_id: selectedServiceIds[0] || '',
             service_ids: selectedServiceIds,
             service_quantities: selectedServiceQuantities,
+            service_starts: selectedServiceStarts,
+            service_durations: selectedServiceDurations,
+            service_extra_minutes: selectedServiceExtraMinutes,
+            service_unit_prices: selectedServiceUnitPrices,
+            service_discount_amounts: selectedServiceDiscountAmounts,
             customer_package_id: selectedPackageId,
             package_service_ids: serviceRows
                 .filter((row) => row.customer_package_id && row.service_id)
@@ -704,6 +832,49 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const editFilteredServices = editAvailableServices.filter((s) => serviceMatchesSearch(s, editServiceSearch));
     const createEstimatedServicesTotal = estimateSelectedServicesTotal(createSelectedServices, createForm.data.service_quantities, services, createCoveredServiceIds);
     const editEstimatedServicesTotal = estimateSelectedServicesTotal(editSelectedServices, editForm.data.service_quantities, services, editCoveredServiceIds);
+    const createSelectedServiceRows = createSelectedServices
+        .map((id) => services.find((service) => String(service.id) === String(id)))
+        .filter(Boolean);
+    const calendarServiceEditor = createSelectedServiceRows.find((service) => String(service.id) === String(calendarServiceEditorId)) || null;
+    const serviceDurationOptions = [15, 30, 45, 60, 75, 90, 105, 120, 150, 180, 210, 240];
+    const getCreateServiceMeta = (service) => {
+        const sid = String(service.id);
+        const quantity = Math.max(1, Number(createForm.data.service_quantities?.[sid] || 1));
+        const unitPrice = Number(createForm.data.service_unit_prices?.[sid] ?? service.price ?? 0);
+        const discountAmount = Math.max(0, Number(createForm.data.service_discount_amounts?.[sid] || 0));
+        const durationMinutes = Math.max(1, Number(createForm.data.service_durations?.[sid] || service.duration_minutes || 0));
+        const extraMinutes = Math.max(0, Number(createForm.data.service_extra_minutes?.[sid] || 0));
+        const staffId = String(createForm.data.staff_assignments?.[sid] || (createSelectedServices.length === 1 ? createForm.data.staff_profile_id : '') || '');
+        const staff = staffProfiles.find((item) => String(item.id) === staffId);
+
+        return {
+            sid,
+            quantity,
+            unitPrice,
+            discountAmount,
+            durationMinutes,
+            extraMinutes,
+            staffId,
+            staffName: staff?.name || 'Auto / Unassigned',
+            lineTotal: Math.max(0, (unitPrice * quantity) - discountAmount),
+        };
+    };
+    const createDrawerServicesSubtotal = createSelectedServiceRows.reduce((sum, service) => sum + getCreateServiceMeta(service).lineTotal, 0);
+    const getCreateServiceSequenceStart = (serviceId) => {
+        const sid = String(serviceId);
+        if (createForm.data.service_starts?.[sid]) return createForm.data.service_starts[sid];
+
+        let cursor = createForm.data.scheduled_start || '';
+        for (const selectedId of createSelectedServices) {
+            if (String(selectedId) === sid) return cursor;
+            const service = services.find((item) => String(item.id) === String(selectedId));
+            if (!service || !cursor) continue;
+            const meta = getCreateServiceMeta(service);
+            cursor = addMinutesToDateTimeLocal(cursor, meta.durationMinutes + meta.extraMinutes + Number(service.buffer_minutes || 0));
+        }
+
+        return cursor;
+    };
     const createCustomerHasGiftCards = (createSelectedCustomer?.active_gift_cards || []).length > 0
         && Number(createSelectedCustomer?.gift_card_balance || 0) > 0;
     const editCustomerHasGiftCards = (editSelectedCustomer?.active_gift_cards || []).length > 0
@@ -713,7 +884,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const createGiftCardShortfall = Math.max(0, createEstimatedServicesTotal - createCustomerGiftBalance);
     const editGiftCardShortfall = Math.max(0, editEstimatedServicesTotal - editCustomerGiftBalance);
     const createStartForAvailability = createStartRef.current?.value || createForm.data.scheduled_start || '';
-    const createEndForAvailability = createForm.data.scheduled_end || calculateSuggestedEnd(createStartForAvailability, createSelectedServices);
+    const createEndForAvailability = createForm.data.scheduled_end || calculateSuggestedEndWithServiceMeta(createStartForAvailability, createSelectedServices, createForm.data);
     const editStartForAvailability = editStartRef.current?.value || editForm.data.scheduled_start || '';
     const editEndForAvailability = editForm.data.scheduled_end || calculateSuggestedEnd(editStartForAvailability, editSelectedServices);
 
@@ -731,7 +902,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
     useEffect(() => {
         const startValue = createStartRef.current?.value || createForm.data.scheduled_start || '';
-        const endValue = createForm.data.scheduled_end || calculateSuggestedEnd(startValue, createSelectedServices);
+        const endValue = createForm.data.scheduled_end || calculateSuggestedEndWithServiceMeta(startValue, createSelectedServices, createForm.data);
         if (!startValue) {
             setCreateStaffAvailability({});
             return;
@@ -761,7 +932,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         return () => {
             cancelled = true;
         };
-    }, [createForm.data.scheduled_start, createForm.data.scheduled_end, createSelectedServices, createStartMount]);
+    }, [createForm.data.scheduled_start, createForm.data.scheduled_end, createForm.data.service_durations, createForm.data.service_extra_minutes, createSelectedServices, createStartMount]);
 
     useEffect(() => {
         const startValue = editStartRef.current?.value || editForm.data.scheduled_start || '';
@@ -819,7 +990,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const completingService = services.find((s) => String(s.id) === String(completingAppt?.service_id));
     const completingCustomer = customers.find((customer) => String(customer.id) === String(completingAppt?.customer_id));
     const completingServiceQuantity = Math.max(1, Number(completingAppt?.service_quantity || 1));
-    const completingServiceAmount = completingAppt?.customer_package_id ? 0 : (Number(completingService?.price || 0) * completingServiceQuantity);
+    const completingServiceUnitPrice = Number(completingAppt?.service_unit_price ?? completingService?.price ?? 0);
+    const completingServiceDiscountAmount = Number(completingAppt?.service_discount_amount || 0);
+    const completingServiceAmount = completingAppt?.customer_package_id ? 0 : Math.max(0, (completingServiceUnitPrice * completingServiceQuantity) - completingServiceDiscountAmount);
     const selectedProductLines = (completeForm.data.products || [])
         .map((row) => {
             const item = inventoryItems.find((inv) => String(inv.id) === String(row.inventory_item_id));
@@ -961,6 +1134,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 service_id: row.service_id,
                 name: row.service_name,
                 quantity: row.service_quantity || 1,
+                service_unit_price: row.service_unit_price,
+                service_discount_amount: row.service_discount_amount || 0,
+                service_duration_minutes: row.service_duration_minutes,
+                service_extra_minutes: row.service_extra_minutes || 0,
+                scheduled_start: row.scheduled_start,
                 status: row.status,
                 staff_profile_id: row.staff_profile_id,
                 staff_name: row.staff_name || 'Unassigned',
@@ -2353,7 +2531,183 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     </div>
 
                                     <div>
-                                        <h4 className="mb-3 text-2xl font-black text-white">Select a service</h4>
+                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                            <h4 className="text-2xl font-black text-white">Select a service</h4>
+                                            {createSelectedServiceRows.length > 0 ? (
+                                                <div className="text-right">
+                                                    <div className="text-[11px] font-bold uppercase text-slate-500">Services total</div>
+                                                    <div className="text-sm font-black text-white">{formatMoney(createDrawerServicesSubtotal, currencyCode)}</div>
+                                                </div>
+                                            ) : null}
+                                        </div>
+
+                                        {createSelectedServiceRows.length > 0 ? (
+                                            <div className="mb-4 space-y-2">
+                                                {createSelectedServiceRows.map((service) => {
+                                                    const meta = getCreateServiceMeta(service);
+                                                    const serviceStart = getCreateServiceSequenceStart(service.id);
+                                                    const isEditing = String(calendarServiceEditorId) === String(service.id);
+
+                                                    return (
+                                                        <button
+                                                            key={`selected-drawer-service-${service.id}`}
+                                                            type="button"
+                                                            className={`w-full rounded-md border px-3 py-3 text-left transition ${isEditing ? 'border-violet-400 bg-violet-500/15' : 'border-white/10 bg-white/[0.03] hover:bg-white/5'}`}
+                                                            onClick={() => setCalendarServiceEditorId(String(service.id))}
+                                                        >
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div>
+                                                                    <div className="text-sm font-black text-white">{service.name}</div>
+                                                                    <div className="mt-1 text-xs text-slate-400">
+                                                                        {formatTimeFromDateTimeLocal(serviceStart) || 'Start not set'} - {meta.durationMinutes + meta.extraMinutes}m
+                                                                        {meta.staffName ? ` - ${meta.staffName}` : ''}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-sm font-black text-slate-100">{formatMoney(meta.lineTotal, currencyCode)}</span>
+                                                                    <span className="text-xl text-slate-400">&gt;</span>
+                                                                </div>
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : null}
+
+                                        {calendarServiceEditor ? (() => {
+                                            const meta = getCreateServiceMeta(calendarServiceEditor);
+                                            const serviceStart = getCreateServiceSequenceStart(calendarServiceEditor.id);
+                                            const durationChoices = [...new Set([...serviceDurationOptions, meta.durationMinutes])].sort((a, b) => a - b);
+
+                                            return (
+                                                <div className="mb-5 rounded-md border border-white/10 bg-white/[0.03] p-4">
+                                                    <div className="mb-3 flex items-center justify-between gap-3">
+                                                        <div>
+                                                            <h5 className="text-xl font-black text-white">Edit service</h5>
+                                                            <p className="mt-1 text-xs text-slate-400">{calendarServiceEditor.name}</p>
+                                                        </div>
+                                                        <button type="button" className="text-xl text-slate-400 hover:text-white" onClick={() => setCalendarServiceEditorId('')}>x</button>
+                                                    </div>
+
+                                                    <button type="button" className="mb-4 flex w-full items-center justify-between rounded-md border border-white/10 bg-[#18181a] px-3 py-3 text-left" onClick={() => setCreateServiceSearch(calendarServiceEditor.name)}>
+                                                        <span className="text-sm font-bold text-white">{calendarServiceEditor.name}, {meta.durationMinutes + meta.extraMinutes}m</span>
+                                                        <span className="text-xl text-slate-400">&gt;</span>
+                                                    </button>
+
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Team member</label>
+                                                            <select
+                                                                className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                                                value={meta.staffId}
+                                                                onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { staffId: e.target.value })}
+                                                            >
+                                                                {staffOptions.map((staff) => <option key={staff.value || 'auto'} value={staff.value}>{staff.label}</option>)}
+                                                            </select>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Service price</label>
+                                                                <div className="flex rounded-md border border-white/15 bg-[#18181a]">
+                                                                    <span className="border-r border-white/10 px-3 py-3 text-sm font-bold text-slate-400">{currencyCode}</span>
+                                                                    <input
+                                                                        className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm font-bold text-white outline-none"
+                                                                        type="number"
+                                                                        min="0"
+                                                                        step="0.01"
+                                                                        value={meta.unitPrice}
+                                                                        onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { unitPrice: e.target.value })}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Discount</label>
+                                                                <div className="flex rounded-md border border-white/15 bg-[#18181a]">
+                                                                    <span className="border-r border-white/10 px-3 py-3 text-sm font-bold text-slate-400">{currencyCode}</span>
+                                                                    <input
+                                                                        className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm font-bold text-white outline-none"
+                                                                        type="number"
+                                                                        min="0"
+                                                                        max={meta.unitPrice * meta.quantity}
+                                                                        step="0.01"
+                                                                        value={meta.discountAmount}
+                                                                        onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { discountAmount: e.target.value })}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Start time</label>
+                                                                <input
+                                                                    className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]"
+                                                                    type="datetime-local"
+                                                                    value={serviceStart}
+                                                                    onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { start: e.target.value })}
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Duration</label>
+                                                                <select
+                                                                    className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                                                    value={meta.durationMinutes}
+                                                                    onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { duration: e.target.value })}
+                                                                >
+                                                                    {durationChoices.map((minutes) => <option key={minutes} value={minutes}>{minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ''}` : `${minutes}m`}</option>)}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Qty</label>
+                                                                <input
+                                                                    className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                                                    type="number"
+                                                                    min="1"
+                                                                    value={meta.quantity}
+                                                                    onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { quantity: e.target.value })}
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Extra time</label>
+                                                                <div className="flex gap-2">
+                                                                    <input
+                                                                        className="min-w-0 flex-1 rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                                                        type="number"
+                                                                        min="0"
+                                                                        step="5"
+                                                                        value={meta.extraMinutes}
+                                                                        onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { extra: e.target.value })}
+                                                                    />
+                                                                    <button type="button" className="rounded-full border border-white/15 px-3 text-sm font-bold text-slate-200 hover:bg-white/5" onClick={() => updateCreateServiceMeta(calendarServiceEditor.id, { extra: meta.extraMinutes + 15 })}>+15</button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center justify-between rounded-md border border-white/10 bg-[#18181a] px-3 py-3">
+                                                            <div>
+                                                                <div className="text-xs font-bold uppercase text-slate-500">Adjusted total</div>
+                                                                <div className="text-sm font-black text-white">{formatMoney(meta.lineTotal, currencyCode)}</div>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                className="text-sm font-bold text-rose-300 hover:text-rose-200"
+                                                                onClick={() => {
+                                                                    handleCreateServiceChange(createSelectedServices.filter((id) => String(id) !== String(calendarServiceEditor.id)));
+                                                                    setCalendarServiceEditorId('');
+                                                                }}
+                                                            >
+                                                                Remove service
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })() : null}
+
                                         <input className="w-full rounded-md border border-violet-500 bg-[#18181a] px-3 py-3 text-sm text-white" value={createServiceSearch} onChange={(e) => setCreateServiceSearch(e.target.value)} placeholder="Search by service name" />
                                         <div className="mt-4 max-h-[360px] space-y-5 overflow-auto pr-1">
                                             {Object.entries(createFilteredServices.reduce((groups, service) => {
@@ -2379,13 +2733,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                         const nextIds = selected
                                                                             ? createSelectedServices.filter((id) => id !== sid)
                                                                             : [...createSelectedServices, sid];
-                                                                        createForm.setData((prev) => ({
-                                                                            ...prev,
-                                                                            service_ids: nextIds,
-                                                                            service_id: nextIds[0] || '',
-                                                                            service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
-                                                                            scheduled_end: calculateSuggestedEnd(prev.scheduled_start, nextIds),
-                                                                        }));
+                                                                        handleCreateServiceChange(nextIds);
+                                                                        setCalendarServiceEditorId(selected ? '' : sid);
                                                                     }}
                                                                 >
                                                                     <span>

@@ -89,6 +89,73 @@ class FinanceAppointmentInvoiceDraftTest extends TestCase
         $this->assertSame('Styling', $invoice->items->first()->description);
     }
 
+    public function test_invoice_draft_uses_adjusted_service_price_and_discount(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+        ]);
+
+        $owner = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $staffProfile = StaffProfile::create([
+            'user_id' => $owner->id,
+            'employee_code' => 'OWN-FIN-ADJ',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-APT-ADJ',
+            'name' => 'Adjusted Client',
+            'phone' => '5559990123',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Acrylic Gel Refill',
+            'category' => 'Nails',
+            'duration_minutes' => 75,
+            'buffer_minutes' => 0,
+            'price' => 250,
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'service_unit_price' => 275,
+            'service_discount_amount' => 25,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_IN_PROGRESS,
+            'scheduled_start' => now()->subHour(),
+            'scheduled_end' => now(),
+            'arrival_time' => now()->subHour(),
+            'service_start_time' => now()->subMinutes(30),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('appointments.service-complete', $appointment), [
+                'service_report' => 'Adjusted service done.',
+                'create_tax_invoice_draft' => true,
+                'products' => [],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->where('appointment_id', $appointment->id)->firstOrFail();
+        $serviceLine = $invoice->items->first();
+
+        $this->assertSame('275.00', $serviceLine->unit_price);
+        $this->assertSame('25.00', $serviceLine->discount_amount);
+        $this->assertSame('250.00', $serviceLine->line_subtotal);
+    }
+
     public function test_package_covered_appointment_creates_zero_priced_service_line_and_consumes_session(): void
     {
         $ownerRole = Role::create([

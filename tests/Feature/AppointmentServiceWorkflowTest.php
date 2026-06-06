@@ -92,6 +92,75 @@ class AppointmentServiceWorkflowTest extends TestCase
         $this->assertStringContainsString('Lashes Refill', (string) $log->message);
     }
 
+    public function test_store_persists_per_service_drawer_adjustments(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $manager = User::factory()->create(['role_id' => $managerRole->id]);
+        $staffUser = User::factory()->create(['role_id' => $managerRole->id, 'name' => 'Mariam Yousaf']);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-DRAWER-01',
+            'phone' => '971500003333',
+            'is_active' => true,
+        ]);
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '22:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Acrylic Gel Refill',
+            'duration_minutes' => 75,
+            'buffer_minutes' => 0,
+            'price' => 250,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.store'), [
+            'customer_name' => 'Drawer Client',
+            'customer_phone' => '971500007777',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'service_starts' => [$service->id => '2026-05-12 14:15:00'],
+            'service_durations' => [$service->id => 90],
+            'service_extra_minutes' => [$service->id => 15],
+            'service_unit_prices' => [$service->id => 275],
+            'service_discount_amounts' => [$service->id => 25],
+            'staff_assignments' => [$service->id => $staff->id],
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 15:15:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $appointment = Appointment::query()->where('customer_phone', '971500007777')->firstOrFail();
+
+        $this->assertSame($staff->id, $appointment->staff_profile_id);
+        $this->assertSame('2026-05-12 14:15:00', $appointment->scheduled_start->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-12 16:00:00', $appointment->scheduled_end->format('Y-m-d H:i:s'));
+        $this->assertSame('275.00', (string) $appointment->service_unit_price);
+        $this->assertSame('25.00', (string) $appointment->service_discount_amount);
+        $this->assertSame(90, $appointment->service_duration_minutes);
+        $this->assertSame(15, $appointment->service_extra_minutes);
+    }
+
     public function test_update_notifies_newly_assigned_staff_via_whatsapp_log(): void
     {
         Queue::fake();

@@ -280,10 +280,14 @@ class AppointmentController extends Controller
         }
         $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
         $serviceQuantities = $this->resolveServiceQuantitiesFromPayload($data, $serviceIds);
-        $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
+        $serviceStarts = $this->resolveServiceStartsFromPayload($data, $serviceIds);
+        $serviceDurations = $this->resolveServiceIntegerMapFromPayload($data, $serviceIds, 'service_durations', 1);
+        $serviceExtraMinutes = $this->resolveServiceIntegerMapFromPayload($data, $serviceIds, 'service_extra_minutes', 0);
+        $serviceUnitPrices = $this->resolveServiceMoneyMapFromPayload($data, $serviceIds, 'service_unit_prices');
+        $serviceDiscountAmounts = $this->resolveServiceMoneyMapFromPayload($data, $serviceIds, 'service_discount_amounts');
 
         $start = Carbon::parse($data['scheduled_start']);
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, null, $serviceQuantities, $staffAssignments);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, null, $serviceQuantities, $staffAssignments, $serviceStarts, $serviceDurations, $serviceExtraMinutes, $serviceUnitPrices, $serviceDiscountAmounts);
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start, enforceSlotInterval: false, enforceMinAdvance: false)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
@@ -298,7 +302,7 @@ class AppointmentController extends Controller
             }
         }
 
-        if (! empty($data['staff_profile_id']) || count($servicePlans) > 1) {
+        if (! empty($data['staff_profile_id']) || count($servicePlans) > 1 || $staffAssignments !== []) {
             $servicePlans = $this->attachStaffAssignments(
                 $servicePlans,
                 ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null,
@@ -324,6 +328,10 @@ class AppointmentController extends Controller
                     ...$data,
                     'service_id' => $plan['service']->id,
                     'service_quantity' => $plan['service_quantity'],
+                    'service_unit_price' => $plan['service_unit_price'],
+                    'service_discount_amount' => $plan['service_discount_amount'],
+                    'service_duration_minutes' => $plan['service_duration_minutes'],
+                    'service_extra_minutes' => $plan['service_extra_minutes'],
                     'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                     'customer_id' => $customer?->id,
                     'customer_package_id' => $isPackageCovered ? $packageSelection['customer_package']?->id : null,
@@ -362,9 +370,14 @@ class AppointmentController extends Controller
         }
         $serviceQuantities = $this->resolveServiceQuantitiesFromPayload($data, $serviceIds);
         $staffAssignments = $this->resolveStaffAssignmentsFromPayload($data, $serviceIds);
+        $serviceStarts = $this->resolveServiceStartsFromPayload($data, $serviceIds);
+        $serviceDurations = $this->resolveServiceIntegerMapFromPayload($data, $serviceIds, 'service_durations', 1);
+        $serviceExtraMinutes = $this->resolveServiceIntegerMapFromPayload($data, $serviceIds, 'service_extra_minutes', 0);
+        $serviceUnitPrices = $this->resolveServiceMoneyMapFromPayload($data, $serviceIds, 'service_unit_prices');
+        $serviceDiscountAmounts = $this->resolveServiceMoneyMapFromPayload($data, $serviceIds, 'service_discount_amounts');
 
         $start = Carbon::parse($data['scheduled_start']);
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, null, $serviceQuantities, $staffAssignments);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, null, $serviceQuantities, $staffAssignments, $serviceStarts, $serviceDurations, $serviceExtraMinutes, $serviceUnitPrices, $serviceDiscountAmounts);
 
         foreach ($servicePlans as $idx => $plan) {
             if ($timeRangeError = $this->validateTimeRange($plan['start'], $plan['end'])) {
@@ -375,7 +388,7 @@ class AppointmentController extends Controller
             }
         }
 
-        if (! empty($data['staff_profile_id']) || count($servicePlans) > 1) {
+        if (! empty($data['staff_profile_id']) || count($servicePlans) > 1 || $staffAssignments !== []) {
             $servicePlans = $this->attachStaffAssignments(
                 $servicePlans,
                 ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null,
@@ -427,6 +440,10 @@ class AppointmentController extends Controller
                     ...$data,
                     'service_id' => $plan['service']->id,
                     'service_quantity' => $plan['service_quantity'],
+                    'service_unit_price' => $plan['service_unit_price'],
+                    'service_discount_amount' => $plan['service_discount_amount'],
+                    'service_duration_minutes' => $plan['service_duration_minutes'],
+                    'service_extra_minutes' => $plan['service_extra_minutes'],
                     'staff_profile_id' => $plan['staff_profile_id'] ?? null,
                     'customer_id' => $customer?->id,
                     'customer_package_id' => $covered ? $packageSelection['customer_package']?->id : null,
@@ -960,6 +977,16 @@ class AppointmentController extends Controller
             'service_ids.*' => ['integer', 'exists:salon_services,id'],
             'service_quantities' => ['nullable', 'array'],
             'service_quantities.*' => ['nullable', 'integer', 'min:1', 'max:999'],
+            'service_starts' => ['nullable', 'array'],
+            'service_starts.*' => ['nullable', 'date'],
+            'service_durations' => ['nullable', 'array'],
+            'service_durations.*' => ['nullable', 'integer', 'min:1', 'max:1440'],
+            'service_extra_minutes' => ['nullable', 'array'],
+            'service_extra_minutes.*' => ['nullable', 'integer', 'min:0', 'max:1440'],
+            'service_unit_prices' => ['nullable', 'array'],
+            'service_unit_prices.*' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
+            'service_discount_amounts' => ['nullable', 'array'],
+            'service_discount_amounts.*' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
             'customer_package_id' => ['nullable', 'exists:customer_packages,id'],
             'package_service_ids' => ['nullable', 'array'],
             'package_service_ids.*' => ['integer', 'exists:salon_services,id'],
@@ -1012,6 +1039,84 @@ class AppointmentController extends Controller
             }
 
             $map[$sid] = max(1, (int) $quantity);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<int, Carbon>
+     */
+    private function resolveServiceStartsFromPayload(array $data, array $serviceIds): array
+    {
+        $raw = $data['service_starts'] ?? [];
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $allowedServiceIds = array_fill_keys($serviceIds, true);
+        $map = [];
+
+        foreach ($raw as $serviceId => $value) {
+            $sid = (int) $serviceId;
+            if (! isset($allowedServiceIds[$sid]) || empty($value)) {
+                continue;
+            }
+
+            $map[$sid] = Carbon::parse($value);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<int, int>
+     */
+    private function resolveServiceIntegerMapFromPayload(array $data, array $serviceIds, string $key, int $min): array
+    {
+        $raw = $data[$key] ?? [];
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $allowedServiceIds = array_fill_keys($serviceIds, true);
+        $map = [];
+
+        foreach ($raw as $serviceId => $value) {
+            $sid = (int) $serviceId;
+            if (! isset($allowedServiceIds[$sid]) || $value === null || $value === '') {
+                continue;
+            }
+
+            $map[$sid] = max($min, (int) $value);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<int, float>
+     */
+    private function resolveServiceMoneyMapFromPayload(array $data, array $serviceIds, string $key): array
+    {
+        $raw = $data[$key] ?? [];
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $allowedServiceIds = array_fill_keys($serviceIds, true);
+        $map = [];
+
+        foreach ($raw as $serviceId => $value) {
+            $sid = (int) $serviceId;
+            if (! isset($allowedServiceIds[$sid]) || $value === null || $value === '') {
+                continue;
+            }
+
+            $map[$sid] = round(max(0, (float) $value), 2);
         }
 
         return $map;
@@ -1129,9 +1234,9 @@ class AppointmentController extends Controller
     /**
      * @param array<int, int> $serviceIds
      * @param array<int, int> $serviceQuantities
-     * @return array<int, array{service: SalonService, service_quantity: int, start: Carbon, end: Carbon}>
+     * @return array<int, array{service: SalonService, service_quantity: int, service_unit_price: float|null, service_discount_amount: float, service_duration_minutes: int, service_extra_minutes: int, start: Carbon, end: Carbon}>
      */
-    private function buildServicePlans(array $serviceIds, Carbon $start, ?string $requestedEnd, array $serviceQuantities = [], array $staffAssignments = []): array
+    private function buildServicePlans(array $serviceIds, Carbon $start, ?string $requestedEnd, array $serviceQuantities = [], array $staffAssignments = [], array $serviceStarts = [], array $serviceDurations = [], array $serviceExtraMinutes = [], array $serviceUnitPrices = [], array $serviceDiscountAmounts = []): array
     {
         $services = SalonService::query()->whereIn('id', $serviceIds)->get()->keyBy('id');
         $plans = [];
@@ -1149,12 +1254,24 @@ class AppointmentController extends Controller
                 continue;
             }
 
-            $itemStart = $runInParallel ? $start->copy() : $cursor->copy();
-            $itemEnd = $itemStart->copy()->addMinutes((int) $service->duration_minutes + (int) $service->buffer_minutes);
+            $itemStart = isset($serviceStarts[$serviceId])
+                ? $serviceStarts[$serviceId]->copy()
+                : ($runInParallel ? $start->copy() : $cursor->copy());
+            $durationMinutes = max(1, (int) ($serviceDurations[$serviceId] ?? $service->duration_minutes));
+            $extraMinutes = max(0, (int) ($serviceExtraMinutes[$serviceId] ?? 0));
+            $itemEnd = $itemStart->copy()->addMinutes($durationMinutes + $extraMinutes + (int) $service->buffer_minutes);
+            $unitPrice = array_key_exists($serviceId, $serviceUnitPrices) ? (float) $serviceUnitPrices[$serviceId] : null;
+            $quantity = max(1, (int) ($serviceQuantities[$serviceId] ?? 1));
+            $maxDiscount = max(0, (($unitPrice ?? (float) $service->price) * $quantity));
+            $discountAmount = min($maxDiscount, max(0, (float) ($serviceDiscountAmounts[$serviceId] ?? 0)));
 
             $plans[] = [
                 'service' => $service,
-                'service_quantity' => max(1, (int) ($serviceQuantities[$serviceId] ?? 1)),
+                'service_quantity' => $quantity,
+                'service_unit_price' => $unitPrice,
+                'service_discount_amount' => round($discountAmount, 2),
+                'service_duration_minutes' => $durationMinutes,
+                'service_extra_minutes' => $extraMinutes,
                 'start' => $itemStart,
                 'end' => $itemEnd,
             ];
@@ -1431,6 +1548,10 @@ class AppointmentController extends Controller
             'package_session_applied' => (bool) $appointment->package_session_applied,
             'service_id' => $appointment->service_id,
             'service_quantity' => (int) ($appointment->service_quantity ?? 1),
+            'service_unit_price' => $appointment->service_unit_price !== null ? (float) $appointment->service_unit_price : null,
+            'service_discount_amount' => (float) ($appointment->service_discount_amount ?? 0),
+            'service_duration_minutes' => $appointment->service_duration_minutes !== null ? (int) $appointment->service_duration_minutes : null,
+            'service_extra_minutes' => (int) ($appointment->service_extra_minutes ?? 0),
             'staff_profile_id' => $appointment->staff_profile_id,
             'scheduled_start' => $appointment->scheduled_start,
             'scheduled_end' => $appointment->scheduled_end,

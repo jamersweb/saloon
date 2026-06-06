@@ -88,8 +88,13 @@ class TaxInvoiceDraftFromAppointmentService
             }
 
             $quantity = max(1, (int) ($visitAppointment->service_quantity ?? 1));
-            $unitPrice = $visitAppointment->customer_package_id ? 0.0 : (float) $service->price;
-            $computed = TaxInvoiceLineCalculator::compute($quantity, $unitPrice, $vatRate);
+            $unitPrice = $visitAppointment->customer_package_id
+                ? 0.0
+                : (float) ($visitAppointment->service_unit_price ?? $service->price);
+            $discountAmount = $visitAppointment->customer_package_id
+                ? 0.0
+                : (float) ($visitAppointment->service_discount_amount ?? 0);
+            $computed = TaxInvoiceLineCalculator::compute($quantity, $unitPrice, $vatRate, $discountAmount);
 
             TaxInvoiceItem::query()->create([
                 'tax_invoice_id' => $invoice->id,
@@ -99,6 +104,7 @@ class TaxInvoiceDraftFromAppointmentService
                     : $service->name,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
+                'discount_amount' => $discountAmount,
                 'line_subtotal' => $computed['line_subtotal'],
                 'tax_rate_percent' => $computed['tax_rate_percent'],
                 'line_tax' => $computed['line_tax'],
