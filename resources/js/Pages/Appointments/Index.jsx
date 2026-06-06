@@ -251,7 +251,7 @@ const clampStaffStartDatetimeLocal = (value, bookingRules, slotIntervalMinutes =
     return v;
 };
 
-export default function AppointmentsIndex({ appointments, services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
+export default function AppointmentsIndex({ appointments, appointmentBlocks = [], services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
     const { app_currency_code: currencyCode = 'AED' } = usePage().props;
     const { flash, auth } = usePage().props;
     const serviceCategoryMap = useMemo(
@@ -284,6 +284,8 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const [showBoardView, setShowBoardView] = useState(false);
     const [boardDate, setBoardDate] = useState(() => localYmd(new Date()));
     const [boardStaffFilter, setBoardStaffFilter] = useState('all');
+    const [calendarQuickAction, setCalendarQuickAction] = useState(null);
+    const [calendarDrawer, setCalendarDrawer] = useState(null);
     const [createStaffAvailability, setCreateStaffAvailability] = useState({});
     const [editStaffAvailability, setEditStaffAvailability] = useState({});
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
@@ -297,6 +299,7 @@ export default function AppointmentsIndex({ appointments, services, customers = 
 
     const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
     const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const blockForm = useForm({ staff_profile_id: '', title: 'Blocked time', starts_at: '', ends_at: '', notes: '' });
     const startForm = useForm({ intake_notes: '', service_notes: '', before_photo: null });
     const completeForm = useForm({
         service_report: '',
@@ -505,6 +508,72 @@ export default function AppointmentsIndex({ appointments, services, customers = 
         editForm.setData('customer_package_id', '');
         editForm.setData('package_service_ids', []);
         setEditSelectedPackageId('');
+    };
+
+    const calendarSlotToDateTimeLocal = (minutes) => {
+        const date = new Date(`${boardDate}T00:00:00`);
+        date.setMinutes(minutes);
+
+        return toDateTimeLocal(date);
+    };
+
+    const openCalendarQuickAction = (staffId, minutes, staffIndex = 0) => {
+        const start = calendarSlotToDateTimeLocal(minutes);
+        const end = calendarSlotToDateTimeLocal(minutes + Math.max(15, slotIntervalMinutes || 30));
+        setCalendarQuickAction({
+            staffId: staffId ? String(staffId) : '',
+            staffIndex,
+            minutes,
+            startsAt: start,
+            endsAt: end,
+        });
+        setCalendarDrawer(null);
+    };
+
+    const seedCreateFromCalendar = (quickAction = calendarQuickAction, groupMode = false) => {
+        if (!quickAction) return;
+
+        setCreateCustomerMode('existing');
+        setCreateSelectedCustomerId('');
+        setCreateSelectedPackageId('');
+        setCreateServiceSearch('');
+        setCreateEndManuallySet(false);
+        setCreateStartYmd((quickAction.startsAt || '').split('T')[0] || boardDate);
+        setCreateStartMount((m) => m + 1);
+        createForm.clearErrors();
+        createForm.setData({
+            customer_name: groupMode ? 'Group appointment' : '',
+            customer_phone: '',
+            customer_email: '',
+            service_id: '',
+            service_ids: [],
+            service_quantities: {},
+            customer_package_id: '',
+            package_service_ids: [],
+            staff_profile_id: quickAction.staffId || '',
+            staff_assignments: {},
+            scheduled_start: quickAction.startsAt,
+            scheduled_end: '',
+            status: 'confirmed',
+            notes: groupMode ? 'Group appointment' : '',
+        });
+        setCalendarDrawer(groupMode ? 'group' : 'appointment');
+        setCalendarQuickAction(null);
+    };
+
+    const seedBlockedTimeFromCalendar = (quickAction = calendarQuickAction) => {
+        if (!quickAction) return;
+
+        blockForm.clearErrors();
+        blockForm.setData({
+            staff_profile_id: quickAction.staffId || '',
+            title: 'Blocked time',
+            starts_at: quickAction.startsAt,
+            ends_at: quickAction.endsAt,
+            notes: '',
+        });
+        setCalendarDrawer('blocked');
+        setCalendarQuickAction(null);
     };
 
     const startEdit = (appt) => {
@@ -800,10 +869,18 @@ export default function AppointmentsIndex({ appointments, services, customers = 
     const boardEndMinutes = Math.max(boardStartMinutes + 60, boardClose.h * 60 + boardClose.m);
     const boardTotalMinutes = Math.max(60, boardEndMinutes - boardStartMinutes);
     const boardHourMarks = Array.from({ length: Math.ceil(boardTotalMinutes / 60) + 1 }, (_, idx) => boardStartMinutes + (idx * 60));
+    const boardSlotInterval = Math.max(15, Math.min(60, Number(slotIntervalMinutes || 30)));
+    const boardSlotMarks = Array.from(
+        { length: Math.ceil(boardTotalMinutes / boardSlotInterval) },
+        (_, idx) => boardStartMinutes + (idx * boardSlotInterval),
+    ).filter((minutes) => minutes < boardEndMinutes);
+    const boardCanvasHeight = (boardHourMarks.length - 1) * 80;
     const boardStaffList = boardStaffFilter === 'all'
         ? staffProfiles
         : staffProfiles.filter((staff) => String(staff.id) === String(boardStaffFilter));
     const boardAppointments = appointments.filter((appt) => sameLocalDate(appt.scheduled_start, boardDate));
+    const boardBlocks = (appointmentBlocks || []).filter((block) => sameLocalDate(block.starts_at, boardDate));
+    const boardGlobalBlocks = boardBlocks.filter((block) => !block.staff_profile_id);
     const boardCardsByStaff = boardStaffList.map((staff) => {
         const cards = layoutOverlappingAppointments(boardAppointments
             .filter((appt) => String(appt.staff_profile_id || '') === String(staff.id))
@@ -829,8 +906,26 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                     timeLabel: `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
                 };
             }));
+        const blocks = [...boardGlobalBlocks, ...boardBlocks.filter((block) => String(block.staff_profile_id || '') === String(staff.id))]
+            .map((block) => {
+                const start = new Date(block.starts_at);
+                const end = new Date(block.ends_at || block.starts_at);
+                const startMinutes = start.getHours() * 60 + start.getMinutes();
+                const endMinutes = Math.max(startMinutes + 15, end.getHours() * 60 + end.getMinutes());
+                const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
+                const height = Math.max(4, ((endMinutes - startMinutes) / boardTotalMinutes) * 100);
 
-        return { staff, cards };
+                return {
+                    ...block,
+                    endMinutes,
+                    startMinutes,
+                    top,
+                    height,
+                    timeLabel: `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+                };
+            });
+
+        return { staff, cards, blocks };
     });
     const appointmentQueueSortDirection = ['today', 'upcoming'].includes(String(statusFilter || '')) ? 'asc' : 'desc';
     const appointmentQueueRows = Array.from(appointments.reduce((map, appt) => {
@@ -1938,117 +2033,405 @@ export default function AppointmentsIndex({ appointments, services, customers = 
                 }}
             /> : null}
 
-            <Modal show={showBoardView} maxWidth="full" onClose={() => setShowBoardView(false)}>
-                <div className="flex h-[90vh] flex-col bg-[#111315] text-white">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-6 py-4">
-                        <div>
-                            <h3 className="text-lg font-semibold">Appointment Board</h3>
-                            <p className="text-sm text-slate-300">Time-based planner by staff. Covered package visits still appear here, but invoice at zero when completed.</p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const d = new Date(`${boardDate}T12:00:00`);
-                                    d.setDate(d.getDate() - 1);
-                                    setBoardDate(localYmd(d));
-                                }}
-                                className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5"
-                            >
-                                Prev
-                            </button>
-                            <input
-                                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-                                type="date"
-                                value={boardDate}
-                                onChange={(e) => setBoardDate(e.target.value)}
-                            />
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const d = new Date(`${boardDate}T12:00:00`);
-                                    d.setDate(d.getDate() + 1);
-                                    setBoardDate(localYmd(d));
-                                }}
-                                className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5"
-                            >
-                                Next
-                            </button>
-                            <select
-                                className="rounded-xl border border-white/10 bg-white px-3 py-2 text-sm text-slate-900"
-                                value={boardStaffFilter}
-                                onChange={(e) => setBoardStaffFilter(e.target.value)}
-                            >
-                                <option value="all" className="bg-white text-slate-900">All team</option>
-                                {staffProfiles.map((staff) => (
-                                    <option key={staff.id} value={staff.id} className="bg-white text-slate-900">{staff.name}</option>
-                                ))}
-                            </select>
-                            <button type="button" onClick={() => setShowBoardView(false)} className="rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Close</button>
-                        </div>
-                    </div>
-
-                    <div className="flex min-h-0 flex-1 overflow-auto">
-                        <div className="sticky left-0 z-20 w-24 shrink-0 border-r border-white/10 bg-[#0b0d0f]">
-                            <div className="h-24 border-b border-white/10 px-3 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Time</div>
-                            <div className="relative">
-                                {boardHourMarks.slice(0, -1).map((minutes) => (
-                                    <div key={minutes} className="flex h-20 items-start border-b border-white/5 px-3 pt-2 text-xs text-slate-400">
-                                        {formatHourLabel(Math.floor(minutes / 60))}
-                                    </div>
-                                ))}
+            <Modal show={showBoardView} maxWidth="full" onClose={() => {
+                setShowBoardView(false);
+                setCalendarQuickAction(null);
+                setCalendarDrawer(null);
+            }}>
+                <div className="flex h-[92vh] overflow-hidden bg-[#0b0b0c] text-white">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#111112] px-5 py-3">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setBoardDate(localYmd(new Date()))}
+                                    className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/5"
+                                >
+                                    Today
+                                </button>
+                                <div className="flex overflow-hidden rounded-full border border-white/15">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const d = new Date(`${boardDate}T12:00:00`);
+                                            d.setDate(d.getDate() - 1);
+                                            setBoardDate(localYmd(d));
+                                        }}
+                                        className="px-3 py-2 text-sm text-slate-200 hover:bg-white/5"
+                                        aria-label="Previous day"
+                                    >
+                                        &lt;
+                                    </button>
+                                    <input
+                                        className="w-36 border-x border-white/15 bg-transparent px-3 py-2 text-center text-sm font-semibold text-white [color-scheme:dark]"
+                                        type="date"
+                                        value={boardDate}
+                                        onChange={(e) => setBoardDate(e.target.value)}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const d = new Date(`${boardDate}T12:00:00`);
+                                            d.setDate(d.getDate() + 1);
+                                            setBoardDate(localYmd(d));
+                                        }}
+                                        className="px-3 py-2 text-sm text-slate-200 hover:bg-white/5"
+                                        aria-label="Next day"
+                                    >
+                                        &gt;
+                                    </button>
+                                </div>
+                                <select
+                                    className="rounded-full border border-white/15 bg-[#151516] px-4 py-2 text-sm font-semibold text-white"
+                                    value={boardStaffFilter}
+                                    onChange={(e) => setBoardStaffFilter(e.target.value)}
+                                >
+                                    <option value="all" className="bg-[#151516] text-white">All team</option>
+                                    {staffProfiles.map((staff) => (
+                                        <option key={staff.id} value={staff.id} className="bg-[#151516] text-white">{staff.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const firstStaff = boardStaffList[0]?.id || staffProfiles[0]?.id || '';
+                                        openCalendarQuickAction(firstStaff, Math.max(boardStartMinutes, new Date().getHours() * 60 + new Date().getMinutes()), 0);
+                                    }}
+                                    className="rounded-full border border-violet-400/50 bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-100 hover:bg-violet-500/25"
+                                >
+                                    Add
+                                </button>
+                                <button type="button" onClick={() => setShowBoardView(false)} className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5">Close</button>
                             </div>
                         </div>
 
-                        <div className="flex min-w-max flex-1">
-                            {boardCardsByStaff.map(({ staff, cards }) => (
-                                <div key={staff.id} className="w-72 shrink-0 border-r border-white/10">
-                                    <div className="sticky top-0 z-10 flex h-24 flex-col items-center justify-center gap-2 border-b border-white/10 bg-[#171a1d] px-4">
-                                        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-cyan-300/40 bg-slate-800 text-sm font-semibold text-cyan-200">
-                                            {(staff.name || '?').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+                        <div className="flex min-h-0 flex-1 overflow-auto">
+                            <div className="sticky left-0 z-30 w-16 shrink-0 border-r border-white/10 bg-[#0b0b0c]">
+                                <div className="h-28 border-b border-white/10" />
+                                <div className="relative" style={{ height: `${boardCanvasHeight}px` }}>
+                                    {boardHourMarks.slice(0, -1).map((minutes) => (
+                                        <div key={minutes} className="flex h-20 items-start justify-end border-b border-white/10 px-2 pt-2 text-right text-xs font-semibold leading-tight text-slate-300">
+                                            <span>{formatHourLabel(Math.floor(minutes / 60)).replace(' ', '\n')}</span>
                                         </div>
-                                        <div className="text-center text-sm font-medium text-slate-100">{staff.name}</div>
-                                    </div>
-                                    <div className="relative" style={{ height: `${(boardHourMarks.length - 1) * 80}px` }}>
-                                        {boardHourMarks.slice(0, -1).map((minutes) => (
-                                            <div key={`${staff.id}-${minutes}`} className="h-20 border-b border-white/5" />
-                                        ))}
-                                        {cards.map((appt) => (
-                                            <button
-                                                key={appt.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowBoardView(false);
-                                                    if (appt.status === 'confirmed' || appt.status === 'in_progress' || appt.status === 'completed') openCompleteService(appt);
-                                                    else startEdit(appt);
-                                                }}
-                                                className="absolute overflow-hidden rounded-lg border p-2 text-left shadow-lg transition hover:scale-[1.01]"
-                                                style={{
-                                                    ...appt.cardStyle,
-                                                    top: `${appt.top}%`,
-                                                    height: `${appt.height}%`,
-                                                    left: `calc(${appt.left}% + 0.5rem)`,
-                                                    width: `calc(${appt.width}% - 0.75rem)`,
-                                                    zIndex: appt.zIndex,
-                                                }}
-                                            >
-                                                <div className="text-xs font-black text-black">{appt.timeLabel}</div>
-                                                <div className="mt-1 text-base font-black leading-tight text-black">{appt.customer_name}</div>
-                                                <div className="text-sm font-extrabold leading-tight text-black">{appt.service_name}</div>
-                                                {!appt.isPaid ? <div className="mt-1 text-sm font-black uppercase leading-tight text-black">{appt.category}</div> : null}
-                                                {appt.customer_package_id ? <div className="mt-1 text-xs font-black text-black">Package session</div> : null}
-                                                {appt.isPaid ? <div className="mt-1 text-xs font-black text-black">Paid</div> : null}
-                                                {appt.awaiting_checkout ? <div className="mt-1 text-xs font-black text-black">Needs payment</div> : null}
-                                            </button>
-                                        ))}
-                                    </div>
+                                    ))}
                                 </div>
-                            ))}
-                            {boardCardsByStaff.length === 0 ? (
-                                <div className="flex flex-1 items-center justify-center text-sm text-slate-400">No staff selected.</div>
-                            ) : null}
+                            </div>
+
+                            <div className="relative flex min-w-max flex-1">
+                                {calendarQuickAction ? (
+                                    <div
+                                        className="absolute z-40 w-64 overflow-hidden rounded-lg border border-white/10 bg-[#242424] shadow-2xl"
+                                        style={{
+                                            left: `${Math.max(8, (calendarQuickAction.staffIndex * 288) + 16)}px`,
+                                            top: `${112 + Math.max(0, ((calendarQuickAction.minutes - boardStartMinutes) / boardTotalMinutes) * boardCanvasHeight)}px`,
+                                        }}
+                                    >
+                                        <div className="flex items-center justify-between bg-white/5 px-4 py-3">
+                                            <div className="text-lg font-bold text-white">
+                                                {new Date(calendarQuickAction.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                            </div>
+                                            <button type="button" className="text-xl leading-none text-slate-300 hover:text-white" onClick={() => setCalendarQuickAction(null)}>x</button>
+                                        </div>
+                                        <div className="space-y-1 p-3">
+                                            <button type="button" onClick={() => seedCreateFromCalendar(calendarQuickAction)} className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-semibold text-slate-100 hover:bg-white/5">
+                                                <span className="grid h-7 w-7 place-items-center rounded-full border border-white/15 text-base">+</span>
+                                                Add appointment
+                                            </button>
+                                            <button type="button" onClick={() => seedCreateFromCalendar(calendarQuickAction, true)} className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-semibold text-slate-100 hover:bg-white/5">
+                                                <span className="grid h-7 w-7 place-items-center rounded-full border border-white/15 text-base">G</span>
+                                                Add group appointment
+                                            </button>
+                                            <button type="button" onClick={() => seedBlockedTimeFromCalendar(calendarQuickAction)} className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-semibold text-slate-100 hover:bg-white/5">
+                                                <span className="grid h-7 w-7 place-items-center rounded-full border border-white/15 text-base">B</span>
+                                                Add blocked time
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {boardCardsByStaff.map(({ staff, cards, blocks }, staffIndex) => (
+                                    <div key={staff.id} className="w-72 shrink-0 border-r border-white/10">
+                                        <div className="sticky top-0 z-20 flex h-28 flex-col items-center justify-center gap-2 border-b border-white/10 bg-[#171718] px-4">
+                                            <div className="grid h-14 w-14 place-items-center rounded-full border-2 border-teal-300 bg-[#262628] text-sm font-bold text-teal-100 shadow-[0_0_0_3px_rgba(124,58,237,0.45)]">
+                                                {(staff.name || '?').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+                                            </div>
+                                            <div className="max-w-full truncate text-center text-sm font-bold text-slate-100">{staff.name}</div>
+                                        </div>
+                                        <div className="relative" style={{ height: `${boardCanvasHeight}px` }}>
+                                            {boardHourMarks.slice(0, -1).map((minutes) => (
+                                                <div key={`${staff.id}-${minutes}`} className="h-20 border-b border-white/10" />
+                                            ))}
+                                            {boardSlotMarks.map((minutes) => {
+                                                const top = Math.max(0, ((minutes - boardStartMinutes) / boardTotalMinutes) * 100);
+                                                const height = Math.max(1, (boardSlotInterval / boardTotalMinutes) * 100);
+                                                return (
+                                                    <button
+                                                        key={`${staff.id}-slot-${minutes}`}
+                                                        type="button"
+                                                        onClick={() => openCalendarQuickAction(staff.id, minutes, staffIndex)}
+                                                        className="absolute left-0 w-full border-t border-white/[0.035] text-left text-[0px] hover:bg-violet-500/10 focus:bg-violet-500/15"
+                                                        style={{ top: `${top}%`, height: `${height}%` }}
+                                                        aria-label={`Create at ${calendarSlotToDateTimeLocal(minutes)} with ${staff.name}`}
+                                                    />
+                                                );
+                                            })}
+                                            {blocks.map((block) => (
+                                                <div
+                                                    key={`block-${block.id}`}
+                                                    className="absolute left-2 right-2 z-10 overflow-hidden rounded-md border border-white/10 bg-[repeating-linear-gradient(135deg,rgba(255,255,255,0.12)_0,rgba(255,255,255,0.12)_1px,rgba(255,255,255,0.04)_1px,rgba(255,255,255,0.04)_6px)] px-3 py-2 text-left"
+                                                    style={{ top: `${block.top}%`, height: `${block.height}%` }}
+                                                >
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div>
+                                                            <div className="text-xs font-black text-slate-200">{block.timeLabel}</div>
+                                                            <div className="mt-1 text-xs font-bold text-slate-300">{block.title}</div>
+                                                        </div>
+                                                        {!isStaff ? (
+                                                            <button
+                                                                type="button"
+                                                                className="text-xs font-bold text-slate-400 hover:text-white"
+                                                                onClick={() => router.delete(route('appointments.blocked-time.destroy', block.id), { preserveScroll: true })}
+                                                                aria-label="Remove blocked time"
+                                                            >
+                                                                x
+                                                            </button>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {cards.map((appt) => (
+                                                <button
+                                                    key={appt.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setCalendarQuickAction(null);
+                                                        startEdit(appt);
+                                                    }}
+                                                    className="absolute overflow-hidden rounded-md border p-2 text-left shadow-lg transition hover:scale-[1.01]"
+                                                    style={{
+                                                        ...appt.cardStyle,
+                                                        top: `${appt.top}%`,
+                                                        height: `${appt.height}%`,
+                                                        left: `calc(${appt.left}% + 0.5rem)`,
+                                                        width: `calc(${appt.width}% - 0.75rem)`,
+                                                        zIndex: appt.zIndex + 10,
+                                                    }}
+                                                >
+                                                    <div className="text-xs font-black text-black">{appt.timeLabel}</div>
+                                                    <div className="mt-1 text-sm font-black leading-tight text-black">{appt.customer_name}</div>
+                                                    <div className="text-xs font-extrabold leading-tight text-black">{appt.service_name}</div>
+                                                    {appt.customer_package_id ? <div className="mt-1 text-[11px] font-black text-black">Package session</div> : null}
+                                                    {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-black text-black">Needs payment</div> : null}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                                {boardCardsByStaff.length === 0 ? (
+                                    <div className="flex flex-1 items-center justify-center text-sm text-slate-400">No staff selected.</div>
+                                ) : null}
+                            </div>
                         </div>
                     </div>
+
+                    {calendarDrawer ? (
+                        <aside className="flex w-[410px] shrink-0 flex-col border-l border-white/10 bg-[#0f0f10]">
+                            <div className="flex items-start justify-between border-b border-white/10 px-6 py-5">
+                                <div>
+                                    <h3 className="text-2xl font-black text-white">
+                                        {calendarDrawer === 'blocked' ? 'Add blocked time' : (calendarDrawer === 'group' ? 'Group appointment' : 'Add appointment')}
+                                    </h3>
+                                    <p className="mt-1 text-sm text-slate-400">
+                                        {calendarDrawer === 'blocked' ? 'Reserve staff time away from client bookings.' : 'Select a client and service for this calendar slot.'}
+                                    </p>
+                                </div>
+                                <button type="button" className="text-2xl leading-none text-slate-300 hover:text-white" onClick={() => setCalendarDrawer(null)}>x</button>
+                            </div>
+
+                            {calendarDrawer === 'blocked' ? (
+                                <form
+                                    className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-6 py-5"
+                                    onSubmit={(e) => {
+                                        e.preventDefault();
+                                        blockForm.post(route('appointments.blocked-time.store'), {
+                                            preserveScroll: true,
+                                            onSuccess: () => {
+                                                blockForm.reset();
+                                                setCalendarDrawer(null);
+                                            },
+                                        });
+                                    }}
+                                >
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Team member</label>
+                                        <select className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" value={blockForm.data.staff_profile_id} onChange={(e) => blockForm.setData('staff_profile_id', e.target.value)}>
+                                            <option value="">All team</option>
+                                            {staffProfiles.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
+                                        </select>
+                                        {fieldError(blockForm, 'staff_profile_id')}
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Title</label>
+                                        <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" value={blockForm.data.title} onChange={(e) => blockForm.setData('title', e.target.value)} required />
+                                        {fieldError(blockForm, 'title')}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Start</label>
+                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={blockForm.data.starts_at} onChange={(e) => blockForm.setData('starts_at', e.target.value)} required />
+                                            {fieldError(blockForm, 'starts_at')}
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-xs font-bold uppercase text-slate-400">End</label>
+                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={blockForm.data.ends_at} onChange={(e) => blockForm.setData('ends_at', e.target.value)} required />
+                                            {fieldError(blockForm, 'ends_at')}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Notes</label>
+                                        <textarea className="min-h-[96px] w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" value={blockForm.data.notes} onChange={(e) => blockForm.setData('notes', e.target.value)} />
+                                        {fieldError(blockForm, 'notes')}
+                                    </div>
+                                    <div className="mt-auto flex justify-end gap-2 border-t border-white/10 pt-4">
+                                        <button type="button" className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-slate-200" onClick={() => setCalendarDrawer(null)}>Cancel</button>
+                                        <button className="rounded-full bg-violet-500 px-5 py-2 text-sm font-bold text-white hover:bg-violet-400" disabled={blockForm.processing}>Save</button>
+                                    </div>
+                                </form>
+                            ) : (
+                                <form
+                                    className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-6 py-5"
+                                    onSubmit={(e) => {
+                                        e.preventDefault();
+                                        createForm.post(route('appointments.store'), {
+                                            preserveScroll: true,
+                                            onSuccess: () => {
+                                                setCalendarDrawer(null);
+                                                createForm.reset();
+                                                setCreateServiceSearch('');
+                                                setCreateSelectedCustomerId('');
+                                                setCreateCustomerMode('new');
+                                            },
+                                        });
+                                    }}
+                                >
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="grid h-10 w-10 place-items-center rounded-full bg-violet-500/20 text-xl text-violet-200">+</div>
+                                            <div>
+                                                <div className="text-sm font-bold text-white">Add client</div>
+                                                <button type="button" className="text-xs font-semibold text-violet-300" onClick={() => createForm.setData({ ...createForm.data, customer_name: 'Walk-in Client', customer_phone: '', customer_email: '' })}>Or leave empty for walk-ins</button>
+                                            </div>
+                                        </div>
+                                        <select
+                                            className="w-full rounded-md border border-violet-500 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                            value={createSelectedCustomerId}
+                                            onChange={(e) => {
+                                                const id = e.target.value;
+                                                setCreateSelectedCustomerId(id);
+                                                setCreateCustomerMode(id ? 'existing' : 'new');
+                                                const customer = customers.find((c) => String(c.id) === id);
+                                                applyCustomerToCreateForm(customer || null);
+                                            }}
+                                        >
+                                            <option value="">Search client or leave empty</option>
+                                            {customers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` - ${c.phone}` : ''}</option>)}
+                                        </select>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <input className="rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" placeholder="Client name" value={createForm.data.customer_name} onChange={(e) => createForm.setData('customer_name', e.target.value)} required />
+                                            <input className="rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" placeholder="Phone" value={createForm.data.customer_phone} onChange={(e) => createForm.setData('customer_phone', e.target.value)} />
+                                        </div>
+                                        {fieldError(createForm, 'customer_name')}
+                                    </div>
+
+                                    <div>
+                                        <h4 className="mb-3 text-2xl font-black text-white">Select a service</h4>
+                                        <input className="w-full rounded-md border border-violet-500 bg-[#18181a] px-3 py-3 text-sm text-white" value={createServiceSearch} onChange={(e) => setCreateServiceSearch(e.target.value)} placeholder="Search by service name" />
+                                        <div className="mt-4 max-h-[360px] space-y-5 overflow-auto pr-1">
+                                            {Object.entries(createFilteredServices.reduce((groups, service) => {
+                                                const key = service.category || 'Uncategorized';
+                                                groups[key] = [...(groups[key] || []), service];
+                                                return groups;
+                                            }, {})).map(([category, categoryServices]) => (
+                                                <div key={category}>
+                                                    <div className="mb-2 flex items-center gap-2">
+                                                        <h5 className="text-base font-black text-white">{category}</h5>
+                                                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-bold text-slate-300">{categoryServices.length}</span>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        {categoryServices.map((service) => {
+                                                            const selected = createSelectedServices.includes(String(service.id));
+                                                            return (
+                                                                <button
+                                                                    key={service.id}
+                                                                    type="button"
+                                                                    className={`flex w-full items-start justify-between border-l-2 px-3 py-3 text-left hover:bg-white/5 ${selected ? 'border-violet-400 bg-violet-500/10' : 'border-cyan-300/80'}`}
+                                                                    onClick={() => {
+                                                                        const sid = String(service.id);
+                                                                        const nextIds = selected
+                                                                            ? createSelectedServices.filter((id) => id !== sid)
+                                                                            : [...createSelectedServices, sid];
+                                                                        createForm.setData((prev) => ({
+                                                                            ...prev,
+                                                                            service_ids: nextIds,
+                                                                            service_id: nextIds[0] || '',
+                                                                            service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
+                                                                            scheduled_end: calculateSuggestedEnd(prev.scheduled_start, nextIds),
+                                                                        }));
+                                                                    }}
+                                                                >
+                                                                    <span>
+                                                                        <span className="block text-sm font-bold text-white">{service.name}</span>
+                                                                        <span className="mt-1 block text-xs text-slate-400">{service.duration_minutes}m</span>
+                                                                    </span>
+                                                                    <span className="text-sm font-bold text-slate-200">{formatMoney(service.price, currencyCode)}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {fieldError(createForm, 'service_ids')}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Team member</label>
+                                            <select className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}>
+                                                {staffOptions.map((staff) => <option key={staff.value || 'auto'} value={staff.value}>{staff.label}</option>)}
+                                            </select>
+                                            {fieldError(createForm, 'staff_profile_id')}
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Status</label>
+                                            <select className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" value={createForm.data.status} onChange={(e) => createForm.setData('status', e.target.value)}>
+                                                <option value="confirmed">confirmed</option>
+                                                <option value="pending">pending</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Start</label>
+                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={createForm.data.scheduled_start} onChange={(e) => createForm.setData((prev) => ({ ...prev, scheduled_start: e.target.value, scheduled_end: calculateSuggestedEnd(e.target.value, prev.service_ids) }))} required />
+                                            {fieldError(createForm, 'scheduled_start')}
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-xs font-bold uppercase text-slate-400">End</label>
+                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={createForm.data.scheduled_end} onChange={(e) => createForm.setData('scheduled_end', e.target.value)} />
+                                        </div>
+                                    </div>
+                                    <textarea className="min-h-[82px] w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} placeholder="Appointment notes" />
+                                    <div className="mt-auto flex justify-end gap-2 border-t border-white/10 pt-4">
+                                        <button type="button" className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-slate-200" onClick={() => setCalendarDrawer(null)}>Cancel</button>
+                                        <button className="rounded-full bg-violet-500 px-5 py-2 text-sm font-bold text-white hover:bg-violet-400" disabled={createForm.processing}>Save appointment</button>
+                                    </div>
+                                </form>
+                            )}
+                        </aside>
+                    ) : null}
                 </div>
             </Modal>
         </AuthenticatedLayout>

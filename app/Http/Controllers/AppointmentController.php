@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
+use App\Models\AppointmentBlock;
 use App\Models\AppointmentPhoto;
 use App\Models\AppointmentProductUsage;
 use App\Models\AppointmentServiceLog;
@@ -163,6 +164,22 @@ class AppointmentController extends Controller
 
         return Inertia::render('Appointments/Index', [
             'appointments' => $appointments,
+            'appointmentBlocks' => AppointmentBlock::query()
+                ->with('staffProfile.user:id,name')
+                ->where('starts_at', '>=', now()->subDays(30))
+                ->where('starts_at', '<=', now()->addDays((int) $rules->max_advance_days))
+                ->orderBy('starts_at')
+                ->limit(500)
+                ->get()
+                ->map(fn (AppointmentBlock $block) => [
+                    'id' => $block->id,
+                    'staff_profile_id' => $block->staff_profile_id,
+                    'staff_name' => $block->staffProfile?->user?->name,
+                    'title' => $block->title,
+                    'starts_at' => $block->starts_at,
+                    'ends_at' => $block->ends_at,
+                    'notes' => $block->notes,
+                ]),
             'services' => SalonService::query()
                 ->where(function ($query) use ($appointmentServiceIds): void {
                     $query->where('is_active', true)
@@ -196,6 +213,60 @@ class AppointmentController extends Controller
             'defaultStart' => $rules->nextDefaultAppointmentStart(),
             'gift_cards_for_checkout' => $giftCardsForCheckout,
         ]);
+    }
+
+    public function storeBlockedTime(Request $request, BookingAvailabilityService $availabilityService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+
+        $data = $request->validate([
+            'staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
+            'title' => ['required', 'string', 'max:255'],
+            'starts_at' => ['required', 'date'],
+            'ends_at' => ['required', 'date', 'after:starts_at'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $start = Carbon::parse($data['starts_at']);
+        $end = Carbon::parse($data['ends_at']);
+
+        if ($salonError = $availabilityService->validateSalonHours($start, $end)) {
+            return back()->withErrors(['starts_at' => $salonError])->withInput();
+        }
+
+        if (! empty($data['staff_profile_id'])) {
+            $staffError = $availabilityService->validateStaffAvailability((int) $data['staff_profile_id'], $start, $end);
+            if ($staffError && $staffError !== 'Selected time overlaps blocked time.') {
+                return back()->withErrors(['staff_profile_id' => $staffError])->withInput();
+            }
+        }
+
+        $block = AppointmentBlock::create([
+            ...$data,
+            'created_by' => $request->user()?->id,
+            'starts_at' => $start,
+            'ends_at' => $end,
+        ]);
+
+        Audit::log($request->user()?->id, 'appointment_block.created', 'AppointmentBlock', $block->id, [
+            'starts_at' => $block->starts_at?->toDateTimeString(),
+            'ends_at' => $block->ends_at?->toDateTimeString(),
+            'staff_profile_id' => $block->staff_profile_id,
+        ]);
+
+        return back()->with('status', 'Blocked time added.');
+    }
+
+    public function destroyBlockedTime(Request $request, AppointmentBlock $block): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+
+        $blockId = $block->id;
+        $block->delete();
+
+        Audit::log($request->user()?->id, 'appointment_block.deleted', 'AppointmentBlock', $blockId);
+
+        return back()->with('status', 'Blocked time removed.');
     }
 
     public function store(Request $request, BookingAvailabilityService $availabilityService, StaffAppointmentNotificationService $staffAppointmentNotificationService): RedirectResponse

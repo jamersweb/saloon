@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AppointmentBlock;
 use App\Models\BookingRule;
 use App\Models\LeaveRequest;
 use App\Models\StaffProfile;
@@ -117,6 +118,19 @@ class BookingAvailabilityService
 
         if ($onLeave) {
             return 'Selected staff is on approved leave.';
+        }
+
+        $blocked = AppointmentBlock::query()
+            ->where(function ($query) use ($staffProfileId): void {
+                $query->where('staff_profile_id', $staffProfileId)
+                    ->orWhereNull('staff_profile_id');
+            })
+            ->where('starts_at', '<', $end)
+            ->where('ends_at', '>', $start)
+            ->exists();
+
+        if ($blocked) {
+            return 'Selected time overlaps blocked time.';
         }
 
         return null;
