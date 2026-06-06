@@ -1772,9 +1772,15 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 </div>
             </Modal>
 
-            {!isStaff ? <Modal show={Boolean(editingId)} maxWidth="2xl" onClose={() => setEditingId(null)}>
-                <div className="p-6">
-                    <h3 className="mb-4 text-base font-semibold text-slate-800">Edit Appointment #{editingId}</h3>
+            {!isStaff ? <Modal show={Boolean(editingId)} maxWidth="5xl" onClose={() => setEditingId(null)}>
+                <div className="max-h-[90vh] overflow-auto bg-[#0f0f10] p-6 text-white [&_.ta-field-label]:mb-1 [&_.ta-field-label]:block [&_.ta-field-label]:text-xs [&_.ta-field-label]:font-bold [&_.ta-field-label]:uppercase [&_.ta-field-label]:text-slate-400 [&_.ta-input]:rounded-md [&_.ta-input]:border [&_.ta-input]:border-white/15 [&_.ta-input]:bg-[#18181a] [&_.ta-input]:px-3 [&_.ta-input]:py-3 [&_.ta-input]:text-sm [&_.ta-input]:text-white">
+                    <div className="mb-5 flex items-start justify-between border-b border-white/10 pb-5">
+                        <div>
+                            <h3 className="text-2xl font-black text-white">Edit appointment #{editingId}</h3>
+                            <p className="mt-1 text-sm text-slate-400">Update the client, services, staff, status, and scheduled time.</p>
+                        </div>
+                        <button type="button" className="text-2xl leading-none text-slate-300 hover:text-white" onClick={() => setEditingId(null)}>x</button>
+                    </div>
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
@@ -1801,20 +1807,20 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 },
                             });
                         }}
-                        className="grid gap-3 md:grid-cols-2"
+                        className="grid gap-5 md:grid-cols-2"
                     >
-                        <div className="md:col-span-2 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
-                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer type</span>
-                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-                                <input type="radio" name="edit_customer_mode" className="text-indigo-600" checked={editCustomerMode === 'new'} onChange={() => { setEditCustomerMode('new'); setEditSelectedCustomerId(''); }} />
+                        <div className="md:col-span-2 flex flex-wrap items-center gap-4 rounded-md border border-white/10 bg-white/[0.03] px-4 py-4">
+                            <span className="text-xs font-bold uppercase text-slate-400">Customer type</span>
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-200">
+                                <input type="radio" name="edit_customer_mode" className="text-violet-500" checked={editCustomerMode === 'new'} onChange={() => { setEditCustomerMode('new'); setEditSelectedCustomerId(''); }} />
                                 Keep / edit details
                             </label>
-                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-                                <input type="radio" name="edit_customer_mode" className="text-indigo-600" checked={editCustomerMode === 'existing'} onChange={() => { setEditCustomerMode('existing'); setEditSelectedCustomerId(''); }} />
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-200">
+                                <input type="radio" name="edit_customer_mode" className="text-violet-500" checked={editCustomerMode === 'existing'} onChange={() => { setEditCustomerMode('existing'); setEditSelectedCustomerId(''); }} />
                                 Link to existing customer
                             </label>
-                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-                                <input type="radio" name="edit_customer_mode" className="text-indigo-600" checked={editCustomerMode === 'package'} onChange={() => { setEditCustomerMode('package'); setEditSelectedCustomerId(''); applyCustomerToEditForm(null); }} />
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-200">
+                                <input type="radio" name="edit_customer_mode" className="text-violet-500" checked={editCustomerMode === 'package'} onChange={() => { setEditCustomerMode('package'); setEditSelectedCustomerId(''); applyCustomerToEditForm(null); }} />
                                 Package customer
                             </label>
                         </div>
@@ -1831,20 +1837,20 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         applyCustomerToEditForm(customer || null);
                                     }}
                                 >
-                                    <option value="">Choose a customer…</option>
+                                    <option value="">Choose a customer...</option>
                                     {customers.map((c) => (
                                         <option key={c.id} value={c.id}>
-                                            {c.name}{c.phone ? ` — ${c.phone}` : ''}
+                                            {c.name}{c.phone ? ` - ${c.phone}` : ''}
                                         </option>
                                     ))}
                                 </select>
                                 {editCustomerHasGiftCards ? (
-                                    <p className="mt-2 text-sm font-semibold text-emerald-800">Gift card remaining balance: {formatMoney(editCustomerGiftBalance, currencyCode)}</p>
+                                    <p className="mt-2 text-sm font-semibold text-emerald-300">Gift card remaining balance: {formatMoney(editCustomerGiftBalance, currencyCode)}</p>
                                 ) : null}
                             </div>
                         ) : null}
                         {editCustomerMode === 'package' && editSelectedCustomerId ? (
-                            <div className="md:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+                            <div className="md:col-span-2 rounded-md border border-emerald-400/30 bg-emerald-500/10 p-4">
                                 <label className="ta-field-label">Select package</label>
                                 <select
                                     className="ta-input"
@@ -1856,7 +1862,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         editForm.setData('package_service_ids', []);
                                     }}
                                 >
-                                    <option value="">Choose customer package…</option>
+                                    <option value="">Choose customer package...</option>
                                     {editAvailablePackages.map((pkg) => (
                                         <option key={pkg.id} value={pkg.id}>
                                             {pkg.package_name}
@@ -1866,7 +1872,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 {editSelectedPackage ? (
                                     <div className="mt-3 flex flex-wrap gap-2">
                                         {editSelectedPackage.services.map((service) => (
-                                            <span key={service.id} className={`rounded-full px-2 py-1 text-xs ${service.remaining_sessions > 0 ? 'border border-emerald-200 bg-white text-emerald-800' : 'border border-slate-200 bg-slate-100 text-slate-500'}`}>
+                                            <span key={service.id} className={`rounded-full px-2 py-1 text-xs ${service.remaining_sessions > 0 ? 'border border-emerald-300/40 bg-emerald-400/10 text-emerald-200' : 'border border-white/10 bg-white/5 text-slate-500'}`}>
                                                 {service.name} {service.remaining_sessions}/{service.included_sessions} left
                                             </span>
                                         ))}
@@ -1880,16 +1886,16 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                         <div>
                             <label className="ta-field-label">Services</label>
                             <input className="ta-input" value={editServiceSearch} onChange={(e) => setEditServiceSearch(e.target.value)} placeholder="Search by service or category" />
-                            <div className="mt-2 max-h-36 overflow-auto rounded-lg border border-slate-200 bg-white">
+                            <div className="mt-2 max-h-52 overflow-auto rounded-md border border-white/15 bg-[#18181a]">
                                 {editFilteredServices.map((s) => (
                                     <button
                                         key={s.id}
                                         type="button"
-                                        className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                                        className="block w-full border-b border-white/10 px-3 py-3 text-left text-xs text-slate-300 hover:bg-white/5"
                                         onClick={() => handleEditServiceChange([...editSelectedServices, String(s.id)])}
                                     >
-                                        <div className="font-medium text-slate-700">{s.name}</div>
-                                        <div className="mt-0.5 text-[11px] text-slate-500">{s.category || 'Uncategorized'} • {s.duration_minutes}m • <span className="font-bold text-slate-700">{formatMoney(s.price, currencyCode)}</span></div>
+                                        <div className="font-bold text-white">{s.name}</div>
+                                        <div className="mt-0.5 text-[11px] text-slate-400">{s.category || 'Uncategorized'} - {s.duration_minutes}m - <span className="font-bold text-slate-200">{formatMoney(s.price, currencyCode)}</span></div>
                                     </button>
                                 ))}
                                 {editFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
@@ -1899,8 +1905,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     const s = services.find((x) => String(x.id) === String(id));
                                     if (!s) return null;
                                     return (
-                                        <button key={id} type="button" className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => handleEditServiceChange(editSelectedServices.filter((x) => x !== id))}>
-                                            {s.name}{Number(editForm.data.service_quantities?.[String(id)] || 1) > 1 ? ` x${editForm.data.service_quantities?.[String(id)]}` : ''} ✕
+                                        <button key={id} type="button" className="rounded-full border border-rose-300/40 bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-200" onClick={() => handleEditServiceChange(editSelectedServices.filter((x) => x !== id))}>
+                                            {s.name}{Number(editForm.data.service_quantities?.[String(id)] || 1) > 1 ? ` x${editForm.data.service_quantities?.[String(id)]}` : ''} x
                                         </button>
                                     );
                                 })}
@@ -1909,35 +1915,35 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                             {fieldError(editForm, 'service_ids')}
                         </div>
                         {editSelectedCustomer && editCustomerHasGiftCards ? (
-                            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gift Card Check</p>
-                                <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-700">
+                            <div className="md:col-span-2 rounded-md border border-white/10 bg-white/[0.03] p-4">
+                                <p className="text-xs font-bold uppercase text-slate-400">Gift card check</p>
+                                <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-200">
                                     <span>Gift card balance: <strong>{formatMoney(editCustomerGiftBalance, currencyCode)}</strong></span>
                                     <span>Estimated services total: <strong>{formatMoney(editEstimatedServicesTotal, currencyCode)}</strong></span>
                                 </div>
                                 {editGiftCardShortfall > 0 ? (
-                                    <p className="mt-2 text-sm font-semibold text-red-600">Warning: selected services exceed gift card balance by {formatMoney(editGiftCardShortfall, currencyCode)}.</p>
+                                    <p className="mt-2 text-sm font-semibold text-rose-300">Warning: selected services exceed gift card balance by {formatMoney(editGiftCardShortfall, currencyCode)}.</p>
                                 ) : null}
                                 {!editGiftCardShortfall && editCustomerGiftBalance > 0 && editSelectedServices.length > 0 ? (
-                                    <p className="mt-2 text-xs text-emerald-700">Selected services fit within the current gift card balance.</p>
+                                    <p className="mt-2 text-xs text-emerald-300">Selected services fit within the current gift card balance.</p>
                                 ) : null}
                             </div>
                         ) : null}
                         {editHasMultipleServices ? (
                             <div>
                                 <label className="ta-field-label">Staff</label>
-                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">Hidden for multi-service bookings. Assign staff per service below.</div>
+                                <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-sm font-semibold text-slate-300">Hidden for multi-service bookings. Assign staff per service below.</div>
                             </div>
                         ) : (
                             <div>
-                                <SearchableSelect label="Staff" value={editForm.data.staff_profile_id} onChange={(id) => editForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
-                                <p className="mt-1 text-xs font-semibold text-slate-700">Select staff or leave auto / unassigned.</p>
+                                <SearchableSelect variant="dark" label="Staff" value={editForm.data.staff_profile_id} onChange={(id) => editForm.setData('staff_profile_id', id)} options={staffOptions} placeholder="Search staff" />
+                                <p className="mt-1 text-xs font-semibold text-slate-400">Select staff or leave auto / unassigned.</p>
                                 {fieldError(editForm, 'staff_profile_id')}
                             </div>
                         )}
                         {editHasMultipleServices ? (
-                            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">Staff Per Service</p>
+                            <div className="md:col-span-2 rounded-md border border-white/10 bg-white/[0.03] p-4">
+                                <p className="mb-2 text-xs font-bold uppercase text-slate-400">Staff per service</p>
                                 <div className="grid gap-2 md:grid-cols-2">
                                     {editSelectedServices.map((serviceId) => {
                                         const service = services.find((s) => String(s.id) === String(serviceId));
@@ -1959,6 +1965,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     />
                                                 </div>
                                                 <SearchableSelect
+                                                    variant="dark"
                                                     value={editForm.data.staff_assignments?.[assignmentKey] || ''}
                                                     onChange={(id) => {
                                                         editForm.clearErrors('staff_profile_id', 'staff_assignments');
@@ -1984,18 +1991,18 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         );
                                     })}
                                 </div>
-                                <p className="mt-2 text-xs font-semibold text-slate-700">Staff marked busy already have an overlapping appointment in the current schedule view.</p>
+                                <p className="mt-2 text-xs font-semibold text-slate-400">Staff marked busy already have an overlapping appointment in the current schedule view.</p>
                                 {fieldError(editForm, 'staff_assignments')}
                             </div>
                         ) : null}
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={editForm.data.status} onChange={(e) => editForm.setData('status', e.target.value)}><option value="pending">pending</option><option value="confirmed">confirmed</option><option value="in_progress">in_progress</option><option value="completed">completed</option><option value="cancelled">cancelled</option><option value="no_show">no_show</option></select>{fieldError(editForm, 'status')}</div>
                         <div>
                             <label className="ta-field-label">Scheduled Start</label>
-                            <p className="mb-1 text-xs font-semibold text-slate-700">Walk-ins can start from the current time; future bookings can be scheduled up to the booking horizon.</p>
+                            <p className="mb-1 text-xs font-semibold text-slate-400">Walk-ins can start from the current time; future bookings can be scheduled up to the booking horizon.</p>
                             <input
                                 key={`edit-start-${editStartMountKey}`}
                                 ref={editStartRef}
-                                className="ta-input"
+                                className="ta-input [color-scheme:dark]"
                                 type="datetime-local"
                                 defaultValue={editStartDefault}
                                 onInput={(e) => syncEditStartFromInput(e.currentTarget.value)}
@@ -2006,9 +2013,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                             {fieldError(editForm, 'scheduled_start')}
                         </div>
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
-                        <div className="md:col-span-2 flex justify-end gap-2 pt-2">
-                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingId(null)}>Close</button>
-                            <button className="ta-btn-primary" disabled={editForm.processing}>Save</button>
+                        <div className="md:col-span-2 flex justify-end gap-2 border-t border-white/10 pt-5">
+                            <button type="button" className="rounded-full border border-white/15 px-5 py-2 text-sm font-bold text-slate-200 hover:bg-white/5" onClick={() => setEditingId(null)}>Close</button>
+                            <button className="rounded-full bg-violet-500 px-5 py-2 text-sm font-bold text-white hover:bg-violet-400 disabled:opacity-60" disabled={editForm.processing}>Save</button>
                         </div>
                     </form>
                 </div>
