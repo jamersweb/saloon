@@ -23,6 +23,7 @@ use App\Services\GiftCardService;
 use App\Services\LoyaltyService;
 use App\Services\PackageBalanceService;
 use App\Services\StaffAppointmentNotificationService;
+use App\Services\StaffScheduleGeneratorService;
 use App\Services\TaxInvoiceDraftFromAppointmentService;
 use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoicePaymentService;
@@ -41,7 +42,7 @@ use Inertia\Response;
 
 class AppointmentController extends Controller
 {
-    public function staffAvailability(Request $request, BookingAvailabilityService $availabilityService): JsonResponse
+    public function staffAvailability(Request $request, BookingAvailabilityService $availabilityService, StaffScheduleGeneratorService $staffScheduleGenerator): JsonResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff', 'reception');
 
@@ -59,6 +60,8 @@ class AppointmentController extends Controller
         if ($end->lessThanOrEqualTo($start)) {
             $end = $start->copy()->addMinutes(30);
         }
+
+        $staffScheduleGenerator->fillGapsForActiveStaff($start, $start);
 
         $ignoreAppointmentId = isset($data['ignore_appointment_id']) ? (int) $data['ignore_appointment_id'] : null;
 
@@ -269,7 +272,7 @@ class AppointmentController extends Controller
         return back()->with('status', 'Blocked time removed.');
     }
 
-    public function store(Request $request, BookingAvailabilityService $availabilityService, StaffAppointmentNotificationService $staffAppointmentNotificationService): RedirectResponse
+    public function store(Request $request, BookingAvailabilityService $availabilityService, StaffScheduleGeneratorService $staffScheduleGenerator, StaffAppointmentNotificationService $staffAppointmentNotificationService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -301,6 +304,13 @@ class AppointmentController extends Controller
                 return back()->withErrors(['scheduled_start' => $salonError])->withInput();
             }
         }
+
+        $this->fillMissingSchedulesForPlans(
+            $servicePlans,
+            ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null,
+            $staffAssignments,
+            $staffScheduleGenerator,
+        );
 
         if (! empty($data['staff_profile_id']) || count($servicePlans) > 1 || $staffAssignments !== []) {
             $servicePlans = $this->attachStaffAssignments(
@@ -360,7 +370,7 @@ class AppointmentController extends Controller
         return back()->with('status', $count > 1 ? "Appointments created ({$count} services)." : 'Appointment created.');
     }
 
-    public function update(Request $request, Appointment $appointment, BookingAvailabilityService $availabilityService, StaffAppointmentNotificationService $staffAppointmentNotificationService): RedirectResponse
+    public function update(Request $request, Appointment $appointment, BookingAvailabilityService $availabilityService, StaffScheduleGeneratorService $staffScheduleGenerator, StaffAppointmentNotificationService $staffAppointmentNotificationService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -388,6 +398,13 @@ class AppointmentController extends Controller
                 return back()->withErrors(['scheduled_start' => $salonError])->withInput();
             }
         }
+
+        $this->fillMissingSchedulesForPlans(
+            $servicePlans,
+            ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null,
+            $staffAssignments,
+            $staffScheduleGenerator,
+        );
 
         if (! empty($data['staff_profile_id']) || count($servicePlans) > 1 || $staffAssignments !== []) {
             $servicePlans = $this->attachStaffAssignments(
@@ -1325,6 +1342,30 @@ class AppointmentController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @param array<int, array{service: SalonService, start: Carbon, end: Carbon}> $servicePlans
+     * @param array<int, int> $perServiceStaffMap
+     */
+    private function fillMissingSchedulesForPlans(array $servicePlans, ?int $selectedStaffId, array $perServiceStaffMap, StaffScheduleGeneratorService $staffScheduleGenerator): void
+    {
+        $staffIds = array_values(array_unique(array_filter([
+            $selectedStaffId,
+            ...array_values($perServiceStaffMap),
+        ], fn ($id) => $id !== null && $id !== '' && (int) $id > 0)));
+
+        $targetStaffIds = $staffIds !== []
+            ? array_map('intval', $staffIds)
+            : null;
+
+        foreach ($servicePlans as $plan) {
+            $staffScheduleGenerator->fillGapsForActiveStaff(
+                $plan['start'],
+                $plan['start'],
+                $targetStaffIds,
+            );
+        }
     }
 
     /**

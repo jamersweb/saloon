@@ -158,6 +158,66 @@ class AppointmentServiceWorkflowTest extends TestCase
         $this->assertSame(1, Customer::query()->count());
     }
 
+    public function test_store_auto_fills_missing_staff_schedule_for_selected_staff(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $manager = User::factory()->create(['role_id' => $managerRole->id]);
+        $staffUser = User::factory()->create(['role_id' => $managerRole->id, 'name' => 'Majd Alabaza']);
+
+        BookingRule::create([
+            'opening_time' => '10:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'VINA-03',
+            'is_active' => true,
+        ]);
+        $service = SalonService::create([
+            'name' => 'Blowdry Long and thick',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 175,
+            'is_active' => true,
+        ]);
+
+        $this->assertSame(0, StaffSchedule::query()->count());
+
+        $this->actingAs($manager)->post(route('appointments.store'), [
+            'customer_name' => 'Sonya Soltani',
+            'customer_phone' => '0559777560',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'staff_profile_id' => $staff->id,
+            'scheduled_start' => '2026-06-08 17:00:00',
+            'scheduled_end' => '2026-06-08 18:00:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('appointments', [
+            'customer_name' => 'Sonya Soltani',
+            'staff_profile_id' => $staff->id,
+            'service_id' => $service->id,
+        ]);
+        $this->assertTrue(
+            StaffSchedule::query()
+                ->where('staff_profile_id', $staff->id)
+                ->whereDate('schedule_date', '2026-06-08')
+                ->where('is_day_off', false)
+                ->exists(),
+        );
+    }
+
     public function test_store_persists_per_service_drawer_adjustments(): void
     {
         Queue::fake();

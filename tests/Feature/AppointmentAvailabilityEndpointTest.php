@@ -81,4 +81,40 @@ class AppointmentAvailabilityEndpointTest extends TestCase
             ->assertJsonPath('staff.1.id', $freeStaff->id)
             ->assertJsonPath('staff.1.available', true);
     }
+
+    public function test_staff_availability_endpoint_auto_fills_missing_schedule_rows(): void
+    {
+        $role = Role::create(['name' => 'manager', 'label' => 'Manager']);
+        $user = User::factory()->create(['role_id' => $role->id]);
+
+        BookingRule::create([
+            'opening_time' => '10:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staffUser = User::factory()->create(['role_id' => $role->id, 'name' => 'Majd Alabaza']);
+        $staff = StaffProfile::create(['user_id' => $staffUser->id, 'employee_code' => 'VINA-03', 'is_active' => true]);
+
+        $this->assertSame(0, StaffSchedule::query()->count());
+
+        $response = $this->actingAs($user)->get(route('appointments.staff-availability', [
+            'scheduled_start' => '2026-06-08 17:00:00',
+            'scheduled_end' => '2026-06-08 18:00:00',
+        ]));
+
+        $response->assertOk()
+            ->assertJsonPath('staff.0.id', $staff->id)
+            ->assertJsonPath('staff.0.available', true);
+
+        $this->assertTrue(
+            StaffSchedule::query()
+                ->where('staff_profile_id', $staff->id)
+                ->whereDate('schedule_date', '2026-06-08')
+                ->where('is_day_off', false)
+                ->exists(),
+        );
+    }
 }
