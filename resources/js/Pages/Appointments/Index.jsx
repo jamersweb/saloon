@@ -10,11 +10,101 @@ const statusLabels = { pending: 'Pending', confirmed: 'Confirm', in_progress: 'S
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 const isSeedReferenceNote = (value) => /^SEED-APPT-\d{12}-\d+$/i.test(String(value || '').trim());
 const pad2 = (value) => String(value).padStart(2, '0');
+const SALON_TIME_ZONE = 'Asia/Dubai';
+const salonDateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SALON_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+});
+
+const salonDateTimeParts = (date = new Date()) => {
+    const parts = Object.fromEntries(
+        salonDateFormatter
+            .formatToParts(date)
+            .filter((part) => part.type !== 'literal')
+            .map((part) => [part.type, part.value]),
+    );
+
+    return {
+        ymd: `${parts.year}-${parts.month}-${parts.day}`,
+        hour: Number(parts.hour || 0),
+        minute: Number(parts.minute || 0),
+    };
+};
+
+const salonTodayYmd = () => salonDateTimeParts().ymd;
+const salonNowMinutes = () => {
+    const parts = salonDateTimeParts();
+
+    return (parts.hour * 60) + parts.minute;
+};
+
+const minutesToClock = (minutes) => {
+    const normalized = ((Number(minutes || 0) % 1440) + 1440) % 1440;
+
+    return `${pad2(Math.floor(normalized / 60))}:${pad2(normalized % 60)}`;
+};
+
+const minutesToDateTimeLocal = (ymd, minutes) => `${ymd}T${minutesToClock(minutes)}`;
+
+const shiftYmdByDays = (ymd, days) => {
+    const [year, month, day] = String(ymd || '').split('-').map((part) => Number(part));
+    if (!year || !month || !day) return salonTodayYmd();
+    const date = new Date(Date.UTC(year, month - 1, day + Number(days || 0), 12, 0, 0));
+
+    return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+};
+
+const parseDateTimeParts = (value) => {
+    if (!value) return null;
+    const raw = String(value);
+    const localMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    if (localMatch && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw.trim())) {
+        return {
+            ymd: `${localMatch[1]}-${localMatch[2]}-${localMatch[3]}`,
+            hour: Number(localMatch[4]),
+            minute: Number(localMatch[5]),
+        };
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return localMatch ? {
+            ymd: `${localMatch[1]}-${localMatch[2]}-${localMatch[3]}`,
+            hour: Number(localMatch[4]),
+            minute: Number(localMatch[5]),
+        } : null;
+    }
+
+    return salonDateTimeParts(date);
+};
+
+const dateTimeLocalYmd = (value) => parseDateTimeParts(value)?.ymd || '';
+const dateTimeLocalMinutes = (value) => {
+    const parts = parseDateTimeParts(value);
+
+    return parts ? (parts.hour * 60) + parts.minute : Number.NaN;
+};
+
+const formatMinutesAmPm = (minutes) => {
+    const normalized = ((Number(minutes || 0) % 1440) + 1440) % 1440;
+    const hour = Math.floor(normalized / 60);
+    const minute = normalized % 60;
+    const suffix = hour >= 12 ? 'PM' : 'AM';
+
+    return `${hour % 12 || 12}:${pad2(minute)} ${suffix}`;
+};
 
 /** Parse datetime-local string to epoch ms (local); invalid → NaN. */
 const dateTimeLocalMs = (value) => {
     if (!value) return Number.NaN;
-    const ms = new Date(value).getTime();
+    const parts = parseDateTimeParts(value);
+    if (!parts) return Number.NaN;
+    const ms = new Date(`${parts.ymd}T${minutesToClock((parts.hour * 60) + parts.minute)}`).getTime();
 
     return Number.isNaN(ms) ? Number.NaN : ms;
 };
@@ -33,12 +123,17 @@ const dateTimeLocalCompare = (a, b) => {
 
 const toDateTimeLocal = (value) => {
     if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
+    const parts = parseDateTimeParts(value);
+    if (!parts) return '';
 
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+    return `${parts.ymd}T${pad2(parts.hour)}:${pad2(parts.minute)}`;
 };
-const formatDateTime = (value) => value ? new Date(value).toLocaleString() : 'N/A';
+const formatDateTime = (value) => {
+    const parts = parseDateTimeParts(value);
+    if (!parts) return 'N/A';
+
+    return `${parts.ymd} ${formatMinutesAmPm((parts.hour * 60) + parts.minute)}`;
+};
 const formatHourLabel = (hour) => {
     const suffix = hour >= 12 ? 'PM' : 'AM';
     const normalized = hour % 12 || 12;
@@ -166,19 +261,21 @@ const estimateSelectedServicesTotal = (serviceIds, serviceQuantities, services, 
 };
 const addMinutesToDateTimeLocal = (value, minutes) => {
     if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
+    const parts = parseDateTimeParts(value);
+    if (!parts) return '';
 
-    date.setMinutes(date.getMinutes() + Number(minutes || 0));
+    const total = (parts.hour * 60) + parts.minute + Number(minutes || 0);
+    const dayOffset = Math.floor(total / 1440);
+    const ymd = dayOffset ? shiftYmdByDays(parts.ymd, dayOffset) : parts.ymd;
 
-    return toDateTimeLocal(date);
+    return minutesToDateTimeLocal(ymd, total);
 };
 const formatTimeFromDateTimeLocal = (value) => {
     if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
+    const minutes = dateTimeLocalMinutes(value);
+    if (Number.isNaN(minutes)) return '';
 
-    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return formatMinutesAmPm(minutes);
 };
 const hasAssignmentsForAllServices = (serviceIds, staffAssignments) => {
     const selected = (serviceIds || []).map((id) => String(id));
@@ -186,12 +283,10 @@ const hasAssignmentsForAllServices = (serviceIds, staffAssignments) => {
 
     return selected.every((serviceId, index) => String(staffAssignments?.[serviceLineKey(index)] || staffAssignments?.[serviceId] || '').trim() !== '');
 };
-const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const localYmd = (d) => salonDateTimeParts(d).ymd;
 const sameLocalDate = (a, ymd) => {
     if (!a || !ymd) return false;
-    const date = new Date(a);
-    if (Number.isNaN(date.getTime())) return false;
-    return localYmd(date) === ymd;
+    return dateTimeLocalYmd(a) === ymd;
 };
 
 const salonClockBoundary = (bookingRules, key, fallback) => {
@@ -210,20 +305,17 @@ const salonSelectableBoundsForYmd = (dateYmd, bookingRules, slotIntervalMinutes)
     const closeM = close.h * 60 + close.m;
     const max = `${dateYmd}T${pad2(close.h)}:${pad2(close.m)}`;
 
-    const todayYmd = localYmd(new Date());
+    const todayYmd = salonTodayYmd();
     const step = Math.max(1, Number(slotIntervalMinutes || 30));
     const minAdv = Math.max(0, Number(bookingRules?.min_advance_minutes || 0));
 
     if (dateYmd === todayYmd) {
-        const threshold = new Date(Date.now() + minAdv * 60000);
-        threshold.setSeconds(0, 0);
-        const thYmd = localYmd(threshold);
+        const threshold = salonDateTimeParts(new Date(Date.now() + minAdv * 60000));
+        const thYmd = threshold.ymd;
         if (thYmd > dateYmd) {
             return { min: max, max };
         }
-        const [Y, M, D] = dateYmd.split('-').map((n) => parseInt(n, 10));
-        const dayStart = new Date(Y, M - 1, D);
-        const minsFloat = (threshold.getTime() - dayStart.getTime()) / 60000;
+        const minsFloat = (threshold.hour * 60) + threshold.minute;
         const policyFloor = Math.ceil(minsFloat / step) * step;
         minM = Math.max(minM, policyFloor);
     }
@@ -238,24 +330,19 @@ const salonSelectableBoundsForYmd = (dateYmd, bookingRules, slotIntervalMinutes)
 
 const adminStartBoundsForYmd = (dateYmd, bookingRules) => {
     const open = salonClockBoundary(bookingRules, 'opening_time', '09:00');
-    const today = new Date();
-    const todayYmd = localYmd(today);
+    const todayYmd = salonTodayYmd();
     const maxAdvanceDays = Math.max(1, Number(bookingRules?.max_advance_days || 60));
-    const horizon = new Date(today);
-    horizon.setDate(horizon.getDate() + maxAdvanceDays);
-    horizon.setHours(23, 59, 0, 0);
+    const horizonYmd = shiftYmdByDays(todayYmd, maxAdvanceDays);
 
     let min = `${dateYmd}T${pad2(open.h)}:${pad2(open.m)}`;
     if (dateYmd === todayYmd) {
-        const walkInNow = new Date();
-        walkInNow.setSeconds(0, 0);
-        const nowLocal = toDateTimeLocal(walkInNow);
+        const nowLocal = minutesToDateTimeLocal(todayYmd, salonNowMinutes());
         if (dateTimeLocalCompare(nowLocal, min) > 0) min = nowLocal;
     }
 
     return {
         min,
-        max: toDateTimeLocal(horizon),
+        max: `${horizonYmd}T23:59`,
     };
 };
 
@@ -316,7 +403,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [createServiceSearch, setCreateServiceSearch] = useState('');
     const [editServiceSearch, setEditServiceSearch] = useState('');
     const [showBoardView, setShowBoardView] = useState(false);
-    const [boardDate, setBoardDate] = useState(() => localYmd(new Date()));
+    const [boardDate, setBoardDate] = useState(() => salonTodayYmd());
     const [boardStaffFilter, setBoardStaffFilter] = useState('all');
     const [boardStaffMenu, setBoardStaffMenu] = useState(null);
     const [calendarQuickAction, setCalendarQuickAction] = useState(null);
@@ -329,8 +416,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const createStartRef = useRef(null);
     const editStartRef = useRef(null);
     const [createStartMount, setCreateStartMount] = useState(0);
-    const [createStartYmd, setCreateStartYmd] = useState(() => ((defaultStart || '').split('T')[0] || localYmd(new Date())));
-    const [editStartYmd, setEditStartYmd] = useState(() => localYmd(new Date()));
+    const [createStartYmd, setCreateStartYmd] = useState(() => ((defaultStart || '').split('T')[0] || salonTodayYmd()));
+    const [editStartYmd, setEditStartYmd] = useState(() => salonTodayYmd());
     const [editStartMountKey, setEditStartMountKey] = useState(0);
 
     const createForm = useForm({ customer_id: '', customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, service_starts: {}, service_durations: {}, service_extra_minutes: {}, service_unit_prices: {}, service_discount_amounts: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
@@ -353,7 +440,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     });
 
     useEffect(() => {
-        const y = (defaultStart || '').split('T')[0] || localYmd(new Date());
+        const y = (defaultStart || '').split('T')[0] || salonTodayYmd();
         setCreateStartYmd(y);
     }, [defaultStart]);
 
@@ -387,9 +474,6 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const calculateSuggestedEnd = (startValue, serviceIds) => {
         if (!startValue || !Array.isArray(serviceIds) || serviceIds.length === 0) return '';
 
-        const startDate = new Date(startValue);
-        if (Number.isNaN(startDate.getTime())) return '';
-
         const totalMinutes = serviceIds.reduce((sum, id) => {
             const service = services.find((s) => String(s.id) === String(id));
             if (!service) return sum;
@@ -411,9 +495,6 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const calculateSuggestedEndWithServiceMeta = (startValue, serviceIds, formData = createForm.data) => {
         if (!startValue || !Array.isArray(serviceIds) || serviceIds.length === 0) return '';
 
-        const startDate = new Date(startValue);
-        if (Number.isNaN(startDate.getTime())) return '';
-
         const totalMinutes = serviceIds.reduce((sum, id, index) => {
             const service = services.find((s) => String(s.id) === String(id));
             if (!service) return sum;
@@ -424,9 +505,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         }, 0);
         if (totalMinutes <= 0) return '';
 
-        startDate.setMinutes(startDate.getMinutes() + totalMinutes);
-
-        let endStr = toDateTimeLocal(startDate);
+        let endStr = addMinutesToDateTimeLocal(startValue, totalMinutes);
         endStr = clampDateTimeLocalToSalon(endStr, bookingRules, slotIntervalMinutes);
         if (startValue && dateTimeLocalCompare(endStr, startValue) < 0) {
             endStr = clampDateTimeLocalToSalon(startValue, bookingRules, slotIntervalMinutes);
@@ -588,10 +667,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     };
 
     const calendarSlotToDateTimeLocal = (minutes) => {
-        const date = new Date(`${boardDate}T00:00:00`);
-        date.setMinutes(minutes);
-
-        return toDateTimeLocal(date);
+        return minutesToDateTimeLocal(boardDate, minutes);
     };
 
     const openCalendarQuickAction = (staffId, minutes, staffIndex = 0) => {
@@ -756,7 +832,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             .filter((row) => row.service_id && row.staff_profile_id)
             .map((row, index) => [serviceLineKey(index), String(row.staff_profile_id)]));
         const selectedPackageId = String(appt.customer_package_id || serviceRows.find((row) => row.customer_package_id)?.customer_package_id || '');
-        setEditStartYmd(startStr.split('T')[0] || localYmd(new Date()));
+        setEditStartYmd(startStr.split('T')[0] || salonTodayYmd());
         setEditingId(appt.id);
         setEditCustomerMode(appt.customer_id ? 'existing' : 'new');
         setEditSelectedCustomerId(appt.customer_id ? String(appt.customer_id) : '');
@@ -1110,10 +1186,10 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         const cards = layoutOverlappingAppointments(boardAppointments
             .filter((appt) => String(appt.staff_profile_id || '') === String(staff.id))
             .map((appt) => {
-                const start = new Date(appt.scheduled_start);
-                const end = new Date(appt.scheduled_end || appt.scheduled_start);
-                const startMinutes = start.getHours() * 60 + start.getMinutes();
-                const endMinutes = Math.max(startMinutes + 30, end.getHours() * 60 + end.getMinutes());
+                const startMinutes = dateTimeLocalMinutes(appt.scheduled_start);
+                const rawEndMinutes = dateTimeLocalMinutes(appt.scheduled_end || appt.scheduled_start);
+                if (Number.isNaN(startMinutes)) return null;
+                const endMinutes = Math.max(startMinutes + 30, Number.isNaN(rawEndMinutes) ? startMinutes : rawEndMinutes);
                 const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
                 const height = Math.max(7, (((endMinutes) - startMinutes) / boardTotalMinutes) * 100);
                 const isPaid = appt.status === 'completed' && !appt.awaiting_checkout;
@@ -1128,15 +1204,15 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                     startMinutes,
                     top,
                     height,
-                    timeLabel: `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+                    timeLabel: `${formatMinutesAmPm(startMinutes)} - ${formatMinutesAmPm(endMinutes)}`,
                 };
-            }));
+            }).filter(Boolean));
         const blocks = [...boardGlobalBlocks, ...boardBlocks.filter((block) => String(block.staff_profile_id || '') === String(staff.id))]
             .map((block) => {
-                const start = new Date(block.starts_at);
-                const end = new Date(block.ends_at || block.starts_at);
-                const startMinutes = start.getHours() * 60 + start.getMinutes();
-                const endMinutes = Math.max(startMinutes + 15, end.getHours() * 60 + end.getMinutes());
+                const startMinutes = dateTimeLocalMinutes(block.starts_at);
+                const rawEndMinutes = dateTimeLocalMinutes(block.ends_at || block.starts_at);
+                if (Number.isNaN(startMinutes)) return null;
+                const endMinutes = Math.max(startMinutes + 15, Number.isNaN(rawEndMinutes) ? startMinutes : rawEndMinutes);
                 const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
                 const height = Math.max(4, ((endMinutes - startMinutes) / boardTotalMinutes) * 100);
 
@@ -1146,19 +1222,18 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                     startMinutes,
                     top,
                     height,
-                    timeLabel: `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`,
+                    timeLabel: `${formatMinutesAmPm(startMinutes)} - ${formatMinutesAmPm(endMinutes)}`,
                 };
-            });
+            }).filter(Boolean);
 
         return { staff, cards, blocks };
     });
     const defaultBoardActionMinutes = () => {
-        const todayYmd = localYmd(new Date());
+        const todayYmd = salonTodayYmd();
         let minutes = boardStartMinutes;
 
         if (boardDate === todayYmd) {
-            const now = new Date();
-            minutes = now.getHours() * 60 + now.getMinutes();
+            minutes = salonNowMinutes();
         }
 
         const snapped = Math.ceil(minutes / boardSlotInterval) * boardSlotInterval;
@@ -1188,7 +1263,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         existing.appointments.push(appt);
         return map;
     }, new Map()).values()).map((group) => {
-        const rows = [...group.appointments].sort((a, b) => new Date(a.scheduled_start) - new Date(b.scheduled_start));
+        const rows = [...group.appointments].sort((a, b) => dateTimeLocalMs(a.scheduled_start) - dateTimeLocalMs(b.scheduled_start));
         const actionAppointment = rows.find((row) => row.status === 'in_progress')
             || rows.find((row) => row.status === 'confirmed')
             || rows[0];
@@ -1224,8 +1299,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             checkout_invoice_id: rows.find((row) => row.checkout_invoice_id)?.checkout_invoice_id || null,
         };
     }).sort((a, b) => {
-        const aTime = new Date(a.scheduled_start).getTime();
-        const bTime = new Date(b.scheduled_start).getTime();
+        const aTime = dateTimeLocalMs(a.scheduled_start);
+        const bTime = dateTimeLocalMs(b.scheduled_start);
         const safeATime = Number.isNaN(aTime) ? 0 : aTime;
         const safeBTime = Number.isNaN(bTime) ? 0 : bTime;
 
@@ -1316,7 +1391,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     createForm.setData('service_ids', []);
                                     createForm.setData('service_id', '');
                                     setCreateServiceSearch('');
-                                    setCreateStartYmd((defaultStart || '').split('T')[0] || localYmd(new Date()));
+                                    setCreateStartYmd((defaultStart || '').split('T')[0] || salonTodayYmd());
                                     setCreateStartMount((m) => m + 1);
                                     setCreateEndManuallySet(false);
                                     setCreateCustomerMode('new');
@@ -2306,7 +2381,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setBoardDate(localYmd(new Date()))}
+                                    onClick={() => setBoardDate(salonTodayYmd())}
                                     className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/5"
                                 >
                                     Today
@@ -2315,9 +2390,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            const d = new Date(`${boardDate}T12:00:00`);
-                                            d.setDate(d.getDate() - 1);
-                                            setBoardDate(localYmd(d));
+                                            setBoardDate(shiftYmdByDays(boardDate, -1));
                                         }}
                                         className="px-3 py-2 text-sm text-slate-200 hover:bg-white/5"
                                         aria-label="Previous day"
@@ -2333,9 +2406,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            const d = new Date(`${boardDate}T12:00:00`);
-                                            d.setDate(d.getDate() + 1);
-                                            setBoardDate(localYmd(d));
+                                            setBoardDate(shiftYmdByDays(boardDate, 1));
                                         }}
                                         className="px-3 py-2 text-sm text-slate-200 hover:bg-white/5"
                                         aria-label="Next day"
@@ -2360,7 +2431,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     onClick={() => {
                                         const firstStaff = boardStaffList[0]?.id || staffProfiles[0]?.id || '';
                                         setBoardStaffMenu(null);
-                                        openCalendarQuickAction(firstStaff, Math.max(boardStartMinutes, new Date().getHours() * 60 + new Date().getMinutes()), 0);
+                                        openCalendarQuickAction(firstStaff, defaultBoardActionMinutes(), 0);
                                     }}
                                     className="rounded-full border border-violet-400/50 bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-50 hover:bg-violet-500/25"
                                 >
@@ -2393,7 +2464,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     >
                                         <div className="flex items-center justify-between bg-white/5 px-4 py-3">
                                             <div className="text-lg font-semibold text-white">
-                                                {new Date(calendarQuickAction.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                                {formatTimeFromDateTimeLocal(calendarQuickAction.startsAt)}
                                             </div>
                                             <button type="button" className="text-xl leading-none text-slate-300 hover:text-white" onClick={() => setCalendarQuickAction(null)}>x</button>
                                         </div>
