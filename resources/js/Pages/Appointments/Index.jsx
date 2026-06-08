@@ -333,8 +333,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [editStartYmd, setEditStartYmd] = useState(() => localYmd(new Date()));
     const [editStartMountKey, setEditStartMountKey] = useState(0);
 
-    const createForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, service_starts: {}, service_durations: {}, service_extra_minutes: {}, service_unit_prices: {}, service_discount_amounts: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
-    const editForm = useForm({ customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, service_starts: {}, service_durations: {}, service_extra_minutes: {}, service_unit_prices: {}, service_discount_amounts: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const createForm = useForm({ customer_id: '', customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, service_starts: {}, service_durations: {}, service_extra_minutes: {}, service_unit_prices: {}, service_discount_amounts: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: defaultStart || '', scheduled_end: '', status: 'confirmed', notes: '' });
+    const editForm = useForm({ customer_id: '', customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], service_quantities: {}, service_starts: {}, service_durations: {}, service_extra_minutes: {}, service_unit_prices: {}, service_discount_amounts: {}, customer_package_id: '', package_service_ids: [], staff_profile_id: '', staff_assignments: {}, scheduled_start: '', scheduled_end: '', status: 'confirmed', notes: '' });
     const blockForm = useForm({ staff_profile_id: '', title: 'Blocked time', starts_at: '', ends_at: '', notes: '' });
     const startForm = useForm({ intake_notes: '', service_notes: '', before_photo: null });
     const completeForm = useForm({
@@ -564,6 +564,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const applyCustomerToCreateForm = (customer) => {
         createForm.setData({
             ...createForm.data,
+            customer_id: customer?.id ? String(customer.id) : '',
             customer_name: customer?.name ?? '',
             customer_phone: customer?.phone ?? '',
             customer_email: customer?.email ?? '',
@@ -576,6 +577,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const applyCustomerToEditForm = (customer) => {
         editForm.setData({
             ...editForm.data,
+            customer_id: customer?.id ? String(customer.id) : '',
             customer_name: customer?.name ?? '',
             customer_phone: customer?.phone ?? '',
             customer_email: customer?.email ?? '',
@@ -619,6 +621,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         setCreateStartMount((m) => m + 1);
         createForm.clearErrors();
         createForm.setData({
+            customer_id: '',
             customer_name: groupMode ? 'Group appointment' : '',
             customer_phone: '',
             customer_email: '',
@@ -762,6 +765,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         setEditEndManuallySet(Boolean(appt.scheduled_end));
         setEditStartMountKey((k) => k + 1);
         editForm.setData({
+            customer_id: appt.customer_id ? String(appt.customer_id) : '',
             customer_name: appt.customer_name || '',
             customer_phone: appt.customer_phone || '',
             customer_email: appt.customer_email || '',
@@ -1326,7 +1330,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                         <div className="md:col-span-4 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
                             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer type</span>
                             <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-                                <input type="radio" name="create_customer_mode" className="text-indigo-600" checked={createCustomerMode === 'new'} onChange={() => { setCreateCustomerMode('new'); setCreateSelectedCustomerId(''); }} />
+                                <input type="radio" name="create_customer_mode" className="text-indigo-600" checked={createCustomerMode === 'new'} onChange={() => { setCreateCustomerMode('new'); setCreateSelectedCustomerId(''); applyCustomerToCreateForm(null); }} />
                                 New customer
                             </label>
                             <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
@@ -2683,7 +2687,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     onClick={() => {
                                                         setCreateCustomerMode('new');
                                                         setCreateSelectedCustomerId('');
-                                                        createForm.setData({ ...createForm.data, customer_name: 'Walk-in Client', customer_phone: '', customer_email: '' });
+                                                        createForm.setData({ ...createForm.data, customer_id: '', customer_name: 'Walk-in Client', customer_phone: '', customer_email: '' });
                                                     }}
                                                 >
                                                     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-500/20 text-sm font-black text-violet-200">WI</span>

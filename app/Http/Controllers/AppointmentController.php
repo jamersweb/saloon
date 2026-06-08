@@ -316,6 +316,7 @@ class AppointmentController extends Controller
             $data['customer_name'],
             $data['customer_phone'] ?? '',
             $data['customer_email'] ?? null,
+            ! empty($data['customer_id']) ? (int) $data['customer_id'] : null,
         );
         $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer?->id);
 
@@ -402,6 +403,7 @@ class AppointmentController extends Controller
             $data['customer_name'],
             $data['customer_phone'] ?? '',
             $data['customer_email'] ?? null,
+            ! empty($data['customer_id']) ? (int) $data['customer_id'] : null,
         );
         $packageSelection = $this->resolvePackageSelection($data, $serviceIds, $customer?->id, $appointment->id);
 
@@ -1006,6 +1008,7 @@ class AppointmentController extends Controller
             'scheduled_end' => ['nullable', 'date'],
             'arrival_time' => ['nullable', 'date'],
             'service_start_time' => ['nullable', 'date'],
+            'customer_id' => ['nullable', 'exists:customers,id'],
             'customer_name' => ['required', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:30'],
             'customer_email' => ['nullable', 'email', 'max:255'],
@@ -1476,8 +1479,23 @@ class AppointmentController extends Controller
         $appointment->delete();
     }
 
-    private function resolveCustomer(string $name, ?string $phone, ?string $email): ?Customer
+    private function resolveCustomer(string $name, ?string $phone, ?string $email, ?int $customerId = null): ?Customer
     {
+        if ($customerId) {
+            $customer = Customer::findOrFail($customerId);
+            $updates = array_filter([
+                'name' => $name !== $customer->name ? $name : null,
+                'phone' => $phone !== null && trim((string) $phone) !== '' && trim((string) $phone) !== $customer->phone ? trim((string) $phone) : null,
+                'email' => $email && $email !== $customer->email ? $email : null,
+            ], fn ($value) => $value !== null);
+
+            if ($updates !== []) {
+                $customer->update($updates);
+            }
+
+            return $customer->fresh();
+        }
+
         $phone = trim((string) $phone);
 
         if ($phone === '') {

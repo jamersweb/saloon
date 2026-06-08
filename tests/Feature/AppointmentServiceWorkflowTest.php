@@ -92,6 +92,72 @@ class AppointmentServiceWorkflowTest extends TestCase
         $this->assertStringContainsString('Lashes Refill', (string) $log->message);
     }
 
+    public function test_store_uses_selected_existing_customer_id_from_drawer(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $manager = User::factory()->create(['role_id' => $managerRole->id]);
+        $staffUser = User::factory()->create(['role_id' => $managerRole->id, 'name' => 'Raheel Staff']);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-CLIENT-ID',
+            'is_active' => true,
+        ]);
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '22:00',
+            'is_day_off' => false,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-SELECTED-ID',
+            'name' => 'Sonya Soltani',
+            'phone' => '0559777560',
+            'is_active' => true,
+        ]);
+        $service = SalonService::create([
+            'name' => 'Existing Client Service',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 150,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.store'), [
+            'customer_id' => $customer->id,
+            'customer_name' => 'Sonya Soltani',
+            'customer_phone' => '',
+            'customer_email' => '',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'staff_profile_id' => $staff->id,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 15:00:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $appointment = Appointment::query()->latest('id')->first();
+        $this->assertNotNull($appointment);
+        $this->assertSame($customer->id, $appointment->customer_id);
+        $this->assertSame(1, Customer::query()->count());
+    }
+
     public function test_store_persists_per_service_drawer_adjustments(): void
     {
         Queue::fake();
