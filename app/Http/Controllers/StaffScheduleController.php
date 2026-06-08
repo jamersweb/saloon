@@ -153,25 +153,39 @@ class StaffScheduleController extends Controller
 
         $data = $request->validate([
             'horizon' => ['required', Rule::in(['week', 'month'])],
+            'start_date' => ['nullable', 'date_format:Y-m-d'],
+            'staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
         ]);
 
-        $days = $data['horizon'] === 'week' ? 7 : 31;
-        $start = Carbon::today()->startOfDay();
-        $end = Carbon::today()->copy()->addDays($days - 1)->startOfDay();
+        $days = $data['horizon'] === 'week' ? 7 : 30;
+        $start = ! empty($data['start_date'])
+            ? Carbon::parse($data['start_date'])->startOfDay()
+            : Carbon::today()->startOfDay();
+        $end = $start->copy()->addDays($days - 1)->startOfDay();
+        $staffProfileIds = ! empty($data['staff_profile_id']) ? [(int) $data['staff_profile_id']] : null;
 
-        $created = $this->staffScheduleGenerator->fillGapsForActiveStaff($start, $end);
+        $created = $this->staffScheduleGenerator->fillGapsForActiveStaff($start, $end, $staffProfileIds);
 
         $rangeLabel = $data['horizon'] === 'week'
             ? 'the next 7 days ('.$start->toDateString().' – '.$end->toDateString().')'
-            : 'the next 31 days ('.$start->toDateString().' – '.$end->toDateString().')';
+            : 'the next 30 days ('.$start->toDateString().' – '.$end->toDateString().')';
 
         Audit::log($request->user()->id, 'schedule.fill_gaps', 'StaffSchedule', null, [
             'horizon' => $data['horizon'],
             'days' => $days,
+            'start_date' => $start->toDateString(),
+            'end_date' => $end->toDateString(),
+            'staff_profile_id' => $staffProfileIds[0] ?? null,
             'rows_created' => $created,
         ]);
 
-        return back()->with(
+        return redirect()->route('schedules.index', array_filter([
+            'staff_profile_id' => $staffProfileIds[0] ?? null,
+            'date_from' => $start->toDateString(),
+            'date_to' => $end->toDateString(),
+            'day_off' => 'all',
+            'per_page' => 100,
+        ], fn ($value) => $value !== null && $value !== ''))->with(
             'status',
             "Added {$created} missing schedule row(s) for {$rangeLabel}. Existing rows were not changed."
         );

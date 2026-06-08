@@ -141,22 +141,33 @@ class StaffScheduleAutoFillAndLeaveTest extends TestCase
 
     public function test_manager_can_fill_schedule_gaps_via_http_week(): void
     {
-        $manager = $this->makeManagerUser();
-        StaffProfile::create([
-            'user_id' => User::factory()->create()->id,
-            'employee_code' => 'STF-HTTP-WK',
-            'is_active' => true,
-        ]);
+        Carbon::setTestNow(Carbon::parse('2026-06-08 10:00:00'));
 
-        $this->assertSame(0, StaffSchedule::query()->count());
+        try {
+            $manager = $this->makeManagerUser();
+            StaffProfile::create([
+                'user_id' => User::factory()->create()->id,
+                'employee_code' => 'STF-HTTP-WK',
+                'is_active' => true,
+            ]);
 
-        $this->actingAs($manager)
-            ->from(route('schedules.index'))
-            ->post(route('schedules.fill-gaps'), ['horizon' => 'week'])
-            ->assertRedirect(route('schedules.index'))
-            ->assertSessionHas('status');
+            $this->assertSame(0, StaffSchedule::query()->count());
 
-        $this->assertGreaterThanOrEqual(7, StaffSchedule::query()->count());
+            $this->actingAs($manager)
+                ->from(route('schedules.index'))
+                ->post(route('schedules.fill-gaps'), ['horizon' => 'week'])
+                ->assertRedirect(route('schedules.index', [
+                    'date_from' => '2026-06-08',
+                    'date_to' => '2026-06-14',
+                    'day_off' => 'all',
+                    'per_page' => 100,
+                ]))
+                ->assertSessionHas('status');
+
+            $this->assertSame(7, StaffSchedule::query()->count());
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_schedule_index_starts_from_today_by_default(): void
@@ -230,21 +241,71 @@ class StaffScheduleAutoFillAndLeaveTest extends TestCase
 
     public function test_manager_can_fill_schedule_gaps_via_http_month(): void
     {
+        Carbon::setTestNow(Carbon::parse('2026-06-08 10:00:00'));
+
+        try {
+            $manager = $this->makeManagerUser();
+            StaffProfile::create([
+                'user_id' => User::factory()->create()->id,
+                'employee_code' => 'STF-HTTP-MO',
+                'is_active' => true,
+            ]);
+
+            $this->assertSame(0, StaffSchedule::query()->count());
+
+            $this->actingAs($manager)
+                ->post(route('schedules.fill-gaps'), ['horizon' => 'month'])
+                ->assertRedirect(route('schedules.index', [
+                    'date_from' => '2026-06-08',
+                    'date_to' => '2026-07-07',
+                    'day_off' => 'all',
+                    'per_page' => 100,
+                ]))
+                ->assertSessionHas('status');
+
+            $this->assertSame(30, StaffSchedule::query()->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_manager_can_fill_schedule_gaps_from_selected_date_for_selected_staff(): void
+    {
         $manager = $this->makeManagerUser();
-        StaffProfile::create([
+        $selectedStaff = StaffProfile::create([
             'user_id' => User::factory()->create()->id,
-            'employee_code' => 'STF-HTTP-MO',
+            'employee_code' => 'STF-SELECTED',
+            'is_active' => true,
+        ]);
+        $otherStaff = StaffProfile::create([
+            'user_id' => User::factory()->create()->id,
+            'employee_code' => 'STF-OTHER',
             'is_active' => true,
         ]);
 
-        $this->assertSame(0, StaffSchedule::query()->count());
-
         $this->actingAs($manager)
-            ->post(route('schedules.fill-gaps'), ['horizon' => 'month'])
-            ->assertRedirect()
+            ->post(route('schedules.fill-gaps'), [
+                'horizon' => 'week',
+                'start_date' => '2026-08-06',
+                'staff_profile_id' => $selectedStaff->id,
+            ])
+            ->assertRedirect(route('schedules.index', [
+                'staff_profile_id' => $selectedStaff->id,
+                'date_from' => '2026-08-06',
+                'date_to' => '2026-08-12',
+                'day_off' => 'all',
+                'per_page' => 100,
+            ]))
             ->assertSessionHas('status');
 
-        $this->assertGreaterThanOrEqual(31, StaffSchedule::query()->count());
+        $this->assertSame(
+            7,
+            StaffSchedule::query()->where('staff_profile_id', $selectedStaff->id)->count(),
+        );
+        $this->assertSame(
+            0,
+            StaffSchedule::query()->where('staff_profile_id', $otherStaff->id)->count(),
+        );
     }
 
     public function test_fill_gaps_requires_valid_horizon(): void

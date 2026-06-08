@@ -17,7 +17,7 @@ class StaffScheduleGeneratorService
      * Existing rows are left unchanged. Uses default salon shift or a day-off row when
      * the staff already has approved leave on that date.
      */
-    public function fillGapsForActiveStaff(CarbonInterface $rangeStart, CarbonInterface $rangeEnd): int
+    public function fillGapsForActiveStaff(CarbonInterface $rangeStart, CarbonInterface $rangeEnd, ?array $staffProfileIds = null): int
     {
         $start = Carbon::parse($rangeStart->toDateString())->startOfDay();
         $end = Carbon::parse($rangeEnd->toDateString())->startOfDay();
@@ -27,7 +27,10 @@ class StaffScheduleGeneratorService
         }
 
         $added = 0;
-        $staffIds = StaffProfile::query()->where('is_active', true)->pluck('id');
+        $staffIds = StaffProfile::query()
+            ->where('is_active', true)
+            ->when($staffProfileIds !== null, fn ($query) => $query->whereIn('id', $staffProfileIds))
+            ->pluck('id');
 
         foreach ($staffIds as $staffId) {
             foreach (CarbonPeriod::create($start, $end) as $date) {

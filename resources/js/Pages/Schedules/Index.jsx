@@ -47,9 +47,16 @@ export default function SchedulesIndex({ staffProfiles, schedules, filters, book
 
     const postFillGaps = (horizon) => {
         setFillBusy(horizon);
+        const startDate = createForm.data.schedule_date || filterForm.data.date_from || today;
+        const staffProfileId = createForm.data.staff_profile_id || filterForm.data.staff_profile_id || '';
+
         router.post(
             route('schedules.fill-gaps'),
-            { horizon },
+            {
+                horizon,
+                start_date: startDate,
+                staff_profile_id: staffProfileId || null,
+            },
             {
                 preserveScroll: true,
                 onFinish: () => setFillBusy(null),
@@ -168,7 +175,7 @@ export default function SchedulesIndex({ staffProfiles, schedules, filters, book
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create or Assign Shift</h3>
                     <p className="mb-3 text-xs text-slate-500">
-                        Default shift matches salon operating hours ({salonHoursLabel || `${defaultShiftStart}–${defaultShiftEnd}`}). Shifts must stay within these hours unless you mark a day off. Missing days for the next week are created automatically when you open this page; the server also fills gaps daily for the next 31 days. When leave is approved, those dates are marked as day off on the schedule. Use the buttons below if you need to run the same gap fill without the command line (for example after adding staff or if the nightly job was skipped).
+                        Default shift matches salon operating hours ({salonHoursLabel || `${defaultShiftStart}-${defaultShiftEnd}`}). Shifts must stay within these hours unless you mark a day off. Choose a staff member and schedule date, then use the fill buttons to create any missing shifts from that date. Leave staff empty to fill all active staff. Existing rows are not changed.
                     </p>
                     <div className="mb-4 flex flex-wrap gap-2">
                         <button
@@ -177,7 +184,7 @@ export default function SchedulesIndex({ staffProfiles, schedules, filters, book
                             disabled={Boolean(fillBusy)}
                             onClick={() => postFillGaps('week')}
                         >
-                            {fillBusy === 'week' ? 'Filling…' : 'Fill missing schedules — 7 days'}
+                            {fillBusy === 'week' ? 'Filling...' : 'Fill missing schedules - 7 days'}
                         </button>
                         <button
                             type="button"
@@ -185,7 +192,7 @@ export default function SchedulesIndex({ staffProfiles, schedules, filters, book
                             disabled={Boolean(fillBusy)}
                             onClick={() => postFillGaps('month')}
                         >
-                            {fillBusy === 'month' ? 'Filling…' : 'Fill missing schedules — 31 days'}
+                            {fillBusy === 'month' ? 'Filling...' : 'Fill missing schedules - 30 days'}
                         </button>
                     </div>
                     <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('schedules.store'), { onSuccess: () => createForm.reset() }); }} className="grid gap-3 md:grid-cols-7">
@@ -297,4 +304,3 @@ export default function SchedulesIndex({ staffProfiles, schedules, filters, book
         </AuthenticatedLayout>
     );
 }
-
