@@ -198,6 +198,36 @@ class StaffScheduleAutoFillAndLeaveTest extends TestCase
         }
     }
 
+    public function test_schedule_index_auto_fills_missing_month_rows(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-08 10:00:00'));
+
+        try {
+            $manager = $this->makeManagerUser();
+            StaffProfile::create([
+                'user_id' => User::factory()->create()->id,
+                'employee_code' => 'STF-INDEX-MO',
+                'is_active' => true,
+            ]);
+
+            $this->assertSame(0, StaffSchedule::query()->count());
+
+            $this->actingAs($manager)
+                ->get(route('schedules.index'))
+                ->assertOk();
+
+            $this->assertSame(31, StaffSchedule::query()->count());
+            $this->assertTrue(
+                StaffSchedule::query()
+                    ->whereDate('schedule_date', '2026-07-08')
+                    ->exists(),
+                'Expected schedules index to auto-fill through the next 31 days.',
+            );
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_manager_can_fill_schedule_gaps_via_http_month(): void
     {
         $manager = $this->makeManagerUser();

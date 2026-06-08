@@ -20,7 +20,7 @@ class StaffScheduleController extends Controller
 
     public function index(Request $request): Response
     {
-        $this->staffScheduleGenerator->fillRollingWeek();
+        $this->staffScheduleGenerator->fillRollingMonth();
         $filters = [
             'search' => trim($request->string('search')->toString()),
             'staff_profile_id' => $request->integer('staff_profile_id') ?: null,

@@ -57,6 +57,14 @@ class StaffScheduleGeneratorService
         return $this->fillGapsForActiveStaff(Carbon::today(), Carbon::today()->copy()->addDays(6));
     }
 
+    /**
+     * Rolling month: today through today + 30 days.
+     */
+    public function fillRollingMonth(): int
+    {
+        return $this->fillGapsForActiveStaff(Carbon::today(), Carbon::today()->copy()->addDays(30));
+    }
+
     public function seedMonthForNewStaffProfile(StaffProfile $profile): void
     {
         $rules = BookingRule::current();

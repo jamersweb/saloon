@@ -318,6 +318,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [showBoardView, setShowBoardView] = useState(false);
     const [boardDate, setBoardDate] = useState(() => localYmd(new Date()));
     const [boardStaffFilter, setBoardStaffFilter] = useState('all');
+    const [boardStaffMenu, setBoardStaffMenu] = useState(null);
     const [calendarQuickAction, setCalendarQuickAction] = useState(null);
     const [calendarDrawer, setCalendarDrawer] = useState(null);
     const [calendarServiceEditorId, setCalendarServiceEditorId] = useState('');
@@ -594,6 +595,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const openCalendarQuickAction = (staffId, minutes, staffIndex = 0) => {
         const start = calendarSlotToDateTimeLocal(minutes);
         const end = calendarSlotToDateTimeLocal(minutes + Math.max(15, slotIntervalMinutes || 30));
+        setBoardStaffMenu(null);
         setCalendarQuickAction({
             staffId: staffId ? String(staffId) : '',
             staffIndex,
@@ -696,6 +698,21 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             starts_at: quickAction.startsAt,
             ends_at: quickAction.endsAt,
             notes: '',
+        });
+        setCalendarDrawer('blocked');
+        setCalendarQuickAction(null);
+    };
+
+    const seedTimeOffFromCalendar = (quickAction = calendarQuickAction) => {
+        if (!quickAction) return;
+
+        blockForm.clearErrors();
+        blockForm.setData({
+            staff_profile_id: quickAction.staffId || '',
+            title: 'Time off',
+            starts_at: quickAction.startsAt,
+            ends_at: quickAction.endsAt,
+            notes: 'Staff time off',
         });
         setCalendarDrawer('blocked');
         setCalendarQuickAction(null);
@@ -1131,6 +1148,30 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
         return { staff, cards, blocks };
     });
+    const defaultBoardActionMinutes = () => {
+        const todayYmd = localYmd(new Date());
+        let minutes = boardStartMinutes;
+
+        if (boardDate === todayYmd) {
+            const now = new Date();
+            minutes = now.getHours() * 60 + now.getMinutes();
+        }
+
+        const snapped = Math.ceil(minutes / boardSlotInterval) * boardSlotInterval;
+
+        return Math.max(boardStartMinutes, Math.min(boardEndMinutes - boardSlotInterval, snapped));
+    };
+    const quickActionForStaff = (staff, staffIndex) => {
+        const minutes = defaultBoardActionMinutes();
+
+        return {
+            staffId: staff?.id ? String(staff.id) : '',
+            staffIndex,
+            minutes,
+            startsAt: calendarSlotToDateTimeLocal(minutes),
+            endsAt: calendarSlotToDateTimeLocal(minutes + Math.max(15, slotIntervalMinutes || 30)),
+        };
+    };
     const appointmentQueueSortDirection = ['today', 'upcoming'].includes(String(statusFilter || '')) ? 'asc' : 'desc';
     const appointmentQueueRows = Array.from(appointments.reduce((map, appt) => {
         const groupKey = String(appt.visit_id || appt.id);
@@ -2253,8 +2294,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 setShowBoardView(false);
                 setCalendarQuickAction(null);
                 setCalendarDrawer(null);
+                setBoardStaffMenu(null);
             }}>
-                <div className="flex h-[92vh] overflow-hidden bg-[#0b0b0c] text-white">
+                <div className="flex h-[92vh] overflow-hidden bg-[#0b0b0c] font-sans text-white antialiased">
                     <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#111112] px-5 py-3">
                             <div className="flex items-center gap-2">
@@ -2313,9 +2355,10 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     type="button"
                                     onClick={() => {
                                         const firstStaff = boardStaffList[0]?.id || staffProfiles[0]?.id || '';
+                                        setBoardStaffMenu(null);
                                         openCalendarQuickAction(firstStaff, Math.max(boardStartMinutes, new Date().getHours() * 60 + new Date().getMinutes()), 0);
                                     }}
-                                    className="rounded-full border border-violet-400/50 bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-100 hover:bg-violet-500/25"
+                                    className="rounded-full border border-violet-400/50 bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-50 hover:bg-violet-500/25"
                                 >
                                     Add
                                 </button>
@@ -2328,7 +2371,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 <div className="h-28 border-b border-white/10" />
                                 <div className="relative" style={{ height: `${boardCanvasHeight}px` }}>
                                     {boardHourMarks.slice(0, -1).map((minutes) => (
-                                        <div key={minutes} className="flex h-20 items-start justify-end border-b border-white/10 px-2 pt-2 text-right text-xs font-semibold leading-tight text-slate-300">
+                                        <div key={minutes} className="flex h-20 items-start justify-end border-b border-white/10 px-2 pt-2 text-right text-xs font-semibold leading-tight text-white">
                                             <span>{formatHourLabel(Math.floor(minutes / 60)).replace(' ', '\n')}</span>
                                         </div>
                                     ))}
@@ -2345,21 +2388,21 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         }}
                                     >
                                         <div className="flex items-center justify-between bg-white/5 px-4 py-3">
-                                            <div className="text-lg font-bold text-white">
+                                            <div className="text-lg font-semibold text-white">
                                                 {new Date(calendarQuickAction.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                                             </div>
                                             <button type="button" className="text-xl leading-none text-slate-300 hover:text-white" onClick={() => setCalendarQuickAction(null)}>x</button>
                                         </div>
                                         <div className="space-y-1 p-3">
-                                            <button type="button" onClick={() => seedCreateFromCalendar(calendarQuickAction)} className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-semibold text-slate-100 hover:bg-white/5">
+                                            <button type="button" onClick={() => seedCreateFromCalendar(calendarQuickAction)} className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-semibold text-white hover:bg-white/5">
                                                 <span className="grid h-7 w-7 place-items-center rounded-full border border-white/15 text-base">+</span>
                                                 Add appointment
                                             </button>
-                                            <button type="button" onClick={() => seedCreateFromCalendar(calendarQuickAction, true)} className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-semibold text-slate-100 hover:bg-white/5">
+                                            <button type="button" onClick={() => seedCreateFromCalendar(calendarQuickAction, true)} className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-semibold text-white hover:bg-white/5">
                                                 <span className="grid h-7 w-7 place-items-center rounded-full border border-white/15 text-base">G</span>
                                                 Add group appointment
                                             </button>
-                                            <button type="button" onClick={() => seedBlockedTimeFromCalendar(calendarQuickAction)} className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-semibold text-slate-100 hover:bg-white/5">
+                                            <button type="button" onClick={() => seedBlockedTimeFromCalendar(calendarQuickAction)} className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-semibold text-white hover:bg-white/5">
                                                 <span className="grid h-7 w-7 place-items-center rounded-full border border-white/15 text-base">B</span>
                                                 Add blocked time
                                             </button>
@@ -2368,12 +2411,88 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 ) : null}
 
                                 {boardCardsByStaff.map(({ staff, cards, blocks }, staffIndex) => (
-                                    <div key={staff.id} className="w-72 shrink-0 border-r border-white/10">
+                                    <div key={staff.id} className="relative w-72 shrink-0 border-r border-white/10">
                                         <div className="sticky top-0 z-20 flex h-28 flex-col items-center justify-center gap-2 border-b border-white/10 bg-[#171718] px-4">
-                                            <div className="grid h-14 w-14 place-items-center rounded-full border-2 border-teal-300 bg-[#262628] text-sm font-bold text-teal-100 shadow-[0_0_0_3px_rgba(124,58,237,0.45)]">
-                                                {(staff.name || '?').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
-                                            </div>
-                                            <div className="max-w-full truncate text-center text-sm font-bold text-slate-100">{staff.name}</div>
+                                            <button
+                                                type="button"
+                                                className="group flex max-w-full flex-col items-center gap-2"
+                                                onClick={() => {
+                                                    setCalendarQuickAction(null);
+                                                    setBoardStaffMenu((current) => String(current?.staffId || '') === String(staff.id) ? null : { staffId: String(staff.id), staffIndex });
+                                                }}
+                                            >
+                                                <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-teal-300 bg-[#262628] text-sm font-semibold text-white shadow-[0_0_0_3px_rgba(124,58,237,0.45)] group-hover:border-teal-200">
+                                                    {(staff.name || '?').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+                                                </span>
+                                                <span className="flex max-w-full items-center gap-1 truncate text-center text-sm font-semibold text-white">
+                                                    <span className="truncate">{staff.name}</span>
+                                                    <span className="text-xs text-slate-300">v</span>
+                                                </span>
+                                            </button>
+                                            {String(boardStaffMenu?.staffId || '') === String(staff.id) ? (
+                                                <div className="absolute left-4 top-[5.75rem] z-50 w-56 overflow-hidden rounded-lg border border-white/15 bg-[#202020] p-2 text-sm shadow-2xl">
+                                                    <button type="button" className="flex w-full items-center gap-3 rounded-md border border-white/40 px-3 py-2.5 text-left font-semibold text-white">
+                                                        <span className="text-base">[]</span>
+                                                        Day view
+                                                    </button>
+                                                    <button type="button" className="mt-1 flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left font-semibold text-white hover:bg-white/5">
+                                                        <span className="text-base">|||</span>
+                                                        3 day view
+                                                    </button>
+                                                    <button type="button" className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left font-semibold text-white hover:bg-white/5">
+                                                        <span className="text-base">|||</span>
+                                                        Week view
+                                                    </button>
+                                                    <button type="button" className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left font-semibold text-white hover:bg-white/5">
+                                                        <span className="text-base">#</span>
+                                                        Month view
+                                                    </button>
+                                                    <div className="my-2 border-t border-white/10" />
+                                                    <div className="px-3 py-1 text-sm font-semibold text-slate-200">Actions</div>
+                                                    <button
+                                                        type="button"
+                                                        className="block w-full rounded-md px-3 py-2 text-left font-semibold text-white hover:bg-white/5"
+                                                        onClick={() => {
+                                                            const action = quickActionForStaff(staff, staffIndex);
+                                                            setBoardStaffMenu(null);
+                                                            seedCreateFromCalendar(action);
+                                                        }}
+                                                    >
+                                                        Add appointment
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="block w-full rounded-md px-3 py-2 text-left font-semibold text-white hover:bg-white/5"
+                                                        onClick={() => {
+                                                            const action = quickActionForStaff(staff, staffIndex);
+                                                            setBoardStaffMenu(null);
+                                                            seedBlockedTimeFromCalendar(action);
+                                                        }}
+                                                    >
+                                                        Add blocked time
+                                                    </button>
+                                                    <Link
+                                                        href={route('schedules.index', { staff_profile_id: staff.id, date_from: boardDate, date_to: boardDate })}
+                                                        className="block rounded-md px-3 py-2 font-semibold text-white hover:bg-white/5"
+                                                    >
+                                                        Edit shift
+                                                    </Link>
+                                                    <button
+                                                        type="button"
+                                                        className="block w-full rounded-md px-3 py-2 text-left font-semibold text-white hover:bg-white/5"
+                                                        onClick={() => {
+                                                            const action = quickActionForStaff(staff, staffIndex);
+                                                            setBoardStaffMenu(null);
+                                                            seedTimeOffFromCalendar(action);
+                                                        }}
+                                                    >
+                                                        Add time off
+                                                    </button>
+                                                    <Link href={route('staff.index', { search: staff.name || '' })} className="block rounded-md px-3 py-2 font-semibold text-white hover:bg-white/5">
+                                                        View team member
+                                                    </Link>
+                                                </div>
+                                            ) : null}
                                         </div>
                                         <div className="relative" style={{ height: `${boardCanvasHeight}px` }}>
                                             {boardHourMarks.slice(0, -1).map((minutes) => (
@@ -2401,8 +2520,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                 >
                                                     <div className="flex items-start justify-between gap-2">
                                                         <div>
-                                                            <div className="text-xs font-black text-slate-200">{block.timeLabel}</div>
-                                                            <div className="mt-1 text-xs font-bold text-slate-300">{block.title}</div>
+                                                            <div className="text-xs font-semibold text-white">{block.timeLabel}</div>
+                                                            <div className="mt-1 text-xs font-semibold text-slate-100">{block.title}</div>
                                                         </div>
                                                         {!isStaff ? (
                                                             <button
@@ -2435,11 +2554,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                         zIndex: appt.zIndex + 10,
                                                     }}
                                                 >
-                                                    <div className="text-xs font-black text-black">{appt.timeLabel}</div>
-                                                    <div className="mt-1 text-sm font-black leading-tight text-black">{appt.customer_name}</div>
-                                                    <div className="text-xs font-extrabold leading-tight text-black">{appt.service_name}</div>
-                                                    {appt.customer_package_id ? <div className="mt-1 text-[11px] font-black text-black">Package session</div> : null}
-                                                    {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-black text-black">Needs payment</div> : null}
+                                                    <div className="text-xs font-semibold text-black">{appt.timeLabel}</div>
+                                                    <div className="mt-1 text-sm font-semibold leading-tight text-black">{appt.customer_name}</div>
+                                                    <div className="text-xs font-semibold leading-tight text-black">{appt.service_name}</div>
+                                                    {appt.customer_package_id ? <div className="mt-1 text-[11px] font-semibold text-black">Package session</div> : null}
+                                                    {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-semibold text-black">Needs payment</div> : null}
                                                 </button>
                                             ))}
                                         </div>
