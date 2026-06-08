@@ -2845,7 +2845,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                             key={`selected-drawer-service-${service.lineKey}`}
                                                             type="button"
                                                             className={`w-full rounded-md border px-3 py-3 text-left transition ${isEditing ? 'border-violet-400 bg-violet-500/15' : 'border-white/10 bg-white/[0.03] hover:bg-white/5'}`}
-                                                            onClick={() => setCalendarServiceEditorId(String(service.lineKey))}
+                                                            onClick={() => setCalendarServiceEditorId((current) => (String(current) === String(service.lineKey) ? '' : String(service.lineKey)))}
+                                                            aria-expanded={isEditing}
                                                         >
                                                             <div className="flex items-start justify-between gap-3">
                                                                 <div>
@@ -2857,7 +2858,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                 </div>
                                                                 <div className="flex items-center gap-3">
                                                                     <span className="text-sm font-black text-slate-100">{formatMoney(meta.lineTotal, currencyCode)}</span>
-                                                                    <span className="text-xl text-slate-400">&gt;</span>
+                                                                    <span className="text-xl text-slate-400">{isEditing ? 'v' : '>'}</span>
                                                                 </div>
                                                             </div>
                                                         </button>
@@ -2878,7 +2879,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                             <h5 className="text-xl font-black text-white">Edit service</h5>
                                                             <p className="mt-1 text-xs text-slate-400">{calendarServiceEditor.name}</p>
                                                         </div>
-                                                        <button type="button" className="text-xl text-slate-400 hover:text-white" onClick={() => setCalendarServiceEditorId('')}>x</button>
+                                                        <button type="button" className="text-xl text-slate-400 hover:text-white" onClick={() => setCalendarServiceEditorId('')} aria-label="Collapse service editor">x</button>
                                                     </div>
 
                                                     <button type="button" className="mb-4 flex w-full items-center justify-between rounded-md border border-white/10 bg-[#18181a] px-3 py-3 text-left" onClick={() => setCreateServiceSearch(calendarServiceEditor.name)}>
