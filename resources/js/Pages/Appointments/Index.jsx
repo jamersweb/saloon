@@ -127,30 +127,40 @@ const serviceMatchesSearch = (service, query) => {
     const haystack = `${service?.name || ''} ${service?.category || ''}`.toLowerCase();
     return haystack.includes(needle);
 };
+const serviceLineKey = (index) => `line_${index}`;
+const serviceLineMapValue = (map, index, serviceId, fallback = undefined) => {
+    const lineKey = serviceLineKey(index);
+    if (map && Object.prototype.hasOwnProperty.call(map, lineKey)) return map[lineKey];
+    if (map && Object.prototype.hasOwnProperty.call(map, String(index))) return map[String(index)];
+    if (map && Object.prototype.hasOwnProperty.call(map, String(serviceId))) return map[String(serviceId)];
+
+    return fallback;
+};
 const normalizeServiceQuantities = (serviceIds, serviceQuantities) => {
     const next = {};
-    (serviceIds || []).forEach((serviceId) => {
-        const key = String(serviceId);
-        next[key] = Math.max(1, Number(serviceQuantities?.[key] || 1));
+    (serviceIds || []).forEach((serviceId, index) => {
+        const key = serviceLineKey(index);
+        next[key] = Math.max(1, Number(serviceLineMapValue(serviceQuantities, index, serviceId, 1)));
     });
 
     return next;
 };
 const filterServiceMap = (serviceIds, map) => {
-    const allowed = new Set((serviceIds || []).map((id) => String(id)));
+    const allowedServiceIds = new Set((serviceIds || []).map((id) => String(id)));
+    const allowedLineKeys = new Set((serviceIds || []).map((_, index) => serviceLineKey(index)));
 
     return Object.fromEntries(
-        Object.entries(map || {}).filter(([serviceId, value]) => allowed.has(String(serviceId)) && value !== undefined && value !== null && value !== ''),
+        Object.entries(map || {}).filter(([key, value]) => (allowedLineKeys.has(String(key)) || allowedServiceIds.has(String(key))) && value !== undefined && value !== null && value !== ''),
     );
 };
 const estimateSelectedServicesTotal = (serviceIds, serviceQuantities, services, coveredServiceIds = []) => {
     const covered = new Set((coveredServiceIds || []).map((id) => String(id)));
 
-    return (serviceIds || []).reduce((sum, serviceId) => {
+    return (serviceIds || []).reduce((sum, serviceId, index) => {
         const service = services.find((item) => String(item.id) === String(serviceId));
         if (!service) return sum;
         if (covered.has(String(serviceId))) return sum;
-        const quantity = Math.max(1, Number(serviceQuantities?.[String(serviceId)] || 1));
+        const quantity = Math.max(1, Number(serviceLineMapValue(serviceQuantities, index, serviceId, 1)));
         return sum + (Number(service.price || 0) * quantity);
     }, 0);
 };
@@ -174,7 +184,7 @@ const hasAssignmentsForAllServices = (serviceIds, staffAssignments) => {
     const selected = (serviceIds || []).map((id) => String(id));
     if (selected.length === 0) return false;
 
-    return selected.every((serviceId) => String(staffAssignments?.[serviceId] || '').trim() !== '');
+    return selected.every((serviceId, index) => String(staffAssignments?.[serviceLineKey(index)] || staffAssignments?.[serviceId] || '').trim() !== '');
 };
 const localYmd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const sameLocalDate = (a, ymd) => {
@@ -403,12 +413,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         const startDate = new Date(startValue);
         if (Number.isNaN(startDate.getTime())) return '';
 
-        const totalMinutes = serviceIds.reduce((sum, id) => {
+        const totalMinutes = serviceIds.reduce((sum, id, index) => {
             const service = services.find((s) => String(s.id) === String(id));
             if (!service) return sum;
-            const key = String(id);
-            const baseDuration = Math.max(1, Number(formData.service_durations?.[key] || service.duration_minutes || 0));
-            const extraMinutes = Math.max(0, Number(formData.service_extra_minutes?.[key] || 0));
+            const baseDuration = Math.max(1, Number(serviceLineMapValue(formData.service_durations, index, id, service.duration_minutes || 0)));
+            const extraMinutes = Math.max(0, Number(serviceLineMapValue(formData.service_extra_minutes, index, id, 0)));
 
             return sum + baseDuration + extraMinutes + Number(service.buffer_minutes || 0);
         }, 0);
@@ -431,9 +440,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         createForm.setData((prev) => ({
             ...prev,
             ...(() => {
-                const nextAssignments = Object.fromEntries(
-                Object.entries(prev.staff_assignments || {}).filter(([serviceId]) => nextIds.includes(String(serviceId))),
-                );
+                const nextAssignments = filterServiceMap(nextIds, prev.staff_assignments);
                 return {
                     staff_assignments: nextAssignments,
                     staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
@@ -500,9 +507,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         editForm.setData((prev) => ({
             ...prev,
             ...(() => {
-                const nextAssignments = Object.fromEntries(
-                Object.entries(prev.staff_assignments || {}).filter(([serviceId]) => nextIds.includes(String(serviceId))),
-                );
+                const nextAssignments = filterServiceMap(nextIds, prev.staff_assignments);
                 return {
                     staff_assignments: nextAssignments,
                     staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
@@ -637,8 +642,12 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         setCalendarQuickAction(null);
     };
 
-    const updateCreateServiceMeta = (serviceId, updates) => {
-        const sid = String(serviceId);
+    const updateCreateServiceMeta = (serviceOrId, updates) => {
+        const sid = String(serviceOrId?.id ?? serviceOrId);
+        const lineIndex = Number.isInteger(serviceOrId?.lineIndex)
+            ? serviceOrId.lineIndex
+            : createSelectedServices.findIndex((id) => String(id) === sid);
+        const lineKey = serviceOrId?.lineKey || serviceLineKey(Math.max(0, lineIndex));
         createForm.setData((prev) => {
             const nextData = {
                 ...prev,
@@ -652,21 +661,21 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             };
 
             if (updates.start !== undefined) {
-                nextData.service_starts[sid] = updates.start;
-                if (String(prev.service_ids?.[0] || '') === sid) {
+                nextData.service_starts[lineKey] = updates.start;
+                if (lineIndex === 0) {
                     nextData.scheduled_start = updates.start;
                 }
             }
-            if (updates.duration !== undefined) nextData.service_durations[sid] = Math.max(1, Number(updates.duration || 1));
-            if (updates.extra !== undefined) nextData.service_extra_minutes[sid] = Math.max(0, Number(updates.extra || 0));
-            if (updates.unitPrice !== undefined) nextData.service_unit_prices[sid] = Math.max(0, Number(updates.unitPrice || 0));
-            if (updates.discountAmount !== undefined) nextData.service_discount_amounts[sid] = Math.max(0, Number(updates.discountAmount || 0));
-            if (updates.quantity !== undefined) nextData.service_quantities[sid] = Math.max(1, Number(updates.quantity || 1));
+            if (updates.duration !== undefined) nextData.service_durations[lineKey] = Math.max(1, Number(updates.duration || 1));
+            if (updates.extra !== undefined) nextData.service_extra_minutes[lineKey] = Math.max(0, Number(updates.extra || 0));
+            if (updates.unitPrice !== undefined) nextData.service_unit_prices[lineKey] = Math.max(0, Number(updates.unitPrice || 0));
+            if (updates.discountAmount !== undefined) nextData.service_discount_amounts[lineKey] = Math.max(0, Number(updates.discountAmount || 0));
+            if (updates.quantity !== undefined) nextData.service_quantities[lineKey] = Math.max(1, Number(updates.quantity || 1));
             if (updates.staffId !== undefined) {
                 if (updates.staffId) {
-                    nextData.staff_assignments[sid] = updates.staffId;
+                    nextData.staff_assignments[lineKey] = updates.staffId;
                 } else {
-                    delete nextData.staff_assignments[sid];
+                    delete nextData.staff_assignments[lineKey];
                 }
                 nextData.staff_profile_id = prev.service_ids?.length === 1 ? (updates.staffId || '') : (hasAssignmentsForAllServices(prev.service_ids || [], nextData.staff_assignments) ? '' : prev.staff_profile_id);
             }
@@ -702,31 +711,30 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 staff_profile_id: appt.staff_profile_id || '',
                 customer_package_id: appt.customer_package_id || '',
             }] : []);
-        const selectedServiceIds = [...new Set(serviceRows
+        const selectedServiceIds = serviceRows
             .map((row) => String(row.service_id || ''))
-            .filter(Boolean))];
-        const selectedServiceQuantities = Object.fromEntries(selectedServiceIds.map((serviceId) => {
-            const row = serviceRows.find((item) => String(item.service_id || '') === serviceId);
-            return [serviceId, String(row?.quantity || 1)];
-        }));
+            .filter(Boolean);
+        const selectedServiceQuantities = Object.fromEntries(serviceRows
+            .filter((row) => row.service_id)
+            .map((row, index) => [serviceLineKey(index), String(row?.quantity || 1)]));
         const selectedServiceStarts = Object.fromEntries(serviceRows
             .filter((row) => row.service_id && row.scheduled_start)
-            .map((row) => [String(row.service_id), toDateTimeLocal(row.scheduled_start)]));
+            .map((row, index) => [serviceLineKey(index), toDateTimeLocal(row.scheduled_start)]));
         const selectedServiceDurations = Object.fromEntries(serviceRows
             .filter((row) => row.service_id && row.service_duration_minutes)
-            .map((row) => [String(row.service_id), String(row.service_duration_minutes)]));
+            .map((row, index) => [serviceLineKey(index), String(row.service_duration_minutes)]));
         const selectedServiceExtraMinutes = Object.fromEntries(serviceRows
             .filter((row) => row.service_id && Number(row.service_extra_minutes || 0) > 0)
-            .map((row) => [String(row.service_id), String(row.service_extra_minutes)]));
+            .map((row, index) => [serviceLineKey(index), String(row.service_extra_minutes)]));
         const selectedServiceUnitPrices = Object.fromEntries(serviceRows
             .filter((row) => row.service_id && row.service_unit_price !== null && row.service_unit_price !== undefined)
-            .map((row) => [String(row.service_id), String(row.service_unit_price)]));
+            .map((row, index) => [serviceLineKey(index), String(row.service_unit_price)]));
         const selectedServiceDiscountAmounts = Object.fromEntries(serviceRows
             .filter((row) => row.service_id && Number(row.service_discount_amount || 0) > 0)
-            .map((row) => [String(row.service_id), String(row.service_discount_amount)]));
+            .map((row, index) => [serviceLineKey(index), String(row.service_discount_amount)]));
         const staffAssignments = Object.fromEntries(serviceRows
             .filter((row) => row.service_id && row.staff_profile_id)
-            .map((row) => [String(row.service_id), String(row.staff_profile_id)]));
+            .map((row, index) => [serviceLineKey(index), String(row.staff_profile_id)]));
         const selectedPackageId = String(appt.customer_package_id || serviceRows.find((row) => row.customer_package_id)?.customer_package_id || '');
         setEditStartYmd(startStr.split('T')[0] || localYmd(new Date()));
         setEditingId(appt.id);
@@ -834,7 +842,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const editPackageCoverageMap = Object.fromEntries((editSelectedPackage?.services || []).map((service) => [String(service.id), service]));
     const createCoveredServiceIds = createForm.data.package_service_ids || [];
     const editCoveredServiceIds = editForm.data.package_service_ids || [];
-    const createAvailableServices = services.filter((s) => !createSelectedServices.includes(String(s.id)));
+    const createAvailableServices = services;
     const editAvailableServices = services.filter((s) => !editSelectedServices.includes(String(s.id)));
     const createFilteredCustomers = customers.filter((customer) => {
         const haystack = `${customer.name || ''} ${customer.phone || ''} ${customer.email || ''}`.toLowerCase();
@@ -845,22 +853,29 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const createEstimatedServicesTotal = estimateSelectedServicesTotal(createSelectedServices, createForm.data.service_quantities, services, createCoveredServiceIds);
     const editEstimatedServicesTotal = estimateSelectedServicesTotal(editSelectedServices, editForm.data.service_quantities, services, editCoveredServiceIds);
     const createSelectedServiceRows = createSelectedServices
-        .map((id) => services.find((service) => String(service.id) === String(id)))
+        .map((id, index) => {
+            const service = services.find((item) => String(item.id) === String(id));
+            return service ? { ...service, lineKey: serviceLineKey(index), lineIndex: index } : null;
+        })
         .filter(Boolean);
-    const calendarServiceEditor = createSelectedServiceRows.find((service) => String(service.id) === String(calendarServiceEditorId)) || null;
+    const calendarServiceEditor = createSelectedServiceRows.find((service) => String(service.lineKey) === String(calendarServiceEditorId)) || null;
     const serviceDurationOptions = [15, 30, 45, 60, 75, 90, 105, 120, 150, 180, 210, 240];
     const getCreateServiceMeta = (service) => {
         const sid = String(service.id);
-        const quantity = Math.max(1, Number(createForm.data.service_quantities?.[sid] || 1));
-        const unitPrice = Number(createForm.data.service_unit_prices?.[sid] ?? service.price ?? 0);
-        const discountAmount = Math.max(0, Number(createForm.data.service_discount_amounts?.[sid] || 0));
-        const durationMinutes = Math.max(1, Number(createForm.data.service_durations?.[sid] || service.duration_minutes || 0));
-        const extraMinutes = Math.max(0, Number(createForm.data.service_extra_minutes?.[sid] || 0));
-        const staffId = String(createForm.data.staff_assignments?.[sid] || (createSelectedServices.length === 1 ? createForm.data.staff_profile_id : '') || '');
+        const lineIndex = Number.isInteger(service.lineIndex) ? service.lineIndex : createSelectedServices.findIndex((id) => String(id) === sid);
+        const lineKey = service.lineKey || serviceLineKey(Math.max(0, lineIndex));
+        const quantity = Math.max(1, Number(serviceLineMapValue(createForm.data.service_quantities, lineIndex, sid, 1)));
+        const unitPrice = Number(serviceLineMapValue(createForm.data.service_unit_prices, lineIndex, sid, service.price ?? 0));
+        const discountAmount = Math.max(0, Number(serviceLineMapValue(createForm.data.service_discount_amounts, lineIndex, sid, 0)));
+        const durationMinutes = Math.max(1, Number(serviceLineMapValue(createForm.data.service_durations, lineIndex, sid, service.duration_minutes || 0)));
+        const extraMinutes = Math.max(0, Number(serviceLineMapValue(createForm.data.service_extra_minutes, lineIndex, sid, 0)));
+        const staffId = String(serviceLineMapValue(createForm.data.staff_assignments, lineIndex, sid, createSelectedServices.length === 1 ? createForm.data.staff_profile_id : '') || '');
         const staff = staffProfiles.find((item) => String(item.id) === staffId);
 
         return {
             sid,
+            lineIndex,
+            lineKey,
             quantity,
             unitPrice,
             discountAmount,
@@ -872,16 +887,20 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         };
     };
     const createDrawerServicesSubtotal = createSelectedServiceRows.reduce((sum, service) => sum + getCreateServiceMeta(service).lineTotal, 0);
-    const getCreateServiceSequenceStart = (serviceId) => {
-        const sid = String(serviceId);
-        if (createForm.data.service_starts?.[sid]) return createForm.data.service_starts[sid];
+    const getCreateServiceSequenceStart = (serviceOrId) => {
+        const sid = String(serviceOrId?.id ?? serviceOrId);
+        const targetIndex = Number.isInteger(serviceOrId?.lineIndex)
+            ? serviceOrId.lineIndex
+            : createSelectedServices.findIndex((id) => String(id) === sid);
+        const explicitStart = serviceLineMapValue(createForm.data.service_starts, targetIndex, sid);
+        if (explicitStart) return explicitStart;
 
         let cursor = createForm.data.scheduled_start || '';
-        for (const selectedId of createSelectedServices) {
-            if (String(selectedId) === sid) return cursor;
+        for (const [index, selectedId] of createSelectedServices.entries()) {
+            if (index === targetIndex) return cursor;
             const service = services.find((item) => String(item.id) === String(selectedId));
             if (!service || !cursor) continue;
-            const meta = getCreateServiceMeta(service);
+            const meta = getCreateServiceMeta({ ...service, lineKey: serviceLineKey(index), lineIndex: index });
             cursor = addMinutesToDateTimeLocal(cursor, meta.durationMinutes + meta.extraMinutes + Number(service.buffer_minutes || 0));
         }
 
@@ -2623,19 +2642,20 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             <div className="mb-4 space-y-2">
                                                 {createSelectedServiceRows.map((service) => {
                                                     const meta = getCreateServiceMeta(service);
-                                                    const serviceStart = getCreateServiceSequenceStart(service.id);
-                                                    const isEditing = String(calendarServiceEditorId) === String(service.id);
+                                                    const serviceStart = getCreateServiceSequenceStart(service);
+                                                    const sameServiceCount = createSelectedServices.filter((id) => String(id) === String(service.id)).length;
+                                                    const isEditing = String(calendarServiceEditorId) === String(service.lineKey);
 
                                                     return (
                                                         <button
-                                                            key={`selected-drawer-service-${service.id}`}
+                                                            key={`selected-drawer-service-${service.lineKey}`}
                                                             type="button"
                                                             className={`w-full rounded-md border px-3 py-3 text-left transition ${isEditing ? 'border-violet-400 bg-violet-500/15' : 'border-white/10 bg-white/[0.03] hover:bg-white/5'}`}
-                                                            onClick={() => setCalendarServiceEditorId(String(service.id))}
+                                                            onClick={() => setCalendarServiceEditorId(String(service.lineKey))}
                                                         >
                                                             <div className="flex items-start justify-between gap-3">
                                                                 <div>
-                                                                    <div className="text-sm font-black text-white">{service.name}</div>
+                                                                    <div className="text-sm font-black text-white">{service.name}{sameServiceCount > 1 ? ` #${service.lineIndex + 1}` : ''}</div>
                                                                     <div className="mt-1 text-xs text-slate-400">
                                                                         {formatTimeFromDateTimeLocal(serviceStart) || 'Start not set'} - {meta.durationMinutes + meta.extraMinutes}m
                                                                         {meta.staffName ? ` - ${meta.staffName}` : ''}
@@ -2654,7 +2674,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
                                         {calendarServiceEditor ? (() => {
                                             const meta = getCreateServiceMeta(calendarServiceEditor);
-                                            const serviceStart = getCreateServiceSequenceStart(calendarServiceEditor.id);
+                                            const serviceStart = getCreateServiceSequenceStart(calendarServiceEditor);
                                             const durationChoices = [...new Set([...serviceDurationOptions, meta.durationMinutes])].sort((a, b) => a - b);
 
                                             return (
@@ -2678,7 +2698,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                             <select
                                                                 className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
                                                                 value={meta.staffId}
-                                                                onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { staffId: e.target.value })}
+                                                                onChange={(e) => updateCreateServiceMeta(calendarServiceEditor, { staffId: e.target.value })}
                                                             >
                                                                 {staffOptions.map((staff) => <option key={staff.value || 'auto'} value={staff.value}>{staff.label}</option>)}
                                                             </select>
@@ -2695,7 +2715,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                         min="0"
                                                                         step="0.01"
                                                                         value={meta.unitPrice}
-                                                                        onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { unitPrice: e.target.value })}
+                                                                        onChange={(e) => updateCreateServiceMeta(calendarServiceEditor, { unitPrice: e.target.value })}
                                                                     />
                                                                 </div>
                                                             </div>
@@ -2710,7 +2730,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                         max={meta.unitPrice * meta.quantity}
                                                                         step="0.01"
                                                                         value={meta.discountAmount}
-                                                                        onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { discountAmount: e.target.value })}
+                                                                        onChange={(e) => updateCreateServiceMeta(calendarServiceEditor, { discountAmount: e.target.value })}
                                                                     />
                                                                 </div>
                                                             </div>
@@ -2723,7 +2743,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                     className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]"
                                                                     type="datetime-local"
                                                                     value={serviceStart}
-                                                                    onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { start: e.target.value })}
+                                                                    onInput={(e) => updateCreateServiceMeta(calendarServiceEditor, { start: e.target.value })}
+                                                                    onChange={(e) => updateCreateServiceMeta(calendarServiceEditor, { start: e.target.value })}
                                                                 />
                                                             </div>
                                                             <div>
@@ -2731,7 +2752,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                 <select
                                                                     className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
                                                                     value={meta.durationMinutes}
-                                                                    onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { duration: e.target.value })}
+                                                                    onChange={(e) => updateCreateServiceMeta(calendarServiceEditor, { duration: e.target.value })}
                                                                 >
                                                                     {durationChoices.map((minutes) => <option key={minutes} value={minutes}>{minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ''}` : `${minutes}m`}</option>)}
                                                                 </select>
@@ -2746,7 +2767,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                     type="number"
                                                                     min="1"
                                                                     value={meta.quantity}
-                                                                    onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { quantity: e.target.value })}
+                                                                    onChange={(e) => updateCreateServiceMeta(calendarServiceEditor, { quantity: e.target.value })}
                                                                 />
                                                             </div>
                                                             <div>
@@ -2758,9 +2779,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                         min="0"
                                                                         step="5"
                                                                         value={meta.extraMinutes}
-                                                                        onChange={(e) => updateCreateServiceMeta(calendarServiceEditor.id, { extra: e.target.value })}
+                                                                        onChange={(e) => updateCreateServiceMeta(calendarServiceEditor, { extra: e.target.value })}
                                                                     />
-                                                                    <button type="button" className="rounded-full border border-white/15 px-3 text-sm font-bold text-slate-200 hover:bg-white/5" onClick={() => updateCreateServiceMeta(calendarServiceEditor.id, { extra: meta.extraMinutes + 15 })}>+15</button>
+                                                                    <button type="button" className="rounded-full border border-white/15 px-3 text-sm font-bold text-slate-200 hover:bg-white/5" onClick={() => updateCreateServiceMeta(calendarServiceEditor, { extra: meta.extraMinutes + 15 })}>+15</button>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -2774,7 +2795,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                 type="button"
                                                                 className="text-sm font-bold text-rose-300 hover:text-rose-200"
                                                                 onClick={() => {
-                                                                    handleCreateServiceChange(createSelectedServices.filter((id) => String(id) !== String(calendarServiceEditor.id)));
+                                                                    handleCreateServiceChange(createSelectedServices.filter((_, index) => index !== calendarServiceEditor.lineIndex));
                                                                     setCalendarServiceEditorId('');
                                                                 }}
                                                             >
@@ -2800,24 +2821,22 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     </div>
                                                     <div className="space-y-1">
                                                         {categoryServices.map((service) => {
-                                                            const selected = createSelectedServices.includes(String(service.id));
+                                                            const selectedCount = createSelectedServices.filter((id) => String(id) === String(service.id)).length;
                                                             return (
                                                                 <button
                                                                     key={service.id}
                                                                     type="button"
-                                                                    className={`flex w-full items-start justify-between border-l-2 px-3 py-3 text-left hover:bg-white/5 ${selected ? 'border-violet-400 bg-violet-500/10' : 'border-cyan-300/80'}`}
+                                                                    className={`flex w-full items-start justify-between border-l-2 px-3 py-3 text-left hover:bg-white/5 ${selectedCount > 0 ? 'border-violet-400 bg-violet-500/10' : 'border-cyan-300/80'}`}
                                                                     onClick={() => {
                                                                         const sid = String(service.id);
-                                                                        const nextIds = selected
-                                                                            ? createSelectedServices.filter((id) => id !== sid)
-                                                                            : [...createSelectedServices, sid];
+                                                                        const nextIds = [...createSelectedServices, sid];
                                                                         handleCreateServiceChange(nextIds);
-                                                                        setCalendarServiceEditorId(selected ? '' : sid);
+                                                                        setCalendarServiceEditorId(serviceLineKey(nextIds.length - 1));
                                                                     }}
                                                                 >
                                                                     <span>
                                                                         <span className="block text-sm font-bold text-white">{service.name}</span>
-                                                                        <span className="mt-1 block text-xs text-slate-400">{service.duration_minutes}m</span>
+                                                                        <span className="mt-1 block text-xs text-slate-400">{service.duration_minutes}m{selectedCount > 0 ? ` - selected ${selectedCount}` : ''}</span>
                                                                     </span>
                                                                     <span className="text-sm font-bold text-slate-200">{formatMoney(service.price, currencyCode)}</span>
                                                                 </button>
@@ -2850,12 +2869,12 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Start</label>
-                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={createForm.data.scheduled_start} onChange={(e) => createForm.setData((prev) => ({ ...prev, scheduled_start: e.target.value, scheduled_end: calculateSuggestedEnd(e.target.value, prev.service_ids) }))} required />
+                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={createForm.data.scheduled_start} onInput={(e) => createForm.setData((prev) => ({ ...prev, scheduled_start: e.target.value, scheduled_end: calculateSuggestedEndWithServiceMeta(e.target.value, prev.service_ids, prev) }))} onChange={(e) => createForm.setData((prev) => ({ ...prev, scheduled_start: e.target.value, scheduled_end: calculateSuggestedEndWithServiceMeta(e.target.value, prev.service_ids, prev) }))} required />
                                             {fieldError(createForm, 'scheduled_start')}
                                         </div>
                                         <div>
                                             <label className="mb-1 block text-xs font-bold uppercase text-slate-400">End</label>
-                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={createForm.data.scheduled_end} onChange={(e) => createForm.setData('scheduled_end', e.target.value)} />
+                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={createForm.data.scheduled_end} onInput={(e) => handleCreateEndChange(e.target.value)} onChange={(e) => handleCreateEndChange(e.target.value)} />
                                         </div>
                                     </div>
                                     <textarea className="min-h-[82px] w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" value={createForm.data.notes} onChange={(e) => createForm.setData('notes', e.target.value)} placeholder="Appointment notes" />

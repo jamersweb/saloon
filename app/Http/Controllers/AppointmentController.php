@@ -1029,16 +1029,15 @@ class AppointmentController extends Controller
             return [];
         }
 
-        $allowedServiceIds = array_fill_keys($serviceIds, true);
         $map = [];
 
-        foreach ($raw as $serviceId => $quantity) {
-            $sid = (int) $serviceId;
-            if (! isset($allowedServiceIds[$sid])) {
+        foreach ($raw as $key => $quantity) {
+            $normalizedKey = $this->normalizeServiceRowMapKey((string) $key, $serviceIds);
+            if ($normalizedKey === null) {
                 continue;
             }
 
-            $map[$sid] = max(1, (int) $quantity);
+            $map[$normalizedKey] = max(1, (int) $quantity);
         }
 
         return $map;
@@ -1055,16 +1054,15 @@ class AppointmentController extends Controller
             return [];
         }
 
-        $allowedServiceIds = array_fill_keys($serviceIds, true);
         $map = [];
 
-        foreach ($raw as $serviceId => $value) {
-            $sid = (int) $serviceId;
-            if (! isset($allowedServiceIds[$sid]) || empty($value)) {
+        foreach ($raw as $key => $value) {
+            $normalizedKey = $this->normalizeServiceRowMapKey((string) $key, $serviceIds);
+            if ($normalizedKey === null || empty($value)) {
                 continue;
             }
 
-            $map[$sid] = Carbon::parse($value);
+            $map[$normalizedKey] = Carbon::parse($value);
         }
 
         return $map;
@@ -1081,16 +1079,15 @@ class AppointmentController extends Controller
             return [];
         }
 
-        $allowedServiceIds = array_fill_keys($serviceIds, true);
         $map = [];
 
-        foreach ($raw as $serviceId => $value) {
-            $sid = (int) $serviceId;
-            if (! isset($allowedServiceIds[$sid]) || $value === null || $value === '') {
+        foreach ($raw as $key => $value) {
+            $normalizedKey = $this->normalizeServiceRowMapKey((string) $key, $serviceIds);
+            if ($normalizedKey === null || $value === null || $value === '') {
                 continue;
             }
 
-            $map[$sid] = max($min, (int) $value);
+            $map[$normalizedKey] = max($min, (int) $value);
         }
 
         return $map;
@@ -1107,16 +1104,15 @@ class AppointmentController extends Controller
             return [];
         }
 
-        $allowedServiceIds = array_fill_keys($serviceIds, true);
         $map = [];
 
-        foreach ($raw as $serviceId => $value) {
-            $sid = (int) $serviceId;
-            if (! isset($allowedServiceIds[$sid]) || $value === null || $value === '') {
+        foreach ($raw as $key => $value) {
+            $normalizedKey = $this->normalizeServiceRowMapKey((string) $key, $serviceIds);
+            if ($normalizedKey === null || $value === null || $value === '') {
                 continue;
             }
 
-            $map[$sid] = round(max(0, (float) $value), 2);
+            $map[$normalizedKey] = round(max(0, (float) $value), 2);
         }
 
         return $map;
@@ -1133,13 +1129,44 @@ class AppointmentController extends Controller
             $raw = [];
         }
 
-        $ids = array_values(array_unique(array_map('intval', array_filter($raw, fn ($v) => (string) $v !== ''))));
+        $ids = array_values(array_map('intval', array_filter($raw, fn ($v) => (string) $v !== '')));
 
         if ($ids === [] && ! empty($data['service_id'])) {
             $ids = [(int) $data['service_id']];
         }
 
         return $ids;
+    }
+
+    private function normalizeServiceRowMapKey(string $key, array $serviceIds): int|string|null
+    {
+        if (preg_match('/^line_(\d+)$/', $key, $matches)) {
+            $index = (int) $matches[1];
+
+            return array_key_exists($index, $serviceIds) ? "line_{$index}" : null;
+        }
+
+        $id = (int) $key;
+
+        return in_array($id, $serviceIds, true) ? $id : null;
+    }
+
+    private function servicePlanValue(array $map, int $index, int $serviceId, mixed $default = null): mixed
+    {
+        $lineKey = "line_{$index}";
+        if (array_key_exists($lineKey, $map)) {
+            return $map[$lineKey];
+        }
+
+        if (array_key_exists($index, $map)) {
+            return $map[$index];
+        }
+
+        if (array_key_exists($serviceId, $map)) {
+            return $map[$serviceId];
+        }
+
+        return $default;
     }
 
     /**
@@ -1242,8 +1269,9 @@ class AppointmentController extends Controller
         $plans = [];
         $cursor = $start->copy();
         $assignedStaffIds = array_values(array_unique(array_filter(array_map(
-            static fn ($serviceId) => isset($staffAssignments[$serviceId]) ? (int) $staffAssignments[$serviceId] : null,
-            $serviceIds
+            fn ($serviceId, $index) => $this->servicePlanValue($staffAssignments, (int) $index, (int) $serviceId),
+            $serviceIds,
+            array_keys($serviceIds)
         ))));
         $runInParallel = count($serviceIds) > 1 && count($assignedStaffIds) > 1;
 
@@ -1254,18 +1282,21 @@ class AppointmentController extends Controller
                 continue;
             }
 
-            $itemStart = isset($serviceStarts[$serviceId])
-                ? $serviceStarts[$serviceId]->copy()
+            $serviceStart = $this->servicePlanValue($serviceStarts, $idx, (int) $serviceId);
+            $itemStart = $serviceStart instanceof Carbon
+                ? $serviceStart->copy()
                 : ($runInParallel ? $start->copy() : $cursor->copy());
-            $durationMinutes = max(1, (int) ($serviceDurations[$serviceId] ?? $service->duration_minutes));
-            $extraMinutes = max(0, (int) ($serviceExtraMinutes[$serviceId] ?? 0));
+            $durationMinutes = max(1, (int) $this->servicePlanValue($serviceDurations, $idx, (int) $serviceId, $service->duration_minutes));
+            $extraMinutes = max(0, (int) $this->servicePlanValue($serviceExtraMinutes, $idx, (int) $serviceId, 0));
             $itemEnd = $itemStart->copy()->addMinutes($durationMinutes + $extraMinutes + (int) $service->buffer_minutes);
-            $unitPrice = array_key_exists($serviceId, $serviceUnitPrices) ? (float) $serviceUnitPrices[$serviceId] : null;
-            $quantity = max(1, (int) ($serviceQuantities[$serviceId] ?? 1));
+            $unitPriceValue = $this->servicePlanValue($serviceUnitPrices, $idx, (int) $serviceId);
+            $unitPrice = $unitPriceValue !== null ? (float) $unitPriceValue : null;
+            $quantity = max(1, (int) $this->servicePlanValue($serviceQuantities, $idx, (int) $serviceId, 1));
             $maxDiscount = max(0, (($unitPrice ?? (float) $service->price) * $quantity));
-            $discountAmount = min($maxDiscount, max(0, (float) ($serviceDiscountAmounts[$serviceId] ?? 0)));
+            $discountAmount = min($maxDiscount, max(0, (float) $this->servicePlanValue($serviceDiscountAmounts, $idx, (int) $serviceId, 0)));
 
             $plans[] = [
+                'line_key' => "line_{$idx}",
                 'service' => $service,
                 'service_quantity' => $quantity,
                 'service_unit_price' => $unitPrice,
@@ -1301,13 +1332,12 @@ class AppointmentController extends Controller
     private function attachStaffAssignments(array $servicePlans, ?int $selectedStaffId, BookingAvailabilityService $availabilityService, ?int $firstPlanIgnoreAppointmentId = null, array $perServiceStaffMap = []): array
     {
         $plansWithStaff = [];
-        $serviceIds = array_map(static fn (array $plan): int => (int) $plan['service']->id, $servicePlans);
-        $allServicesAssignedIndividually = $serviceIds !== []
-            && count(array_intersect($serviceIds, array_keys($perServiceStaffMap))) === count($serviceIds);
+        $allServicesAssignedIndividually = $servicePlans !== []
+            && collect($servicePlans)->every(fn (array $plan, int $index): bool => $this->servicePlanValue($perServiceStaffMap, $index, (int) $plan['service']->id) !== null);
 
         foreach ($servicePlans as $index => $plan) {
             $ignoreAppointmentId = $index === 0 ? $firstPlanIgnoreAppointmentId : null;
-            $serviceSpecificStaffId = $perServiceStaffMap[(int) $plan['service']->id] ?? null;
+            $serviceSpecificStaffId = $this->servicePlanValue($perServiceStaffMap, $index, (int) $plan['service']->id);
             $fallbackSelectedStaffId = $allServicesAssignedIndividually ? null : $selectedStaffId;
 
             if ($serviceSpecificStaffId !== null || $fallbackSelectedStaffId !== null) {
@@ -1397,12 +1427,11 @@ class AppointmentController extends Controller
             return [];
         }
 
-        $allowedServiceIds = array_fill_keys($serviceIds, true);
         $map = [];
 
-        foreach ($raw as $serviceId => $staffProfileId) {
-            $sid = (int) $serviceId;
-            if (! isset($allowedServiceIds[$sid])) {
+        foreach ($raw as $key => $staffProfileId) {
+            $normalizedKey = $this->normalizeServiceRowMapKey((string) $key, $serviceIds);
+            if ($normalizedKey === null) {
                 continue;
             }
 
@@ -1410,7 +1439,7 @@ class AppointmentController extends Controller
                 continue;
             }
 
-            $map[$sid] = (int) $staffProfileId;
+            $map[$normalizedKey] = (int) $staffProfileId;
         }
 
         return $map;

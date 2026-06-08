@@ -432,6 +432,92 @@ class AppointmentServiceWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_single_client_can_repeat_same_service_as_separate_timed_rows(): void
+    {
+        Queue::fake();
+
+        $manager = $this->createManagerUser();
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 15,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staffUser = User::factory()->create(['role_id' => $manager->role_id, 'name' => 'Repeat Line Staff']);
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-REPEAT-LINE',
+            'is_active' => true,
+        ]);
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '22:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Repeat Gel Overlay',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 150,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.store'), [
+            'customer_name' => 'Repeat Line Client',
+            'customer_phone' => '971500004444',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id, $service->id],
+            'service_starts' => [
+                'line_0' => '2026-05-12 14:00:00',
+                'line_1' => '2026-05-12 16:15:00',
+            ],
+            'service_durations' => [
+                'line_0' => 45,
+                'line_1' => 30,
+            ],
+            'service_extra_minutes' => [
+                'line_1' => 15,
+            ],
+            'service_unit_prices' => [
+                'line_0' => 150,
+                'line_1' => 125,
+            ],
+            'service_discount_amounts' => [
+                'line_1' => 25,
+            ],
+            'staff_assignments' => [
+                'line_0' => $staff->id,
+                'line_1' => $staff->id,
+            ],
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 17:00:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $appointments = Appointment::query()
+            ->where('customer_phone', '971500004444')
+            ->orderBy('scheduled_start')
+            ->get();
+
+        $this->assertCount(2, $appointments);
+        $this->assertSame($service->id, $appointments[0]->service_id);
+        $this->assertSame($service->id, $appointments[1]->service_id);
+        $this->assertSame('2026-05-12 14:00:00', $appointments[0]->scheduled_start->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-12 14:45:00', $appointments[0]->scheduled_end->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-12 16:15:00', $appointments[1]->scheduled_start->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-12 17:00:00', $appointments[1]->scheduled_end->format('Y-m-d H:i:s'));
+        $this->assertSame('125.00', (string) $appointments[1]->service_unit_price);
+        $this->assertSame('25.00', (string) $appointments[1]->service_discount_amount);
+        $this->assertSame(30, $appointments[1]->service_duration_minutes);
+        $this->assertSame(15, $appointments[1]->service_extra_minutes);
+    }
+
     public function test_staff_can_start_service_with_before_photo_and_notes(): void
     {
         Storage::fake('public');
