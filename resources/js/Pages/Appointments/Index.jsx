@@ -302,6 +302,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [deleteAppointmentBusy, setDeleteAppointmentBusy] = useState(false);
     const importFileRef = useRef(null);
     const [checkoutFlow, setCheckoutFlow] = useState('draft');
+    const [createCustomerSearch, setCreateCustomerSearch] = useState('');
     const [createServiceSearch, setCreateServiceSearch] = useState('');
     const [editServiceSearch, setEditServiceSearch] = useState('');
     const [showBoardView, setShowBoardView] = useState(false);
@@ -555,20 +556,26 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     };
 
     const applyCustomerToCreateForm = (customer) => {
-        createForm.setData('customer_name', customer?.name ?? '');
-        createForm.setData('customer_phone', customer?.phone ?? '');
-        createForm.setData('customer_email', customer?.email ?? '');
-        createForm.setData('customer_package_id', '');
-        createForm.setData('package_service_ids', []);
+        createForm.setData({
+            ...createForm.data,
+            customer_name: customer?.name ?? '',
+            customer_phone: customer?.phone ?? '',
+            customer_email: customer?.email ?? '',
+            customer_package_id: '',
+            package_service_ids: [],
+        });
         setCreateSelectedPackageId('');
     };
 
     const applyCustomerToEditForm = (customer) => {
-        editForm.setData('customer_name', customer?.name ?? '');
-        editForm.setData('customer_phone', customer?.phone ?? '');
-        editForm.setData('customer_email', customer?.email ?? '');
-        editForm.setData('customer_package_id', '');
-        editForm.setData('package_service_ids', []);
+        editForm.setData({
+            ...editForm.data,
+            customer_name: customer?.name ?? '',
+            customer_phone: customer?.phone ?? '',
+            customer_email: customer?.email ?? '',
+            customer_package_id: '',
+            package_service_ids: [],
+        });
         setEditSelectedPackageId('');
     };
 
@@ -598,6 +605,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         setCreateCustomerMode('existing');
         setCreateSelectedCustomerId('');
         setCreateSelectedPackageId('');
+        setCreateCustomerSearch('');
         setCreateServiceSearch('');
         setCreateEndManuallySet(false);
         setCreateStartYmd((quickAction.startsAt || '').split('T')[0] || boardDate);
@@ -828,6 +836,10 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const editCoveredServiceIds = editForm.data.package_service_ids || [];
     const createAvailableServices = services.filter((s) => !createSelectedServices.includes(String(s.id)));
     const editAvailableServices = services.filter((s) => !editSelectedServices.includes(String(s.id)));
+    const createFilteredCustomers = customers.filter((customer) => {
+        const haystack = `${customer.name || ''} ${customer.phone || ''} ${customer.email || ''}`.toLowerCase();
+        return haystack.includes(createCustomerSearch.trim().toLowerCase());
+    });
     const createFilteredServices = createAvailableServices.filter((s) => serviceMatchesSearch(s, createServiceSearch));
     const editFilteredServices = editAvailableServices.filter((s) => serviceMatchesSearch(s, editServiceSearch));
     const createEstimatedServicesTotal = estimateSelectedServicesTotal(createSelectedServices, createForm.data.service_quantities, services, createCoveredServiceIds);
@@ -2422,7 +2434,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                     </div>
 
                     {calendarDrawer ? (
-                        <aside className="flex w-[410px] shrink-0 flex-col border-l border-white/10 bg-[#0f0f10]">
+                        <aside className={`flex shrink-0 flex-col border-l border-white/10 bg-[#0f0f10] ${calendarDrawer === 'blocked' ? 'w-[410px]' : 'w-[860px] max-w-[calc(100vw-2rem)]'}`}>
                             <div className="flex items-start justify-between border-b border-white/10 px-6 py-5">
                                 <div>
                                     <h3 className="text-2xl font-black text-white">
@@ -2494,6 +2506,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             onSuccess: () => {
                                                 setCalendarDrawer(null);
                                                 createForm.reset();
+                                                setCreateCustomerSearch('');
                                                 setCreateServiceSearch('');
                                                 setCreateSelectedCustomerId('');
                                                 setCreateCustomerMode('new');
@@ -2501,36 +2514,101 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         });
                                     }}
                                 >
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="grid h-10 w-10 place-items-center rounded-full bg-violet-500/20 text-xl text-violet-200">+</div>
-                                            <div>
-                                                <div className="text-sm font-bold text-white">Add client</div>
-                                                <button type="button" className="text-xs font-semibold text-violet-300" onClick={() => createForm.setData({ ...createForm.data, customer_name: 'Walk-in Client', customer_phone: '', customer_email: '' })}>Or leave empty for walk-ins</button>
+                                    <div className="grid gap-5 xl:grid-cols-[260px_minmax(0,1fr)]">
+                                        <div className="border-b border-white/10 pb-5 xl:border-b-0 xl:border-r xl:pb-0 xl:pr-5">
+                                            <h4 className="text-xl font-black text-white">Select a client</h4>
+                                            <input
+                                                className="mt-4 w-full rounded-md border border-violet-500 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                                value={createCustomerSearch}
+                                                onChange={(e) => setCreateCustomerSearch(e.target.value)}
+                                                placeholder="Search client or leave empty"
+                                            />
+                                            <div className="mt-4 space-y-2">
+                                                <button
+                                                    type="button"
+                                                    className={`flex w-full items-center gap-3 rounded-md px-3 py-3 text-left transition hover:bg-white/5 ${createCustomerMode === 'new' && !createSelectedCustomerId ? 'bg-violet-500/15' : ''}`}
+                                                    onClick={() => {
+                                                        setCreateCustomerMode('new');
+                                                        setCreateSelectedCustomerId('');
+                                                        applyCustomerToCreateForm(null);
+                                                    }}
+                                                >
+                                                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-500/20 text-2xl text-violet-200">+</span>
+                                                    <span>
+                                                        <span className="block text-sm font-black text-white">Add new client</span>
+                                                        <span className="mt-0.5 block text-xs text-slate-400">Create details for this booking</span>
+                                                    </span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={`flex w-full items-center gap-3 rounded-md px-3 py-3 text-left transition hover:bg-white/5 ${createForm.data.customer_name === 'Walk-in Client' ? 'bg-violet-500/15' : ''}`}
+                                                    onClick={() => {
+                                                        setCreateCustomerMode('new');
+                                                        setCreateSelectedCustomerId('');
+                                                        createForm.setData({ ...createForm.data, customer_name: 'Walk-in Client', customer_phone: '', customer_email: '' });
+                                                    }}
+                                                >
+                                                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-500/20 text-sm font-black text-violet-200">WI</span>
+                                                    <span>
+                                                        <span className="block text-sm font-black text-white">Walk-In</span>
+                                                        <span className="mt-0.5 block text-xs text-slate-400">Or leave empty for walk-ins</span>
+                                                    </span>
+                                                </button>
+                                            </div>
+                                            <div className="mt-4 max-h-[360px] space-y-1 overflow-auto border-t border-white/10 pt-3">
+                                                {createFilteredCustomers.map((customer) => {
+                                                    const selected = String(customer.id) === String(createSelectedCustomerId);
+                                                    const initials = String(customer.name || 'C').trim().slice(0, 1).toUpperCase();
+
+                                                    return (
+                                                        <button
+                                                            key={customer.id}
+                                                            type="button"
+                                                            className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition hover:bg-white/5 ${selected ? 'bg-violet-500/15' : ''}`}
+                                                            onClick={() => {
+                                                                setCreateSelectedCustomerId(String(customer.id));
+                                                                setCreateCustomerMode('existing');
+                                                                applyCustomerToCreateForm(customer);
+                                                            }}
+                                                        >
+                                                            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-violet-500/20 text-sm font-black text-violet-200">{initials}</span>
+                                                            <span className="min-w-0">
+                                                                <span className="block truncate text-sm font-black text-white">{customer.name}</span>
+                                                                <span className="block truncate text-xs text-slate-400">{customer.phone || customer.email || 'No contact saved'}</span>
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                                {createFilteredCustomers.length === 0 ? (
+                                                    <div className="rounded-md border border-white/10 px-3 py-4 text-sm text-slate-400">No matching clients.</div>
+                                                ) : null}
+                                            </div>
+                                            <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                                                <input
+                                                    className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                                    placeholder="Client name"
+                                                    value={createForm.data.customer_name}
+                                                    onChange={(e) => createForm.setData('customer_name', e.target.value)}
+                                                    required
+                                                />
+                                                <input
+                                                    className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                                    placeholder="Phone"
+                                                    value={createForm.data.customer_phone}
+                                                    onChange={(e) => createForm.setData('customer_phone', e.target.value)}
+                                                />
+                                                <input
+                                                    className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                                    placeholder="Email"
+                                                    type="email"
+                                                    value={createForm.data.customer_email}
+                                                    onChange={(e) => createForm.setData('customer_email', e.target.value)}
+                                                />
+                                                {fieldError(createForm, 'customer_name')}
                                             </div>
                                         </div>
-                                        <select
-                                            className="w-full rounded-md border border-violet-500 bg-[#18181a] px-3 py-3 text-sm text-white"
-                                            value={createSelectedCustomerId}
-                                            onChange={(e) => {
-                                                const id = e.target.value;
-                                                setCreateSelectedCustomerId(id);
-                                                setCreateCustomerMode(id ? 'existing' : 'new');
-                                                const customer = customers.find((c) => String(c.id) === id);
-                                                applyCustomerToCreateForm(customer || null);
-                                            }}
-                                        >
-                                            <option value="">Search client or leave empty</option>
-                                            {customers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` - ${c.phone}` : ''}</option>)}
-                                        </select>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <input className="rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" placeholder="Client name" value={createForm.data.customer_name} onChange={(e) => createForm.setData('customer_name', e.target.value)} required />
-                                            <input className="rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" placeholder="Phone" value={createForm.data.customer_phone} onChange={(e) => createForm.setData('customer_phone', e.target.value)} />
-                                        </div>
-                                        {fieldError(createForm, 'customer_name')}
-                                    </div>
 
-                                    <div>
+                                        <div className="min-w-0">
                                         <div className="mb-3 flex items-center justify-between gap-3">
                                             <h4 className="text-2xl font-black text-white">Select a service</h4>
                                             {createSelectedServiceRows.length > 0 ? (
@@ -2750,6 +2828,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             ))}
                                         </div>
                                         {fieldError(createForm, 'service_ids')}
+                                    </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
