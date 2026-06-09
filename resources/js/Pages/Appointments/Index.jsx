@@ -249,6 +249,15 @@ const filterServiceMap = (serviceIds, map) => {
         Object.entries(map || {}).filter(([key, value]) => (allowedLineKeys.has(String(key)) || allowedServiceIds.has(String(key))) && value !== undefined && value !== null && value !== ''),
     );
 };
+const normalizeServiceStarts = (serviceIds, serviceStarts, fallbackStart = '') => {
+    const next = {};
+    (serviceIds || []).forEach((serviceId, index) => {
+        const value = serviceLineMapValue(serviceStarts, index, serviceId, fallbackStart);
+        if (value) next[serviceLineKey(index)] = value;
+    });
+
+    return next;
+};
 const estimateSelectedServicesTotal = (serviceIds, serviceQuantities, services, coveredServiceIds = []) => {
     const covered = new Set((coveredServiceIds || []).map((id) => String(id)));
 
@@ -496,17 +505,18 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const calculateSuggestedEndWithServiceMeta = (startValue, serviceIds, formData = createForm.data) => {
         if (!startValue || !Array.isArray(serviceIds) || serviceIds.length === 0) return '';
 
-        const totalMinutes = serviceIds.reduce((sum, id, index) => {
+        const serviceEnds = serviceIds.map((id, index) => {
             const service = services.find((s) => String(s.id) === String(id));
-            if (!service) return sum;
+            if (!service) return '';
+            const serviceStart = serviceLineMapValue(formData.service_starts, index, id, startValue) || startValue;
             const baseDuration = Math.max(1, Number(serviceLineMapValue(formData.service_durations, index, id, service.duration_minutes || 0)));
             const extraMinutes = Math.max(0, Number(serviceLineMapValue(formData.service_extra_minutes, index, id, 0)));
 
-            return sum + baseDuration + extraMinutes + Number(service.buffer_minutes || 0);
-        }, 0);
-        if (totalMinutes <= 0) return '';
+            return addMinutesToDateTimeLocal(serviceStart, baseDuration + extraMinutes + Number(service.buffer_minutes || 0));
+        }).filter(Boolean);
+        if (serviceEnds.length === 0) return '';
 
-        let endStr = addMinutesToDateTimeLocal(startValue, totalMinutes);
+        let endStr = serviceEnds.reduce((latest, value) => (dateTimeLocalCompare(value, latest) > 0 ? value : latest), serviceEnds[0]);
         endStr = clampDateTimeLocalToSalon(endStr, bookingRules, slotIntervalMinutes);
         if (startValue && dateTimeLocalCompare(endStr, startValue) < 0) {
             endStr = clampDateTimeLocalToSalon(startValue, bookingRules, slotIntervalMinutes);
@@ -518,28 +528,35 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const handleCreateServiceChange = (nextIds) => {
         createForm.clearErrors('service_id', 'service_ids', 'staff_profile_id', 'staff_assignments');
         const startVal = createStartRef.current?.value || createForm.data.scheduled_start || '';
-        createForm.setData((prev) => ({
-            ...prev,
-            ...(() => {
-                const nextAssignments = filterServiceMap(nextIds, prev.staff_assignments);
-                return {
-                    staff_assignments: nextAssignments,
-                    staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
-                };
-            })(),
-            service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
-            service_starts: filterServiceMap(nextIds, prev.service_starts),
-            service_durations: filterServiceMap(nextIds, prev.service_durations),
-            service_extra_minutes: filterServiceMap(nextIds, prev.service_extra_minutes),
-            service_unit_prices: filterServiceMap(nextIds, prev.service_unit_prices),
-            service_discount_amounts: filterServiceMap(nextIds, prev.service_discount_amounts),
-            package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
-            service_ids: nextIds,
-            service_id: nextIds[0] || '',
-            scheduled_end: !createEndManuallySet || !prev.scheduled_end
-                ? calculateSuggestedEndWithServiceMeta(startVal, nextIds, prev)
-                : prev.scheduled_end,
-        }));
+        createForm.setData((prev) => {
+            const nextServiceStarts = normalizeServiceStarts(nextIds, prev.service_starts, startVal);
+            const nextData = {
+                ...prev,
+                ...(() => {
+                    const nextAssignments = filterServiceMap(nextIds, prev.staff_assignments);
+                    return {
+                        staff_assignments: nextAssignments,
+                        staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
+                    };
+                })(),
+                service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
+                service_starts: nextServiceStarts,
+                service_durations: filterServiceMap(nextIds, prev.service_durations),
+                service_extra_minutes: filterServiceMap(nextIds, prev.service_extra_minutes),
+                service_unit_prices: filterServiceMap(nextIds, prev.service_unit_prices),
+                service_discount_amounts: filterServiceMap(nextIds, prev.service_discount_amounts),
+                package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
+                service_ids: nextIds,
+                service_id: nextIds[0] || '',
+            };
+
+            return {
+                ...nextData,
+                scheduled_end: !createEndManuallySet || !prev.scheduled_end
+                    ? calculateSuggestedEndWithServiceMeta(startVal, nextIds, nextData)
+                    : prev.scheduled_end,
+            };
+        });
     };
 
     const handleCreateEndChange = (value) => {
@@ -585,41 +602,62 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const handleEditServiceChange = (nextIds) => {
         editForm.clearErrors('service_id', 'service_ids', 'staff_profile_id', 'staff_assignments');
         const startVal = editStartRef.current?.value || editForm.data.scheduled_start || '';
-        editForm.setData((prev) => ({
-            ...prev,
-            ...(() => {
-                const nextAssignments = filterServiceMap(nextIds, prev.staff_assignments);
-                return {
-                    staff_assignments: nextAssignments,
-                    staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
-                };
-            })(),
-            service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
-            service_starts: filterServiceMap(nextIds, prev.service_starts),
-            service_durations: filterServiceMap(nextIds, prev.service_durations),
-            service_extra_minutes: filterServiceMap(nextIds, prev.service_extra_minutes),
-            service_unit_prices: filterServiceMap(nextIds, prev.service_unit_prices),
-            service_discount_amounts: filterServiceMap(nextIds, prev.service_discount_amounts),
-            package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
-            service_ids: nextIds,
-            service_id: nextIds[0] || '',
-            scheduled_end: !editEndManuallySet || !prev.scheduled_end
-                ? calculateSuggestedEnd(startVal, nextIds)
-                : prev.scheduled_end,
-        }));
+        editForm.setData((prev) => {
+            const nextServiceStarts = normalizeServiceStarts(nextIds, prev.service_starts, startVal);
+            const nextData = {
+                ...prev,
+                ...(() => {
+                    const nextAssignments = filterServiceMap(nextIds, prev.staff_assignments);
+                    return {
+                        staff_assignments: nextAssignments,
+                        staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
+                    };
+                })(),
+                service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
+                service_starts: nextServiceStarts,
+                service_durations: filterServiceMap(nextIds, prev.service_durations),
+                service_extra_minutes: filterServiceMap(nextIds, prev.service_extra_minutes),
+                service_unit_prices: filterServiceMap(nextIds, prev.service_unit_prices),
+                service_discount_amounts: filterServiceMap(nextIds, prev.service_discount_amounts),
+                package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
+                service_ids: nextIds,
+                service_id: nextIds[0] || '',
+            };
+
+            return {
+                ...nextData,
+                scheduled_end: !editEndManuallySet || !prev.scheduled_end
+                    ? calculateSuggestedEndWithServiceMeta(startVal, nextIds, nextData)
+                    : prev.scheduled_end,
+            };
+        });
     };
 
     const syncCreateStartFromInput = (rawValue) => {
         const [ymd] = (rawValue || '').split('T');
         if (ymd) setCreateStartYmd(ymd);
         const clamped = clampStaffStartDatetimeLocal(rawValue || '', bookingRules, slotIntervalMinutes);
-        createForm.setData((prev) => ({
-            ...prev,
-            scheduled_start: clamped,
-            scheduled_end: !createEndManuallySet || !prev.scheduled_end
-                ? calculateSuggestedEndWithServiceMeta(clamped, prev.service_ids, prev)
-                : prev.scheduled_end,
-        }));
+        createForm.setData((prev) => {
+            const previousStart = prev.scheduled_start || '';
+            const nextServiceStarts = {};
+            (prev.service_ids || []).forEach((serviceId, index) => {
+                const lineKey = serviceLineKey(index);
+                const currentStart = serviceLineMapValue(prev.service_starts, index, serviceId, previousStart);
+                nextServiceStarts[lineKey] = !currentStart || currentStart === previousStart ? clamped : currentStart;
+            });
+            const nextData = {
+                ...prev,
+                service_starts: nextServiceStarts,
+                scheduled_start: clamped,
+            };
+
+            return {
+                ...nextData,
+                scheduled_end: !createEndManuallySet || !prev.scheduled_end
+                    ? calculateSuggestedEndWithServiceMeta(clamped, prev.service_ids, nextData)
+                    : prev.scheduled_end,
+            };
+        });
         if (createStartRef.current && createStartRef.current.value !== clamped) {
             createStartRef.current.value = clamped;
         }
@@ -629,13 +667,27 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         const [ymd] = (rawValue || '').split('T');
         if (ymd) setEditStartYmd(ymd);
         const clamped = clampStaffStartDatetimeLocal(rawValue || '', bookingRules, slotIntervalMinutes);
-        editForm.setData((prev) => ({
-            ...prev,
-            scheduled_start: clamped,
-            scheduled_end: !editEndManuallySet || !prev.scheduled_end
-                ? calculateSuggestedEnd(clamped, prev.service_ids)
-                : prev.scheduled_end,
-        }));
+        editForm.setData((prev) => {
+            const previousStart = prev.scheduled_start || '';
+            const nextServiceStarts = {};
+            (prev.service_ids || []).forEach((serviceId, index) => {
+                const lineKey = serviceLineKey(index);
+                const currentStart = serviceLineMapValue(prev.service_starts, index, serviceId, previousStart);
+                nextServiceStarts[lineKey] = !currentStart || currentStart === previousStart ? clamped : currentStart;
+            });
+            const nextData = {
+                ...prev,
+                service_starts: nextServiceStarts,
+                scheduled_start: clamped,
+            };
+
+            return {
+                ...nextData,
+                scheduled_end: !editEndManuallySet || !prev.scheduled_end
+                    ? calculateSuggestedEndWithServiceMeta(clamped, prev.service_ids, nextData)
+                    : prev.scheduled_end,
+            };
+        });
         if (editStartRef.current && editStartRef.current.value !== clamped) {
             editStartRef.current.value = clamped;
         }
@@ -941,7 +993,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const createCoveredServiceIds = createForm.data.package_service_ids || [];
     const editCoveredServiceIds = editForm.data.package_service_ids || [];
     const createAvailableServices = services;
-    const editAvailableServices = services.filter((s) => !editSelectedServices.includes(String(s.id)));
+    const editAvailableServices = services;
     const createFilteredCustomers = customers.filter((customer) => {
         const haystack = `${customer.name || ''} ${customer.phone || ''} ${customer.email || ''}`.toLowerCase();
         return haystack.includes(createCustomerSearch.trim().toLowerCase());
@@ -993,16 +1045,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         const explicitStart = serviceLineMapValue(createForm.data.service_starts, targetIndex, sid);
         if (explicitStart) return explicitStart;
 
-        let cursor = createForm.data.scheduled_start || '';
-        for (const [index, selectedId] of createSelectedServices.entries()) {
-            if (index === targetIndex) return cursor;
-            const service = services.find((item) => String(item.id) === String(selectedId));
-            if (!service || !cursor) continue;
-            const meta = getCreateServiceMeta({ ...service, lineKey: serviceLineKey(index), lineIndex: index });
-            cursor = addMinutesToDateTimeLocal(cursor, meta.durationMinutes + meta.extraMinutes + Number(service.buffer_minutes || 0));
-        }
-
-        return cursor;
+        return createForm.data.scheduled_start || '';
     };
     const createCustomerHasGiftCards = (createSelectedCustomer?.active_gift_cards || []).length > 0
         && Number(createSelectedCustomer?.gift_card_balance || 0) > 0;
@@ -1015,7 +1058,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const createStartForAvailability = createStartRef.current?.value || createForm.data.scheduled_start || '';
     const createEndForAvailability = createForm.data.scheduled_end || calculateSuggestedEndWithServiceMeta(createStartForAvailability, createSelectedServices, createForm.data);
     const editStartForAvailability = editStartRef.current?.value || editForm.data.scheduled_start || '';
-    const editEndForAvailability = editForm.data.scheduled_end || calculateSuggestedEnd(editStartForAvailability, editSelectedServices);
+    const editEndForAvailability = editForm.data.scheduled_end || calculateSuggestedEndWithServiceMeta(editStartForAvailability, editSelectedServices, editForm.data);
 
     const buildStaffAvailabilityMap = () => {
         return Object.fromEntries(staffProfiles.map((staff) => {
@@ -1381,7 +1424,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 createForm.setData((prev) => ({
                                     ...prev,
                                     scheduled_start: v,
-                                    scheduled_end: calculateSuggestedEnd(v, prev.service_ids),
+                                    scheduled_end: calculateSuggestedEndWithServiceMeta(v, prev.service_ids, prev),
                                 }));
                             });
                             createForm.post(route('appointments.store'), {
@@ -1511,14 +1554,14 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 {createFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
                             </div>
                             <div className="mt-2 flex flex-wrap gap-2">
-                                {createSelectedServices.map((id) => {
+                                {createSelectedServices.map((id, index) => {
                                     const s = services.find((x) => String(x.id) === String(id));
                                     if (!s) return null;
                                     const packageCoverage = createPackageCoverageMap[String(id)];
                                     const isCovered = (createForm.data.package_service_ids || []).includes(String(id));
                                     return (
-                                        <div key={id} className="flex items-center gap-2">
-                                            <button type="button" className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => handleCreateServiceChange(createSelectedServices.filter((x) => x !== id))}>
+                                        <div key={serviceLineKey(index)} className="flex items-center gap-2">
+                                            <button type="button" className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => handleCreateServiceChange(createSelectedServices.filter((_, selectedIndex) => selectedIndex !== index))}>
                                                 {s.name}{Number(createForm.data.service_quantities?.[String(id)] || 1) > 1 ? ` x${createForm.data.service_quantities?.[String(id)]}` : ''} ✕
                                             </button>
                                             {createCustomerMode === 'package' && createSelectedPackage && packageCoverage ? (
@@ -2126,7 +2169,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 editForm.setData((prev) => ({
                                     ...prev,
                                     scheduled_start: v,
-                                    scheduled_end: calculateSuggestedEnd(v, prev.service_ids),
+                                    scheduled_end: calculateSuggestedEndWithServiceMeta(v, prev.service_ids, prev),
                                 }));
                             });
                             editForm.put(route('appointments.update', editingId), {
@@ -2233,11 +2276,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 {editFilteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
                             </div>
                             <div className="mt-2 flex flex-wrap gap-2">
-                                {editSelectedServices.map((id) => {
+                                {editSelectedServices.map((id, index) => {
                                     const s = services.find((x) => String(x.id) === String(id));
                                     if (!s) return null;
                                     return (
-                                        <button key={id} type="button" className="rounded-full border border-rose-300/40 bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-200" onClick={() => handleEditServiceChange(editSelectedServices.filter((x) => x !== id))}>
+                                        <button key={serviceLineKey(index)} type="button" className="rounded-full border border-rose-300/40 bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-200" onClick={() => handleEditServiceChange(editSelectedServices.filter((_, selectedIndex) => selectedIndex !== index))}>
                                             {s.name}{Number(editForm.data.service_quantities?.[String(id)] || 1) > 1 ? ` x${editForm.data.service_quantities?.[String(id)]}` : ''} x
                                         </button>
                                     );
@@ -3069,7 +3112,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Start</label>
-                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={createForm.data.scheduled_start} onInput={(e) => createForm.setData((prev) => ({ ...prev, scheduled_start: e.target.value, scheduled_end: calculateSuggestedEndWithServiceMeta(e.target.value, prev.service_ids, prev) }))} onChange={(e) => createForm.setData((prev) => ({ ...prev, scheduled_start: e.target.value, scheduled_end: calculateSuggestedEndWithServiceMeta(e.target.value, prev.service_ids, prev) }))} required />
+                                            <input className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white [color-scheme:dark]" type="datetime-local" value={createForm.data.scheduled_start} onInput={(e) => syncCreateStartFromInput(e.currentTarget.value)} onChange={(e) => syncCreateStartFromInput(e.currentTarget.value)} required />
                                             {fieldError(createForm, 'scheduled_start')}
                                         </div>
                                         <div>
