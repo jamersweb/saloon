@@ -61,8 +61,8 @@ export default {
         },
         extend: {
             fontFamily: {
-                sans: ['Alex', 'Times New Roman', ...defaultTheme.fontFamily.serif],
-                display: ['Avilla Mirabel', 'Times New Roman', ...defaultTheme.fontFamily.serif],
+                sans: ['RoobertPRO', 'AktivGroteskVF', ...defaultTheme.fontFamily.sans],
+                display: ['RoobertPRO', 'AktivGroteskVF', ...defaultTheme.fontFamily.sans],
             },
         },
     },

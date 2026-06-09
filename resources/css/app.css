@@ -2,15 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@font-face {
-    font-family: 'Alex';
-    src: url('../fonts/alex.otf') format('opentype'),
-         url('../fonts/alex.ttf') format('truetype');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
-
 @layer base {
     :root {
         --vina-ivory: #D7D0C8;
@@ -23,19 +14,19 @@
 
     body {
         @apply bg-slate-50 text-slate-800;
-        font-family: 'Alex', 'Times New Roman', serif;
+        font-family: RoobertPRO, AktivGroteskVF, sans-serif;
         background-image: radial-gradient(circle at top right, color-mix(in srgb, var(--vina-champagne) 45%, white 55%), transparent 55%);
     }
 
     h1, h2, h3, h4, h5, h6 {
-        font-family: 'Alex', 'Times New Roman', serif;
+        font-family: RoobertPRO, AktivGroteskVF, sans-serif;
         letter-spacing: 0.01em;
     }
 }
 
 @layer components {
     .vina-brand-mark {
-        font-family: 'Alex', 'Times New Roman', serif;
+        font-family: RoobertPRO, AktivGroteskVF, sans-serif;
         color: var(--vina-leather);
     }
 
@@ -61,4 +52,3 @@
         @apply mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500;
     }
 }
-
