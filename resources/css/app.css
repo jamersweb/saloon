@@ -51,4 +51,84 @@
     .ta-field-label {
         @apply mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500;
     }
+
+    .appointment-board {
+        font-family: RoobertPRO, AktivGroteskVF, Inter, Arial, sans-serif;
+        font-size: 14px;
+        font-weight: 650;
+        line-height: 1.35;
+        letter-spacing: 0;
+        text-rendering: geometricPrecision;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-synthesis-weight: none;
+    }
+
+    .appointment-board *,
+    .appointment-board input,
+    .appointment-board button,
+    .appointment-board select,
+    .appointment-board textarea {
+        font-family: inherit;
+        letter-spacing: 0;
+    }
+
+    .appointment-board h1,
+    .appointment-board h2,
+    .appointment-board h3,
+    .appointment-board h4,
+    .appointment-board h5,
+    .appointment-board h6 {
+        font-weight: 760;
+        letter-spacing: 0;
+    }
+
+    .appointment-board .font-black {
+        font-weight: 760;
+    }
+
+    .appointment-board .font-bold {
+        font-weight: 720;
+    }
+
+    .appointment-board .font-semibold {
+        font-weight: 680;
+    }
+
+    .appointment-board .text-white {
+        color: #fbfbfd;
+    }
+
+    .appointment-board .text-slate-100,
+    .appointment-board .text-slate-200 {
+        color: #f0f2f6;
+    }
+
+    .appointment-board .text-slate-300 {
+        color: #d9dde5;
+    }
+
+    .appointment-board .text-slate-400 {
+        color: #b9c0cc;
+    }
+
+    .appointment-board .text-slate-500 {
+        color: #9da5b3;
+    }
+
+    .appointment-board input::placeholder,
+    .appointment-board textarea::placeholder {
+        color: #aeb5c1;
+        opacity: 1;
+    }
+
+    .appointment-board input,
+    .appointment-board select,
+    .appointment-board textarea {
+        font-weight: 650;
+    }
+
+    .appointment-board button {
+        font-weight: 700;
+    }
 }

@@ -2375,7 +2375,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 setCalendarDrawer(null);
                 setBoardStaffMenu(null);
             }}>
-                <div className="flex h-[92vh] overflow-hidden bg-[#0b0b0c] font-sans text-white antialiased">
+                <div className="appointment-board flex h-[92vh] overflow-hidden bg-[#0b0b0c] font-sans text-white antialiased">
                     <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#111112] px-5 py-3">
                             <div className="flex items-center gap-2">
