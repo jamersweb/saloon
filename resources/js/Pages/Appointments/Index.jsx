@@ -172,6 +172,7 @@ const getAppointmentCardStyle = (category, isPaid) => {
 
     return resolveAppointmentCategoryPalette(category);
 };
+const getServiceAccentColor = (service) => resolveAppointmentCategoryPalette(`${service?.category || ''} ${service?.name || ''}`).backgroundColor;
 const layoutOverlappingAppointments = (cards) => {
     const sortedCards = [...cards].sort((a, b) => {
         if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
@@ -1499,7 +1500,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     <button
                                         key={s.id}
                                         type="button"
-                                        className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                                        className="block w-full border-b border-l-4 border-b-slate-100 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                                        style={{ borderLeftColor: getServiceAccentColor(s) }}
                                         onClick={() => handleCreateServiceChange([...createSelectedServices, String(s.id)])}
                                     >
                                         <div className="font-medium text-slate-700">{s.name}</div>
@@ -2220,7 +2222,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     <button
                                         key={s.id}
                                         type="button"
-                                        className="block w-full border-b border-white/10 px-3 py-3 text-left text-xs text-slate-300 hover:bg-white/5"
+                                        className="block w-full border-b border-l-4 border-b-white/10 px-3 py-3 text-left text-xs text-slate-300 hover:bg-white/5"
+                                        style={{ borderLeftColor: getServiceAccentColor(s) }}
                                         onClick={() => handleEditServiceChange([...editSelectedServices, String(s.id)])}
                                     >
                                         <div className="font-bold text-white">{s.name}</div>
@@ -3017,11 +3020,13 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     <div className="space-y-1">
                                                         {categoryServices.map((service) => {
                                                             const selectedCount = createSelectedServices.filter((id) => String(id) === String(service.id)).length;
+                                                            const serviceAccentColor = getServiceAccentColor(service);
                                                             return (
                                                                 <button
                                                                     key={service.id}
                                                                     type="button"
-                                                                    className={`flex w-full items-start justify-between border-l-2 px-3 py-3 text-left hover:bg-white/5 ${selectedCount > 0 ? 'border-violet-400 bg-violet-500/10' : 'border-cyan-300/80'}`}
+                                                                    className={`flex w-full items-start justify-between border-l-4 px-3 py-3 text-left hover:bg-white/5 ${selectedCount > 0 ? 'bg-violet-500/10' : ''}`}
+                                                                    style={{ borderLeftColor: serviceAccentColor }}
                                                                     onClick={() => {
                                                                         const sid = String(service.id);
                                                                         const nextIds = [...createSelectedServices, sid];
