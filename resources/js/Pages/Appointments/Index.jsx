@@ -429,6 +429,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [editSelectedCustomerId, setEditSelectedCustomerId] = useState('');
     const [editSelectedPackageId, setEditSelectedPackageId] = useState('');
     const [editEndManuallySet, setEditEndManuallySet] = useState(true);
+    const [editSaving, setEditSaving] = useState(false);
     const [deleteAppointmentId, setDeleteAppointmentId] = useState(null);
     const [deleteAppointmentBusy, setDeleteAppointmentBusy] = useState(false);
     const importFileRef = useRef(null);
@@ -2207,14 +2208,18 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                             const [ymd] = nextData.scheduled_start.split('T');
                             if (ymd) setEditStartYmd(ymd);
                             flushSync(() => editForm.setData(nextData));
-                            editForm.transform(() => nextData).put(route('appointments.update', editingId), {
+                            editForm.clearErrors();
+                            router.put(route('appointments.update', editingId), nextData, {
+                                preserveScroll: true,
+                                onStart: () => setEditSaving(true),
+                                onError: (errors) => editForm.setError(errors),
                                 onSuccess: () => {
                                     setEditingId(null);
                                     setEditCustomerMode('new');
                                     setEditSelectedCustomerId('');
                                     setEditSelectedPackageId('');
                                 },
-                                onFinish: () => editForm.transform((data) => data),
+                                onFinish: () => setEditSaving(false),
                             });
                         }}
                         className="grid gap-5 md:grid-cols-2"
@@ -2427,7 +2432,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
                         <div className="md:col-span-2 flex justify-end gap-2 border-t border-white/10 pt-5">
                             <button type="button" className="rounded-full border border-white/15 px-5 py-2 text-sm font-bold text-slate-200 hover:bg-white/5" onClick={() => setEditingId(null)}>Close</button>
-                            <button className="rounded-full bg-violet-500 px-5 py-2 text-sm font-bold text-white hover:bg-violet-400 disabled:opacity-60" disabled={editForm.processing}>Save</button>
+                            <button className="rounded-full bg-violet-500 px-5 py-2 text-sm font-bold text-white hover:bg-violet-400 disabled:opacity-60" disabled={editSaving}>Save</button>
                         </div>
                     </form>
                 </div>

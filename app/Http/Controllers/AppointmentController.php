@@ -388,6 +388,7 @@ class AppointmentController extends Controller
         $serviceDiscountAmounts = $this->resolveServiceMoneyMapFromPayload($data, $serviceIds, 'service_discount_amounts');
 
         $start = Carbon::parse($data['scheduled_start']);
+        $serviceStarts['line_0'] = $start->copy();
         $servicePlans = $this->buildServicePlans($serviceIds, $start, null, $serviceQuantities, $staffAssignments, $serviceStarts, $serviceDurations, $serviceExtraMinutes, $serviceUnitPrices, $serviceDiscountAmounts);
 
         foreach ($servicePlans as $idx => $plan) {

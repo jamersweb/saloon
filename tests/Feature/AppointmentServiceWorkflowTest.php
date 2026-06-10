@@ -437,6 +437,60 @@ class AppointmentServiceWorkflowTest extends TestCase
         $this->assertDatabaseMissing('appointments', ['id' => $staleAppointment->id]);
     }
 
+    public function test_update_scheduled_start_wins_over_stale_first_service_start(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $manager = User::factory()->create(['role_id' => $managerRole->id]);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Acrylic Gel Refill',
+            'duration_minutes' => 80,
+            'buffer_minutes' => 0,
+            'price' => 250,
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::create([
+            'service_id' => $service->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 16:00:00',
+            'scheduled_end' => '2026-05-12 17:20:00',
+            'customer_name' => 'Timing Client',
+            'customer_phone' => '971500006666',
+        ]);
+
+        $this->actingAs($manager)->put(route('appointments.update', $appointment), [
+            'customer_name' => 'Timing Client',
+            'customer_phone' => '971500006666',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'service_starts' => ['line_0' => '2026-05-12 16:00:00'],
+            'scheduled_start' => '2026-05-12 17:40:00',
+            'scheduled_end' => '2026-05-12 19:00:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $appointment->refresh();
+
+        $this->assertSame('2026-05-12 17:40:00', $appointment->scheduled_start->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-12 19:00:00', $appointment->scheduled_end->format('Y-m-d H:i:s'));
+    }
+
     public function test_staff_can_be_assigned_to_multiple_clients_at_same_time(): void
     {
         Queue::fake();
