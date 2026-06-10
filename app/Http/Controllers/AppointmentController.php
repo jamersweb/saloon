@@ -15,6 +15,7 @@ use App\Models\InventoryItem;
 use App\Models\InvoicePayment;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
+use App\Models\StaffSchedule;
 use App\Models\TaxInvoice;
 use App\Services\BookingAvailabilityService;
 use App\Services\AppointmentVisitService;
@@ -183,6 +184,23 @@ class AppointmentController extends Controller
                     'ends_at' => $block->ends_at,
                     'notes' => $block->notes,
                 ]),
+            'staffSchedules' => StaffSchedule::query()
+                ->where('schedule_date', '>=', now()->subDays(30)->toDateString())
+                ->where('schedule_date', '<=', now()->addDays((int) $rules->max_advance_days)->toDateString())
+                ->get()
+                ->map(fn (StaffSchedule $schedule) => [
+                    'id' => $schedule->id,
+                    'staff_profile_id' => $schedule->staff_profile_id,
+                    'schedule_date' => $schedule->schedule_date?->toDateString(),
+                    'start_time' => $schedule->start_time,
+                    'end_time' => $schedule->end_time,
+                    'break_start' => $schedule->break_start,
+                    'break_end' => $schedule->break_end,
+                    'is_day_off' => (bool) $schedule->is_day_off,
+                    'notes' => $schedule->notes,
+                ])
+                ->values()
+                ->all(),
             'services' => SalonService::query()
                 ->where(function ($query) use ($appointmentServiceIds): void {
                     $query->where('is_active', true)
@@ -493,6 +511,48 @@ class AppointmentController extends Controller
         $staffAppointmentNotificationService->notifyAssignedStaff($notifiableAppointments, 'updated');
 
         return back()->with('status', count($servicePlans) > 1 ? 'Appointment updated and additional service appointments added.' : 'Appointment updated.');
+    }
+
+    public function moveOnBoard(Request $request, Appointment $appointment, BookingAvailabilityService $availabilityService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+
+        if (in_array($appointment->status, [Appointment::STATUS_COMPLETED, Appointment::STATUS_CANCELLED, Appointment::STATUS_NO_SHOW], true)) {
+            return back()->withErrors(['appointment' => 'Only pending, confirmed, or in-progress appointments can be moved on the board.']);
+        }
+
+        $data = $request->validate([
+            'staff_profile_id' => ['required', 'exists:staff_profiles,id'],
+            'scheduled_start' => ['required', 'date'],
+        ]);
+
+        $start = Carbon::parse($data['scheduled_start']);
+        $durationMinutes = $appointment->scheduled_start && $appointment->scheduled_end && $appointment->scheduled_end->greaterThan($appointment->scheduled_start)
+            ? max(15, (int) $appointment->scheduled_start->diffInMinutes($appointment->scheduled_end))
+            : max(15, (int) ($appointment->service_duration_minutes ?: $appointment->service?->duration_minutes ?: 30) + (int) ($appointment->service_extra_minutes ?: 0) + (int) ($appointment->service?->buffer_minutes ?: 0));
+        $end = $start->copy()->addMinutes($durationMinutes);
+
+        if ($salonError = $availabilityService->validateSalonHours($start, $end)) {
+            return back()->withErrors(['scheduled_start' => $salonError]);
+        }
+
+        if ($staffError = $availabilityService->validateStaffAvailability((int) $data['staff_profile_id'], $start, $end, $appointment->id)) {
+            return back()->withErrors(['staff_profile_id' => $staffError]);
+        }
+
+        $appointment->update([
+            'staff_profile_id' => (int) $data['staff_profile_id'],
+            'scheduled_start' => $start,
+            'scheduled_end' => $end,
+        ]);
+
+        Audit::log($request->user()?->id, 'appointment.board_moved', 'Appointment', $appointment->id, [
+            'staff_profile_id' => (int) $data['staff_profile_id'],
+            'scheduled_start' => $start->toDateTimeString(),
+            'scheduled_end' => $end->toDateTimeString(),
+        ]);
+
+        return back()->with('status', 'Appointment moved.');
     }
 
     public function startService(Request $request, Appointment $appointment): RedirectResponse

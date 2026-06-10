@@ -405,7 +405,7 @@ const clampAdminEditStartDatetimeLocal = (value, bookingRules, slotIntervalMinut
     return v;
 };
 
-export default function AppointmentsIndex({ appointments, appointmentBlocks = [], services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
+export default function AppointmentsIndex({ appointments, appointmentBlocks = [], staffSchedules = [], services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
     const { app_currency_code: currencyCode = 'AED' } = usePage().props;
     const { flash, auth } = usePage().props;
     const serviceCategoryMap = useMemo(
@@ -447,6 +447,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [calendarServiceEditorId, setCalendarServiceEditorId] = useState('');
     const [createStaffAvailability, setCreateStaffAvailability] = useState({});
     const [editStaffAvailability, setEditStaffAvailability] = useState({});
+    const [draggingAppointmentId, setDraggingAppointmentId] = useState(null);
+    const [boardMoveError, setBoardMoveError] = useState('');
     const slotIntervalMinutes = Math.max(1, Number(bookingRules?.slot_interval_minutes || 30));
 
     const createStartRef = useRef(null);
@@ -991,10 +993,10 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         startForm.clearErrors();
     };
 
-    const openCompleteService = (appt) => {
+    const openCompleteService = (appt, preferredCheckoutFlow = null) => {
         setCompleteServiceId(appt.id);
         setStartServiceId(null);
-        setCheckoutFlow(canCheckout ? 'draft' : 'skip');
+        setCheckoutFlow(preferredCheckoutFlow || (canCheckout ? 'draft' : 'skip'));
         completeForm.setData({
             service_report: appt.notes || '',
             completion_notes: appt.service_execution?.completion_notes || '',
@@ -1281,6 +1283,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const boardStaffList = boardStaffFilter === 'all'
         ? staffProfiles
         : staffProfiles.filter((staff) => String(staff.id) === String(boardStaffFilter));
+    const boardScheduleMap = useMemo(() => Object.fromEntries((staffSchedules || [])
+        .filter((schedule) => schedule.schedule_date)
+        .map((schedule) => [`${schedule.staff_profile_id}-${schedule.schedule_date}`, schedule])), [staffSchedules]);
+    const boardScheduleForStaff = (staffId) => boardScheduleMap[`${staffId}-${boardDate}`] || null;
+    const boardStaffIsOff = (staffId) => Boolean(boardScheduleForStaff(staffId)?.is_day_off);
     const boardAppointments = appointments.filter((appt) => sameLocalDate(appt.scheduled_start, boardDate));
     const boardBlocks = (appointmentBlocks || []).filter((block) => sameLocalDate(block.starts_at, boardDate));
     const boardGlobalBlocks = boardBlocks.filter((block) => !block.staff_profile_id);
@@ -1352,6 +1359,21 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             startsAt: calendarSlotToDateTimeLocal(minutes),
             endsAt: calendarSlotToDateTimeLocal(minutes + Math.max(15, slotIntervalMinutes || 30)),
         };
+    };
+    const moveBoardAppointment = (appointmentId, staffId, minutes) => {
+        if (!appointmentId || boardStaffIsOff(staffId)) return;
+
+        setBoardMoveError('');
+        router.patch(route('appointments.board-move', appointmentId), {
+            staff_profile_id: staffId,
+            scheduled_start: calendarSlotToDateTimeLocal(minutes),
+        }, {
+            preserveScroll: true,
+            onError: (errors) => {
+                setBoardMoveError(errors.staff_profile_id || errors.scheduled_start || errors.appointment || 'Could not move appointment.');
+            },
+            onFinish: () => setDraggingAppointmentId(null),
+        });
     };
     const appointmentQueueSortDirection = ['today', 'upcoming'].includes(String(statusFilter || '')) ? 'asc' : 'desc';
     const appointmentQueueRows = Array.from(appointments.reduce((map, appt) => {
@@ -2478,10 +2500,10 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 <div className="appointment-board flex h-[92vh] overflow-hidden bg-[#0b0b0c] font-sans text-white antialiased">
                     <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#111112] px-5 py-3">
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setBoardDate(salonTodayYmd())}
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setBoardDate(salonTodayYmd())}
                                     className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/5"
                                 >
                                     Today
@@ -2526,6 +2548,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 </select>
                             </div>
                             <div className="flex items-center gap-2">
+                                {boardMoveError ? (
+                                    <div className="rounded-full border border-rose-400/40 bg-rose-500/15 px-3 py-2 text-xs font-semibold text-rose-100">
+                                        {boardMoveError}
+                                    </div>
+                                ) : null}
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -2585,8 +2612,12 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     </div>
                                 ) : null}
 
-                                {boardCardsByStaff.map(({ staff, cards, blocks }, staffIndex) => (
-                                    <div key={staff.id} className="relative w-72 shrink-0 border-r border-white/10">
+                                {boardCardsByStaff.map(({ staff, cards, blocks }, staffIndex) => {
+                                    const staffOff = boardStaffIsOff(staff.id);
+                                    const schedule = boardScheduleForStaff(staff.id);
+
+                                    return (
+                                    <div key={staff.id} className={`relative w-72 shrink-0 border-r border-white/10 ${staffOff ? 'bg-[#121212]' : ''}`}>
                                         <div className="sticky top-0 z-20 flex h-28 flex-col items-center justify-center gap-2 border-b border-white/10 bg-[#171718] px-4">
                                             <button
                                                 type="button"
@@ -2599,10 +2630,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                 <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-teal-300 bg-[#262628] text-sm font-semibold text-white shadow-[0_0_0_3px_rgba(124,58,237,0.45)] group-hover:border-teal-200">
                                                     {(staff.name || '?').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
                                                 </span>
-                                                <span className="flex max-w-full items-center gap-1 truncate text-center text-sm font-semibold text-white">
-                                                    <span className="truncate">{staff.name}</span>
-                                                    <span className="text-xs text-slate-300">v</span>
-                                                </span>
+                                                <span className="text-xs font-semibold text-slate-300">v</span>
                                             </button>
                                             {String(boardStaffMenu?.staffId || '') === String(staff.id) ? (
                                                 <div className="absolute left-4 top-[5.75rem] z-50 w-56 overflow-hidden rounded-lg border border-white/15 bg-[#202020] p-2 text-sm shadow-2xl">
@@ -2673,13 +2701,30 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             {boardHourMarks.slice(0, -1).map((minutes) => (
                                                 <div key={`${staff.id}-${minutes}`} className="h-20 border-b border-white/10" />
                                             ))}
-                                            {boardSlotMarks.map((minutes) => {
+                                            {staffOff ? (
+                                                <div className="absolute inset-0 z-30 flex items-start justify-center bg-zinc-900/80 px-4 py-6 text-center">
+                                                    <div>
+                                                        <div className="text-xs font-black uppercase tracking-wide text-zinc-400">Off today</div>
+                                                        <div className="mt-2 text-sm font-semibold text-zinc-200">{schedule?.notes || 'No appointments can be dropped here.'}</div>
+                                                    </div>
+                                                </div>
+                                            ) : null}
+                                            {!staffOff && boardSlotMarks.map((minutes) => {
                                                 const top = Math.max(0, ((minutes - boardStartMinutes) / boardTotalMinutes) * 100);
                                                 const height = Math.max(1, (boardSlotInterval / boardTotalMinutes) * 100);
                                                 return (
                                                     <button
                                                         key={`${staff.id}-slot-${minutes}`}
                                                         type="button"
+                                                        onDragOver={(event) => {
+                                                            if (!draggingAppointmentId) return;
+                                                            event.preventDefault();
+                                                        }}
+                                                        onDrop={(event) => {
+                                                            event.preventDefault();
+                                                            const appointmentId = event.dataTransfer.getData('text/plain') || draggingAppointmentId;
+                                                            moveBoardAppointment(appointmentId, staff.id, minutes);
+                                                        }}
                                                         onClick={() => openCalendarQuickAction(staff.id, minutes, staffIndex)}
                                                         className="absolute left-0 w-full border-t border-white/[0.035] text-left text-[0px] hover:bg-violet-500/10 focus:bg-violet-500/15"
                                                         style={{ top: `${top}%`, height: `${height}%` }}
@@ -2711,15 +2756,32 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     </div>
                                                 </div>
                                             ))}
-                                            {cards.map((appt) => (
-                                                <button
+                                            {cards.map((appt) => {
+                                                const canBoardFinishPay = canCheckout && canFinishAndPayNow && ['confirmed', 'in_progress'].includes(appt.status);
+
+                                                return (
+                                                <div
                                                     key={appt.id}
-                                                    type="button"
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    draggable={!appt.isPaid && !['completed', 'cancelled', 'no_show'].includes(appt.status)}
+                                                    onDragStart={(event) => {
+                                                        event.dataTransfer.setData('text/plain', String(appt.id));
+                                                        event.dataTransfer.effectAllowed = 'move';
+                                                        setDraggingAppointmentId(appt.id);
+                                                    }}
+                                                    onDragEnd={() => setDraggingAppointmentId(null)}
                                                     onClick={() => {
                                                         setCalendarQuickAction(null);
                                                         startEdit(appt);
                                                     }}
-                                                    className="absolute overflow-hidden rounded-md border p-2 text-left shadow-lg transition hover:scale-[1.01]"
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === 'Enter' || event.key === ' ') {
+                                                            event.preventDefault();
+                                                            startEdit(appt);
+                                                        }
+                                                    }}
+                                                    className={`absolute overflow-hidden rounded-md border p-2 text-left shadow-lg transition hover:scale-[1.01] ${draggingAppointmentId === appt.id ? 'opacity-60' : ''}`}
                                                     style={{
                                                         ...appt.cardStyle,
                                                         top: `${appt.top}%`,
@@ -2734,11 +2796,25 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     <div className="text-xs font-semibold leading-tight text-black">{appt.service_name}</div>
                                                     {appt.customer_package_id ? <div className="mt-1 text-[11px] font-semibold text-black">Package session</div> : null}
                                                     {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-semibold text-black">Needs payment</div> : null}
-                                                </button>
-                                            ))}
+                                                    {canBoardFinishPay ? (
+                                                        <button
+                                                            type="button"
+                                                            className="mt-2 rounded-full bg-black/80 px-2 py-1 text-[11px] font-bold text-white hover:bg-black"
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                openCompleteService(appt, 'pay');
+                                                            }}
+                                                        >
+                                                            Finish &amp; pay
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                            );
+                                            })}
                                         </div>
                                     </div>
-                                ))}
+                                );
+                                })}
                                 {boardCardsByStaff.length === 0 ? (
                                     <div className="flex flex-1 items-center justify-center text-sm text-slate-400">No staff selected.</div>
                                 ) : null}

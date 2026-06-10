@@ -491,6 +491,140 @@ class AppointmentServiceWorkflowTest extends TestCase
         $this->assertSame('2026-05-12 19:00:00', $appointment->scheduled_end->format('Y-m-d H:i:s'));
     }
 
+    public function test_board_move_updates_staff_and_time(): void
+    {
+        Queue::fake();
+
+        $manager = $this->createManagerUser();
+        $staffRole = Role::create([
+            'name' => 'staff',
+            'label' => 'Staff',
+            'permissions' => Permissions::defaultsForRole('staff'),
+        ]);
+        $firstStaffUser = User::factory()->create(['role_id' => $staffRole->id, 'name' => 'First Staff']);
+        $secondStaffUser = User::factory()->create(['role_id' => $staffRole->id, 'name' => 'Second Staff']);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 15,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $firstStaff = StaffProfile::create([
+            'user_id' => $firstStaffUser->id,
+            'employee_code' => 'BOARD-01',
+            'is_active' => true,
+        ]);
+        $secondStaff = StaffProfile::create([
+            'user_id' => $secondStaffUser->id,
+            'employee_code' => 'BOARD-02',
+            'is_active' => true,
+        ]);
+
+        foreach ([$firstStaff, $secondStaff] as $staff) {
+            StaffSchedule::create([
+                'staff_profile_id' => $staff->id,
+                'schedule_date' => '2026-05-12',
+                'start_time' => '09:00',
+                'end_time' => '22:00',
+                'is_day_off' => false,
+            ]);
+        }
+
+        $service = SalonService::create([
+            'name' => 'Nail Polish',
+            'duration_minutes' => 15,
+            'buffer_minutes' => 0,
+            'price' => 50,
+            'is_active' => true,
+        ]);
+        $appointment = Appointment::create([
+            'service_id' => $service->id,
+            'staff_profile_id' => $firstStaff->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 14:15:00',
+            'customer_name' => 'Board Client',
+            'customer_phone' => '971500006001',
+        ]);
+
+        $this->actingAs($manager)->patch(route('appointments.board-move', $appointment), [
+            'staff_profile_id' => $secondStaff->id,
+            'scheduled_start' => '2026-05-12 15:30:00',
+        ])->assertSessionHasNoErrors();
+
+        $appointment->refresh();
+
+        $this->assertSame($secondStaff->id, $appointment->staff_profile_id);
+        $this->assertSame('2026-05-12 15:30:00', $appointment->scheduled_start->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-12 15:45:00', $appointment->scheduled_end->format('Y-m-d H:i:s'));
+    }
+
+    public function test_board_move_rejects_staff_day_off(): void
+    {
+        Queue::fake();
+
+        $manager = $this->createManagerUser();
+        $staffRole = Role::create([
+            'name' => 'staff',
+            'label' => 'Staff',
+            'permissions' => Permissions::defaultsForRole('staff'),
+        ]);
+        $staffUser = User::factory()->create(['role_id' => $staffRole->id, 'name' => 'Off Staff']);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 15,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'BOARD-OFF',
+            'is_active' => true,
+        ]);
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '22:00',
+            'is_day_off' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Nail Polish',
+            'duration_minutes' => 15,
+            'buffer_minutes' => 0,
+            'price' => 50,
+            'is_active' => true,
+        ]);
+        $appointment = Appointment::create([
+            'service_id' => $service->id,
+            'staff_profile_id' => null,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 14:15:00',
+            'customer_name' => 'Board Client',
+            'customer_phone' => '971500006002',
+        ]);
+
+        $this->actingAs($manager)->from(route('appointments.index'))->patch(route('appointments.board-move', $appointment), [
+            'staff_profile_id' => $staff->id,
+            'scheduled_start' => '2026-05-12 15:30:00',
+        ])->assertSessionHasErrors('staff_profile_id');
+
+        $appointment->refresh();
+
+        $this->assertNull($appointment->staff_profile_id);
+        $this->assertSame('2026-05-12 14:00:00', $appointment->scheduled_start->format('Y-m-d H:i:s'));
+    }
+
     public function test_staff_can_be_assigned_to_multiple_clients_at_same_time(): void
     {
         Queue::fake();

@@ -65,6 +65,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/appointments/blocked-time', [AppointmentController::class, 'storeBlockedTime'])->name('appointments.blocked-time.store');
         Route::delete('/appointments/blocked-time/{block}', [AppointmentController::class, 'destroyBlockedTime'])->name('appointments.blocked-time.destroy');
         Route::put('/appointments/{appointment}', [AppointmentController::class, 'update'])->name('appointments.update');
+        Route::patch('/appointments/{appointment}/board-move', [AppointmentController::class, 'moveOnBoard'])->name('appointments.board-move');
         Route::post('/appointments/{appointment}/service-start', [AppointmentController::class, 'startService'])->name('appointments.service-start');
         Route::post('/appointments/{appointment}/service-complete', [AppointmentController::class, 'completeService'])->name('appointments.service-complete');
         Route::post('/appointments/{appointment}/checkout', [AppointmentController::class, 'checkout'])->name('appointments.checkout');
