@@ -433,6 +433,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [deleteAppointmentId, setDeleteAppointmentId] = useState(null);
     const [deleteAppointmentBusy, setDeleteAppointmentBusy] = useState(false);
     const importFileRef = useRef(null);
+    const calendarClientNameRef = useRef(null);
     const [checkoutFlow, setCheckoutFlow] = useState('draft');
     const [createCustomerSearch, setCreateCustomerSearch] = useState('');
     const [createServiceSearch, setCreateServiceSearch] = useState('');
@@ -750,6 +751,17 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             package_service_ids: [],
         });
         setCreateSelectedPackageId('');
+    };
+
+    const startCalendarNewClient = () => {
+        setCreateCustomerMode('new');
+        setCreateSelectedCustomerId('');
+        setCreateCustomerSearch('');
+        applyCustomerToCreateForm(null);
+        window.requestAnimationFrame(() => {
+            calendarClientNameRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            calendarClientNameRef.current?.focus();
+        });
     };
 
     const applyCustomerToEditForm = (customer) => {
@@ -2828,11 +2840,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                 <button
                                                     type="button"
                                                     className={`flex w-full items-center gap-3 rounded-md px-3 py-3 text-left transition hover:bg-white/5 ${createCustomerMode === 'new' && !createSelectedCustomerId ? 'bg-violet-500/15' : ''}`}
-                                                    onClick={() => {
-                                                        setCreateCustomerMode('new');
-                                                        setCreateSelectedCustomerId('');
-                                                        applyCustomerToCreateForm(null);
-                                                    }}
+                                                    onClick={startCalendarNewClient}
                                                 >
                                                     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-500/20 text-2xl text-violet-200">+</span>
                                                     <span>
@@ -2886,6 +2894,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             </div>
                                             <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
                                                 <input
+                                                    ref={calendarClientNameRef}
                                                     className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white"
                                                     placeholder="Client name"
                                                     value={createForm.data.customer_name}
