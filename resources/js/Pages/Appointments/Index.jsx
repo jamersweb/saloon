@@ -356,6 +356,18 @@ const adminStartBoundsForYmd = (dateYmd, bookingRules) => {
     };
 };
 
+const adminEditStartBoundsForYmd = (dateYmd, bookingRules) => {
+    const open = salonClockBoundary(bookingRules, 'opening_time', '09:00');
+    const todayYmd = salonTodayYmd();
+    const maxAdvanceDays = Math.max(1, Number(bookingRules?.max_advance_days || 60));
+    const horizonYmd = shiftYmdByDays(todayYmd, maxAdvanceDays);
+
+    return {
+        min: `${dateYmd}T${pad2(open.h)}:${pad2(open.m)}`,
+        max: `${horizonYmd}T23:59`,
+    };
+};
+
 /** Full salon window for one calendar day (used for ends and suggested end). */
 const clampDateTimeLocalToSalon = (value, bookingRules, slotIntervalMinutes = 30) => {
     if (!value || !bookingRules) return value;
@@ -374,6 +386,18 @@ const clampStaffStartDatetimeLocal = (value, bookingRules, slotIntervalMinutes =
     const [d] = value.split('T');
     if (!d) return value;
     const { min, max } = adminStartBoundsForYmd(d, bookingRules);
+    let v = value;
+    if (dateTimeLocalCompare(v, min) < 0) v = min;
+    if (dateTimeLocalCompare(v, max) > 0) v = max;
+
+    return v;
+};
+
+const clampAdminEditStartDatetimeLocal = (value, bookingRules, slotIntervalMinutes = 30) => {
+    if (!value || !bookingRules) return value;
+    const [d] = value.split('T');
+    if (!d) return value;
+    const { min, max } = adminEditStartBoundsForYmd(d, bookingRules, slotIntervalMinutes);
     let v = value;
     if (dateTimeLocalCompare(v, min) < 0) v = min;
     if (dateTimeLocalCompare(v, max) > 0) v = max;
@@ -666,7 +690,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const syncEditStartFromInput = (rawValue) => {
         const [ymd] = (rawValue || '').split('T');
         if (ymd) setEditStartYmd(ymd);
-        const clamped = clampStaffStartDatetimeLocal(rawValue || '', bookingRules, slotIntervalMinutes);
+        const clamped = clampAdminEditStartDatetimeLocal(rawValue || '', bookingRules, slotIntervalMinutes);
         editForm.setData((prev) => {
             const previousStart = prev.scheduled_start || '';
             const nextServiceStarts = {};
@@ -691,6 +715,27 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         if (editStartRef.current && editStartRef.current.value !== clamped) {
             editStartRef.current.value = clamped;
         }
+    };
+
+    const buildEditTimingPayload = (rawValue) => {
+        const clamped = clampAdminEditStartDatetimeLocal(rawValue || '', bookingRules, slotIntervalMinutes);
+        const previousStart = editForm.data.scheduled_start || '';
+        const nextServiceStarts = {};
+        (editForm.data.service_ids || []).forEach((serviceId, index) => {
+            const lineKey = serviceLineKey(index);
+            const currentStart = serviceLineMapValue(editForm.data.service_starts, index, serviceId, previousStart);
+            nextServiceStarts[lineKey] = !currentStart || currentStart === previousStart ? clamped : currentStart;
+        });
+        const nextData = {
+            ...editForm.data,
+            service_starts: nextServiceStarts,
+            scheduled_start: clamped,
+        };
+
+        return {
+            ...nextData,
+            scheduled_end: calculateSuggestedEndWithServiceMeta(clamped, nextData.service_ids, nextData),
+        };
     };
 
     const applyCustomerToCreateForm = (customer) => {
@@ -1153,7 +1198,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const removeAdditionalServiceRow = (index) => completeForm.setData('additional_services', (completeForm.data.additional_services || []).filter((_, rowIndex) => rowIndex !== index));
 
     const createSalonBounds = adminStartBoundsForYmd(createStartYmd, bookingRules);
-    const editSalonBounds = adminStartBoundsForYmd(editStartYmd, bookingRules);
+    const editSalonBounds = adminEditStartBoundsForYmd(editStartYmd, bookingRules);
     const editEndYmd = (editForm.data.scheduled_end || editForm.data.scheduled_start || '').split('T')[0] || editStartYmd;
     const editEndSalonBounds = salonSelectableBoundsForYmd(editEndYmd, bookingRules, slotIntervalMinutes);
     const editingAppt = appointments.find((a) => String(a.id) === String(editingId));
@@ -2158,27 +2203,18 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
-                            flushSync(() => {
-                                const v = clampStaffStartDatetimeLocal(
-                                    editStartRef.current?.value || editForm.data.scheduled_start || '',
-                                    bookingRules,
-                                    slotIntervalMinutes,
-                                );
-                                const [ymd] = v.split('T');
-                                if (ymd) setEditStartYmd(ymd);
-                                editForm.setData((prev) => ({
-                                    ...prev,
-                                    scheduled_start: v,
-                                    scheduled_end: calculateSuggestedEndWithServiceMeta(v, prev.service_ids, prev),
-                                }));
-                            });
-                            editForm.put(route('appointments.update', editingId), {
+                            const nextData = buildEditTimingPayload(editStartRef.current?.value || editForm.data.scheduled_start || '');
+                            const [ymd] = nextData.scheduled_start.split('T');
+                            if (ymd) setEditStartYmd(ymd);
+                            flushSync(() => editForm.setData(nextData));
+                            editForm.transform(() => nextData).put(route('appointments.update', editingId), {
                                 onSuccess: () => {
                                     setEditingId(null);
                                     setEditCustomerMode('new');
                                     setEditSelectedCustomerId('');
                                     setEditSelectedPackageId('');
                                 },
+                                onFinish: () => editForm.transform((data) => data),
                             });
                         }}
                         className="grid gap-5 md:grid-cols-2"
@@ -2379,8 +2415,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 ref={editStartRef}
                                 className="ta-input [color-scheme:dark]"
                                 type="datetime-local"
-                                defaultValue={editStartDefault}
+                                value={editForm.data.scheduled_start || editStartDefault}
                                 onInput={(e) => syncEditStartFromInput(e.currentTarget.value)}
+                                onChange={(e) => syncEditStartFromInput(e.currentTarget.value)}
                                 min={editSalonBounds.min}
                                 max={editSalonBounds.max}
                                 required
