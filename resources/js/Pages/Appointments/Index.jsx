@@ -697,7 +697,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             (prev.service_ids || []).forEach((serviceId, index) => {
                 const lineKey = serviceLineKey(index);
                 const currentStart = serviceLineMapValue(prev.service_starts, index, serviceId, previousStart);
-                nextServiceStarts[lineKey] = !currentStart || currentStart === previousStart ? clamped : currentStart;
+                nextServiceStarts[lineKey] = index === 0 || !currentStart || currentStart === previousStart ? clamped : currentStart;
             });
             const nextData = {
                 ...prev,
@@ -724,7 +724,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         (editForm.data.service_ids || []).forEach((serviceId, index) => {
             const lineKey = serviceLineKey(index);
             const currentStart = serviceLineMapValue(editForm.data.service_starts, index, serviceId, previousStart);
-            nextServiceStarts[lineKey] = !currentStart || currentStart === previousStart ? clamped : currentStart;
+            nextServiceStarts[lineKey] = index === 0 || !currentStart || currentStart === previousStart ? clamped : currentStart;
         });
         const nextData = {
             ...editForm.data,
