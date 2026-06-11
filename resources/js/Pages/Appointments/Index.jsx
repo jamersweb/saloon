@@ -1280,6 +1280,18 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         (_, idx) => boardStartMinutes + (idx * boardSlotInterval),
     ).filter((minutes) => minutes < boardEndMinutes);
     const boardCanvasHeight = (boardHourMarks.length - 1) * 80;
+    const boardStaffShortLabel = (staff) => {
+        const initials = String(staff?.name || '')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((part) => part[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase();
+
+        return initials || (staff?.id ? `#${staff.id}` : '?');
+    };
     const boardStaffList = boardStaffFilter === 'all'
         ? staffProfiles
         : staffProfiles.filter((staff) => String(staff.id) === String(boardStaffFilter));
@@ -2543,7 +2555,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 >
                                     <option value="all" className="bg-[#151516] text-white">All team</option>
                                     {staffProfiles.map((staff) => (
-                                        <option key={staff.id} value={staff.id} className="bg-[#151516] text-white">{staff.name}</option>
+                                        <option key={staff.id} value={staff.id} className="bg-[#151516] text-white">{boardStaffShortLabel(staff)}</option>
                                     ))}
                                 </select>
                             </div>
@@ -2621,6 +2633,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         <div className="sticky top-0 z-20 flex h-28 flex-col items-center justify-center gap-2 border-b border-white/10 bg-[#171718] px-4">
                                             <button
                                                 type="button"
+                                                aria-label="Open team member board actions"
                                                 className="group flex max-w-full flex-col items-center gap-2"
                                                 onClick={() => {
                                                     setCalendarQuickAction(null);
@@ -2628,7 +2641,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                 }}
                                             >
                                                 <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-teal-300 bg-[#262628] text-sm font-semibold text-white shadow-[0_0_0_3px_rgba(124,58,237,0.45)] group-hover:border-teal-200">
-                                                    {(staff.name || '?').split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+                                                    {boardStaffShortLabel(staff)}
                                                 </span>
                                                 <span className="text-xs font-semibold text-slate-300">v</span>
                                             </button>
@@ -2728,7 +2741,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                         onClick={() => openCalendarQuickAction(staff.id, minutes, staffIndex)}
                                                         className="absolute left-0 w-full border-t border-white/[0.035] text-left text-[0px] hover:bg-violet-500/10 focus:bg-violet-500/15"
                                                         style={{ top: `${top}%`, height: `${height}%` }}
-                                                        aria-label={`Create at ${calendarSlotToDateTimeLocal(minutes)} with ${staff.name}`}
+                                                        aria-label={`Create at ${calendarSlotToDateTimeLocal(minutes)}`}
                                                     />
                                                 );
                                             })}
