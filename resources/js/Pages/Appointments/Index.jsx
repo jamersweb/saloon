@@ -1313,7 +1313,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 const endMinutes = Math.max(startMinutes + 30, Number.isNaN(rawEndMinutes) ? startMinutes : rawEndMinutes);
                 const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
                 const height = Math.max(7, (((endMinutes) - startMinutes) / boardTotalMinutes) * 100);
-                const isPaid = appt.status === 'completed' && !appt.awaiting_checkout;
+                const isPaid = appt.status === 'completed' && (appt.checkout_status === 'paid' || !appt.awaiting_checkout);
                 const category = serviceCategoryMap[String(appt.service_id)] || 'Uncategorized';
 
                 return {
@@ -2627,6 +2627,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 {boardCardsByStaff.map(({ staff, cards, blocks }, staffIndex) => {
                                     const staffOff = boardStaffIsOff(staff.id);
                                     const schedule = boardScheduleForStaff(staff.id);
+                                    const openBookingForStaff = () => {
+                                        const action = quickActionForStaff(staff, staffIndex);
+                                        setBoardStaffMenu(null);
+                                        seedCreateFromCalendar(action);
+                                    };
 
                                     return (
                                     <div key={staff.id} className={`relative w-72 shrink-0 border-r border-white/10 ${staffOff ? 'bg-[#121212]' : ''}`}>
@@ -2643,8 +2648,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                 <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-teal-300 bg-[#262628] text-sm font-semibold text-white shadow-[0_0_0_3px_rgba(124,58,237,0.45)] group-hover:border-teal-200">
                                                     {boardStaffShortLabel(staff)}
                                                 </span>
-                                                <span className="max-w-full truncate text-center text-xs font-semibold text-slate-300">
-                                                    {staff.name || 'Team member'}
+                                                <span className="flex max-w-full items-center gap-1 text-center text-xs font-semibold text-slate-300 group-hover:text-white">
+                                                    <span className="truncate">{staff.name || 'Team member'}</span>
+                                                    <span className="text-[10px] leading-none text-slate-400 group-hover:text-white">v</span>
                                                 </span>
                                             </button>
                                             {String(boardStaffMenu?.staffId || '') === String(staff.id) ? (
@@ -2670,13 +2676,16 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     <button
                                                         type="button"
                                                         className="block w-full rounded-md px-3 py-2 text-left font-semibold text-white hover:bg-white/5"
-                                                        onClick={() => {
-                                                            const action = quickActionForStaff(staff, staffIndex);
-                                                            setBoardStaffMenu(null);
-                                                            seedCreateFromCalendar(action);
-                                                        }}
+                                                        onClick={openBookingForStaff}
                                                     >
-                                                        Add appointment
+                                                        Add booking
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="block w-full rounded-md px-3 py-2 text-left font-semibold text-white hover:bg-white/5"
+                                                        onClick={openBookingForStaff}
+                                                    >
+                                                        Add service
                                                     </button>
                                                     <button
                                                         type="button"

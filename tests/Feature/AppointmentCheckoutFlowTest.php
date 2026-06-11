@@ -115,6 +115,16 @@ class AppointmentCheckoutFlowTest extends TestCase
         $this->assertSame(TaxInvoice::STATUS_FINALIZED, $invoice->status);
         $this->assertGreaterThan(0, $invoice->amountPaid());
         $this->assertLessThan(0.02, $invoice->balanceDue());
+
+        $this->actingAs($reception)
+            ->get(route('appointments.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('appointments.0.id', $appointment->id)
+                ->where('appointments.0.status', Appointment::STATUS_COMPLETED)
+                ->where('appointments.0.awaiting_checkout', false)
+                ->where('appointments.0.checkout_status', 'paid')
+            );
     }
 
     public function test_reception_finish_and_pay_with_cash_auto_deducts_assigned_gift_voucher(): void

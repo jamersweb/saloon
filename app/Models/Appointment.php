@@ -141,18 +141,18 @@ class Appointment extends Model
     }
 
     /**
-     * @return array{awaiting_checkout: bool, checkout_invoice_id: int|null}
+     * @return array{awaiting_checkout: bool, checkout_invoice_id: int|null, checkout_status: string}
      */
     public function checkoutSummary(): array
     {
         if ($this->status !== self::STATUS_COMPLETED) {
-            return ['awaiting_checkout' => false, 'checkout_invoice_id' => null];
+            return ['awaiting_checkout' => false, 'checkout_invoice_id' => null, 'checkout_status' => 'not_required'];
         }
 
         $active = $this->activeVisitInvoices();
 
         if ($active->isEmpty()) {
-            return ['awaiting_checkout' => true, 'checkout_invoice_id' => null];
+            return ['awaiting_checkout' => true, 'checkout_invoice_id' => null, 'checkout_status' => 'needs_payment'];
         }
 
         foreach ($active as $inv) {
@@ -160,6 +160,7 @@ class Appointment extends Model
                 return [
                     'awaiting_checkout' => true,
                     'checkout_invoice_id' => $inv->id,
+                    'checkout_status' => 'needs_payment',
                 ];
             }
         }
@@ -169,11 +170,12 @@ class Appointment extends Model
                 return [
                     'awaiting_checkout' => true,
                     'checkout_invoice_id' => $inv->id,
+                    'checkout_status' => 'needs_payment',
                 ];
             }
         }
 
-        return ['awaiting_checkout' => false, 'checkout_invoice_id' => null];
+        return ['awaiting_checkout' => false, 'checkout_invoice_id' => null, 'checkout_status' => 'paid'];
     }
 
     private function activeVisitInvoices(): Collection

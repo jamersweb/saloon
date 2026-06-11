@@ -1736,6 +1736,7 @@ class AppointmentController extends Controller
             ])->values()->all(),
             'awaiting_checkout' => $canCheckoutUi ? $checkout['awaiting_checkout'] : false,
             'checkout_invoice_id' => $canCheckoutUi ? $checkout['checkout_invoice_id'] : null,
+            'checkout_status' => $canCheckoutUi ? $checkout['checkout_status'] : 'not_required',
         ];
     }
 
