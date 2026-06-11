@@ -2643,7 +2643,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                 <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-teal-300 bg-[#262628] text-sm font-semibold text-white shadow-[0_0_0_3px_rgba(124,58,237,0.45)] group-hover:border-teal-200">
                                                     {boardStaffShortLabel(staff)}
                                                 </span>
-                                                <span className="text-xs font-semibold text-slate-300">v</span>
+                                                <span className="max-w-full truncate text-center text-xs font-semibold text-slate-300">
+                                                    {staff.name || 'Team member'}
+                                                </span>
                                             </button>
                                             {String(boardStaffMenu?.staffId || '') === String(staff.id) ? (
                                                 <div className="absolute left-4 top-[5.75rem] z-50 w-56 overflow-hidden rounded-lg border border-white/15 bg-[#202020] p-2 text-sm shadow-2xl">
