@@ -2630,20 +2630,23 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
                                     return (
                                     <div key={staff.id} className={`relative w-72 shrink-0 border-r border-white/10 ${staffOff ? 'bg-[#121212]' : ''}`}>
-                                        <div className="sticky top-0 z-20 flex h-12 items-center justify-end border-b border-white/10 bg-[#171718] px-3">
+                                        <div className="sticky top-0 z-20 flex h-28 flex-col items-center justify-center gap-2 border-b border-white/10 bg-[#171718] px-4">
                                             <button
                                                 type="button"
                                                 aria-label="Open team member board actions"
-                                                className="grid h-8 w-8 place-items-center rounded-full border border-white/20 bg-[#202020] text-sm font-semibold text-slate-200 hover:border-teal-200 hover:bg-white/5"
+                                                className="group flex max-w-full flex-col items-center gap-2"
                                                 onClick={() => {
                                                     setCalendarQuickAction(null);
                                                     setBoardStaffMenu((current) => String(current?.staffId || '') === String(staff.id) ? null : { staffId: String(staff.id), staffIndex });
                                                 }}
                                             >
-                                                ...
+                                                <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-teal-300 bg-[#262628] text-sm font-semibold text-white shadow-[0_0_0_3px_rgba(124,58,237,0.45)] group-hover:border-teal-200">
+                                                    {boardStaffShortLabel(staff)}
+                                                </span>
+                                                <span className="text-xs font-semibold text-slate-300">v</span>
                                             </button>
                                             {String(boardStaffMenu?.staffId || '') === String(staff.id) ? (
-                                                <div className="absolute right-3 top-10 z-50 w-56 overflow-hidden rounded-lg border border-white/15 bg-[#202020] p-2 text-sm shadow-2xl">
+                                                <div className="absolute left-4 top-[5.75rem] z-50 w-56 overflow-hidden rounded-lg border border-white/15 bg-[#202020] p-2 text-sm shadow-2xl">
                                                     <button type="button" className="flex w-full items-center gap-3 rounded-md border border-white/40 px-3 py-2.5 text-left font-semibold text-white">
                                                         <span className="text-base">[]</span>
                                                         Day view
