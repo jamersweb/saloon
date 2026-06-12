@@ -327,7 +327,7 @@ class ReportController extends Controller
             ];
         }
 
-        return $this->paymentTotals($dateFrom, $dateTo, $invoiceIds);
+        return $this->paymentTotalsForInvoices($invoiceIds);
     }
 
     /**
@@ -790,6 +790,29 @@ class ReportController extends Controller
         }
 
         $paymentTotals = $query
+            ->selectRaw('method, SUM(amount) as total')
+            ->groupBy('method')
+            ->pluck('total', 'method');
+
+        return [
+            'cash_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CASH] ?? 0), 2),
+            'card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CARD] ?? 0), 2),
+        ];
+    }
+
+    /**
+     * Service reports are service-date based. Once an invoice is included in the
+     * report rows, show the cash/card collected for that invoice even if payment
+     * was recorded after the service day.
+     *
+     * @param  list<int>  $invoiceIds
+     * @return array{cash_total_payment: float, card_total_payment: float}
+     */
+    private function paymentTotalsForInvoices(array $invoiceIds): array
+    {
+        $paymentTotals = InvoicePayment::query()
+            ->whereIn('tax_invoice_id', $invoiceIds)
+            ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD])
             ->selectRaw('method, SUM(amount) as total')
             ->groupBy('method')
             ->pluck('total', 'method');

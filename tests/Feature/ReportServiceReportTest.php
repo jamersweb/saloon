@@ -225,7 +225,7 @@ class ReportServiceReportTest extends TestCase
             );
     }
 
-    public function test_service_report_totals_include_filtered_cash_and_card_payment_totals(): void
+    public function test_service_report_totals_include_invoice_cash_and_card_payments_for_filtered_service_rows(): void
     {
         $manager = $this->managerUser();
         [, $invoice] = $this->completedAppointmentWithInvoice('Payment Client', 'INV-PAY-1');
@@ -278,7 +278,7 @@ class ReportServiceReportTest extends TestCase
         $paymentTotals = $paymentTotalsMethod->invoke($controller, $dateFrom, $dateTo, $rows);
         $totals = $totalsMethod->invoke($controller, $rows, $paymentTotals);
 
-        $this->assertSame(100.0, $totals['cash_total_payment']);
+        $this->assertSame(125.0, $totals['cash_total_payment']);
         $this->assertSame(75.0, $totals['card_total_payment']);
     }
 

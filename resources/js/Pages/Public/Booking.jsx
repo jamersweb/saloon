@@ -124,7 +124,7 @@ const normalizeToInterval = (value, intervalMinutes) => {
 export default function Booking({ services, bookingRules, defaultStart }) {
     const { errors } = usePage().props;
     const [serviceSearch, setServiceSearch] = useState('');
-    const { data, setData, clearErrors, post, processing } = useForm({
+    const { data, setData, clearErrors, transform, post, processing } = useForm({
         customer_name: '', customer_phone: '', customer_email: '', service_id: '', service_ids: [], staff_profile_id: '', scheduled_start: defaultStart || '', notes: '',
     });
 
@@ -153,6 +153,28 @@ export default function Booking({ services, bookingRules, defaultStart }) {
 
     const submit = (e) => {
         e.preventDefault();
+        const fallbackServiceIds = selectedServiceIds.length === 0 && serviceSearch.trim() && filteredServices.length === 1
+            ? [String(filteredServices[0].id)]
+            : selectedServiceIds;
+
+        if (fallbackServiceIds.length > 0) {
+            clearErrors('service_id', 'service_ids');
+        }
+
+        transform((currentData) => ({
+            ...currentData,
+            service_ids: fallbackServiceIds,
+            service_id: fallbackServiceIds[0] || currentData.service_id,
+        }));
+
+        if (fallbackServiceIds !== selectedServiceIds) {
+            setData({
+                ...data,
+                service_ids: fallbackServiceIds,
+                service_id: fallbackServiceIds[0] || '',
+            });
+        }
+
         post(route('public.booking.store'));
     };
 
@@ -194,15 +216,17 @@ export default function Booking({ services, bookingRules, defaultStart }) {
                                     <button
                                         key={s.id}
                                         type="button"
-                                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50"
                                         onClick={() => setSelectedServices([...selectedServiceIds, String(s.id)])}
                                     >
-                                        <span>{s.name}</span>
-                                        <span className="text-slate-500">{s.duration_minutes} min • {formatMoney(s.price)}</span>
+                                        <span className="font-medium text-slate-700">{s.name}</span>
+                                        <span className="text-slate-500">{s.duration_minutes} min - {formatMoney(s.price)}</span>
+                                        <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">Add</span>
                                     </button>
                                 ))}
                                 {filteredServices.length === 0 ? <div className="px-3 py-2 text-xs text-slate-500">No more services found.</div> : null}
                             </div>
+                            {selectedServiceIds.length === 0 ? <p className="mt-1 text-xs text-slate-500">Click a service to add it to this booking.</p> : null}
                             <div className="mt-2 flex flex-wrap gap-2">
                                 {selectedServiceIds.map((id) => {
                                     const service = services.find((s) => String(s.id) === String(id));
