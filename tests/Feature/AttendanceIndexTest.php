@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\StaffProfile;
 use App\Models\User;
 use App\Support\Permissions;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -80,5 +81,51 @@ class AttendanceIndexTest extends TestCase
                 ->has('logs.data', 1)
                 ->where('logs.data.0.staff_name', 'Staff Two')
                 ->where('logs.data.0.attendance_date', now()->toDateString()));
+    }
+
+    public function test_manager_clock_out_redirects_to_staff_filter_and_reflects_today_log(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-16 18:15:00'));
+
+        try {
+            $managerRole = Role::create([
+                'name' => 'manager',
+                'label' => 'Manager',
+                'permissions' => Permissions::defaultsForRole('manager'),
+            ]);
+            $manager = User::factory()->create(['role_id' => $managerRole->id]);
+
+            $staffRole = Role::create([
+                'name' => 'staff',
+                'label' => 'Staff',
+                'permissions' => Permissions::defaultsForRole('staff'),
+            ]);
+            $staffUser = User::factory()->create(['role_id' => $staffRole->id, 'name' => 'Clocked Staff']);
+            $profile = StaffProfile::create([
+                'user_id' => $staffUser->id,
+                'employee_code' => 'EMP-CLOCK-OUT',
+                'is_active' => true,
+            ]);
+
+            AttendanceLog::create([
+                'staff_profile_id' => $profile->id,
+                'attendance_date' => '2026-06-16',
+                'clock_in' => '09:00:00',
+                'late_minutes' => 0,
+            ]);
+
+            $this->actingAs($manager)
+                ->post(route('attendance.clock-out'), ['staff_profile_id' => $profile->id])
+                ->assertRedirect(route('attendance.index', ['staff_profile_id' => $profile->id]));
+
+            $this->actingAs($manager)
+                ->get(route('attendance.index', ['staff_profile_id' => $profile->id]))
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->where('todayLog.clock_out', '18:15:00')
+                    ->where('logs.data.0.clock_out', '18:15:00'));
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 }

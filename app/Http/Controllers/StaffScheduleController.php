@@ -20,7 +20,6 @@ class StaffScheduleController extends Controller
 
     public function index(Request $request): Response
     {
-        $this->staffScheduleGenerator->fillRollingMonth();
         $filters = [
             'search' => trim($request->string('search')->toString()),
             'staff_profile_id' => $request->integer('staff_profile_id') ?: null,
@@ -44,7 +43,14 @@ class StaffScheduleController extends Controller
             ? Carbon::parse($filters['date_from'])->toDateString()
             : $today->toDateString();
         $visibleHorizonDays = max(90, (int) $rules->max_advance_days);
-        $visibleRangeEnd = $today->copy()->addDays($visibleHorizonDays - 1)->toDateString();
+        $visibleRangeEnd = $filters['date_to'] !== ''
+            ? Carbon::parse($filters['date_to'])->toDateString()
+            : $today->copy()->addDays($visibleHorizonDays - 1)->toDateString();
+        $this->staffScheduleGenerator->fillGapsForActiveStaff(
+            Carbon::parse($visibleRangeStart),
+            Carbon::parse($visibleRangeEnd),
+            $filters['staff_profile_id'] ? [(int) $filters['staff_profile_id']] : null,
+        );
 
         return Inertia::render('Schedules/Index', [
             'bookingRules' => [

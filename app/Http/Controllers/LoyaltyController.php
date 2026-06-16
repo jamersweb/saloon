@@ -866,7 +866,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'NFC UID linked to membership card.');
     }
 
-    public function updateMembershipCard(Request $request, CustomerMembershipCard $card, MembershipCardService $membershipCardService): RedirectResponse
+    public function updateMembershipCard(Request $request, CustomerMembershipCard $card, MembershipCardService $membershipCardService, GiftCardService $giftCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -894,6 +894,7 @@ class LoyaltyController extends Controller
             'status' => $data['status'],
             'notes' => $data['notes'] ?? null,
         ], $request->user()?->id);
+        $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
 
         Audit::log($request->user()?->id, 'loyalty.card_updated', 'CustomerMembershipCard', $card->id, [
             'customer_id' => $card->customer_id,

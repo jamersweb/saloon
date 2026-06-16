@@ -1,3 +1,4 @@
+import SearchableSelect from '@/Components/SearchableSelect';
 import { router } from '@inertiajs/react';
 
 const formatMoney = (value, currencyCode = 'AED') =>
@@ -158,6 +159,20 @@ export default function PackagesSection({
     salonServices,
 }) {
     const activePackages = packages.filter((pkg) => pkg.is_active);
+    const customerOptions = customers.map((customer) => ({
+        value: String(customer.id),
+        label: `${customer.name}${customer.phone ? ` - ${customer.phone}` : ''}`,
+    }));
+    const packageOptions = activePackages.map((pkg) => ({
+        value: String(pkg.id),
+        label: `${pkg.name} - ${formatMoney(pkg.price, currencyCode)}`,
+    }));
+    const customerPackageOptions = customerPackages
+        .filter((pkg) => pkg.status === 'active')
+        .map((pkg) => ({
+            value: String(pkg.id),
+            label: `${pkg.customer_name} - ${pkg.package_name}`,
+        }));
 
     return (
         <div className="space-y-6">
@@ -262,8 +277,8 @@ export default function PackagesSection({
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Assign package</h3>
                 <form onSubmit={(e) => { e.preventDefault(); assignPackageForm.post(route('loyalty.packages.assign'), { onSuccess: () => assignPackageForm.reset('notes') }); }} className="grid gap-3 md:grid-cols-4">
-                    <div><label className="ta-field-label">Customer</label><select className="ta-input" value={assignPackageForm.data.customer_id} onChange={(e) => assignPackageForm.setData('customer_id', e.target.value)} required><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select>{fieldError(assignPackageForm, 'customer_id')}</div>
-                    <div><label className="ta-field-label">Package</label><select className="ta-input" value={assignPackageForm.data.service_package_id} onChange={(e) => assignPackageForm.setData('service_package_id', e.target.value)} required><option value="">Select package</option>{activePackages.map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name} - {formatMoney(pkg.price, currencyCode)}</option>)}</select>{fieldError(assignPackageForm, 'service_package_id')}</div>
+                    <div><SearchableSelect label="Customer" value={assignPackageForm.data.customer_id} onChange={(id) => assignPackageForm.setData('customer_id', id)} options={customerOptions} placeholder="Search customer" />{fieldError(assignPackageForm, 'customer_id')}</div>
+                    <div><SearchableSelect label="Package" value={assignPackageForm.data.service_package_id} onChange={(id) => assignPackageForm.setData('service_package_id', id)} options={packageOptions} placeholder="Search package" />{fieldError(assignPackageForm, 'service_package_id')}</div>
                     <div><label className="ta-field-label">Notes</label><input className="ta-input" value={assignPackageForm.data.notes} onChange={(e) => assignPackageForm.setData('notes', e.target.value)} />{fieldError(assignPackageForm, 'notes')}</div>
                     <button className="ta-btn-primary" disabled={assignPackageForm.processing || !canManage}>Assign package</button>
                 </form>
@@ -272,7 +287,7 @@ export default function PackagesSection({
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Consume package balance</h3>
                 <form onSubmit={(e) => { e.preventDefault(); consumePackageForm.post(route('loyalty.packages.consume', consumePackageForm.data.customer_package_id), { onSuccess: () => consumePackageForm.reset('sessions_used', 'value_used', 'notes') }); }} className="grid gap-3 md:grid-cols-5">
-                    <div><label className="ta-field-label">Customer package</label><select className="ta-input" value={consumePackageForm.data.customer_package_id} onChange={(e) => consumePackageForm.setData('customer_package_id', e.target.value)} required><option value="">Select active package</option>{customerPackages.filter((pkg) => pkg.status === 'active').map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.customer_name} - {pkg.package_name}</option>)}</select>{fieldError(consumePackageForm, 'customer_package_id')}</div>
+                    <div><SearchableSelect label="Customer package" value={consumePackageForm.data.customer_package_id} onChange={(id) => consumePackageForm.setData('customer_package_id', id)} options={customerPackageOptions} placeholder="Search customer package" />{fieldError(consumePackageForm, 'customer_package_id')}</div>
                     <div><label className="ta-field-label">Sessions used</label><input className="ta-input" type="number" min="0" value={consumePackageForm.data.sessions_used} onChange={(e) => consumePackageForm.setData('sessions_used', e.target.value)} />{fieldError(consumePackageForm, 'sessions_used')}</div>
                     <div><label className="ta-field-label">Value used</label><input className="ta-input" type="number" min="0" step="0.01" value={consumePackageForm.data.value_used} onChange={(e) => consumePackageForm.setData('value_used', e.target.value)} />{fieldError(consumePackageForm, 'value_used')}</div>
                     <div><label className="ta-field-label">Notes</label><input className="ta-input" value={consumePackageForm.data.notes} onChange={(e) => consumePackageForm.setData('notes', e.target.value)} />{fieldError(consumePackageForm, 'notes')}</div>

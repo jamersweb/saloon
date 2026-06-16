@@ -1,4 +1,5 @@
 import Modal from '@/Components/Modal';
+import SearchableSelect from '@/Components/SearchableSelect';
 import { Transition } from '@headlessui/react';
 import { router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -38,6 +39,13 @@ export default function MembershipCardsSection({
     exportCsv,
     packages,
 }) {
+    const customerOptions = customers.map((customer) => ({
+        value: String(customer.id),
+        label: `${customer.name}${customer.phone ? ` - ${customer.phone}` : ''}${customer.points !== undefined ? ` (${customer.points} pts)` : ''}`,
+    }));
+    const cardTypeOptions = cardTypes
+        .filter((type) => type.is_active)
+        .map((cardType) => ({ value: String(cardType.id), label: cardType.name }));
     const ROWS_PER_PAGE = 10;
     const importFileRef = useRef(null);
     const [membershipCardTypeFilter, setMembershipCardTypeFilter] = useState('');
@@ -761,7 +769,7 @@ export default function MembershipCardsSection({
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Pre-issue card (inventory / printing)</h3>
                 <p className="mb-3 text-xs text-slate-600">Generate a numeric card number before you know the customer—use for bulk printing. Auto-generated numbers are sequential per card type (starting at 100000000001). Link the card to a customer when they purchase.</p>
                 <form onSubmit={(e) => { e.preventDefault(); issueInventoryForm.post(route('loyalty.cards.issue-inventory'), { onSuccess: () => issueInventoryForm.reset('card_number', 'nfc_uid', 'notes') }); }} className="grid gap-3 md:grid-cols-6">
-                    <div><label className="ta-field-label">Card type</label><select className="ta-input" value={issueInventoryForm.data.membership_card_type_id} onChange={(e) => issueInventoryForm.setData('membership_card_type_id', e.target.value)} required><option value="">Select card type</option>{cardTypes.filter((type) => type.is_active).map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}</select>{fieldError(issueInventoryForm, 'membership_card_type_id')}</div>
+                    <div><SearchableSelect label="Card type" value={issueInventoryForm.data.membership_card_type_id} onChange={(id) => issueInventoryForm.setData('membership_card_type_id', id)} options={cardTypeOptions} placeholder="Search card type" />{fieldError(issueInventoryForm, 'membership_card_type_id')}</div>
                     <div><label className="ta-field-label">Card number</label><input className="ta-input" inputMode="numeric" pattern="[0-9]*" value={issueInventoryForm.data.card_number} onChange={(e) => issueInventoryForm.setData('card_number', e.target.value)} placeholder="Digits only, auto if blank" />{fieldError(issueInventoryForm, 'card_number')}</div>
                     <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={issueInventoryForm.data.nfc_uid} onChange={(e) => issueInventoryForm.setData('nfc_uid', e.target.value)} />{fieldError(issueInventoryForm, 'nfc_uid')}</div>
                     <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('issue_inventory')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'issue_inventory' ? 'Reading...' : 'Read UID'}</button>
@@ -786,8 +794,8 @@ export default function MembershipCardsSection({
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Assign new card to customer (one step)</h3>
                 <p className="mb-3 text-xs text-slate-600">Creates a new membership row and ties it to the customer immediately. Card numbers are numeric only (auto-generated if left blank).</p>
                 <form onSubmit={(e) => { e.preventDefault(); assignCardForm.post(route('loyalty.cards.assign'), { onSuccess: () => assignCardForm.reset('card_number', 'nfc_uid', 'notes') }); }} className="grid gap-3 md:grid-cols-6">
-                    <div><label className="ta-field-label">Customer</label><select className="ta-input" value={assignCardForm.data.customer_id} onChange={(e) => assignCardForm.setData('customer_id', e.target.value)} required><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} ({customer.points} pts)</option>)}</select>{fieldError(assignCardForm, 'customer_id')}</div>
-                    <div><label className="ta-field-label">Card type</label><select className="ta-input" value={assignCardForm.data.membership_card_type_id} onChange={(e) => assignCardForm.setData('membership_card_type_id', e.target.value)} required><option value="">Select card type</option>{cardTypes.filter((type) => type.is_active).map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}</select>{fieldError(assignCardForm, 'membership_card_type_id')}</div>
+                    <div><SearchableSelect label="Customer" value={assignCardForm.data.customer_id} onChange={(id) => assignCardForm.setData('customer_id', id)} options={customerOptions} placeholder="Search customer" />{fieldError(assignCardForm, 'customer_id')}</div>
+                    <div><SearchableSelect label="Card type" value={assignCardForm.data.membership_card_type_id} onChange={(id) => assignCardForm.setData('membership_card_type_id', id)} options={cardTypeOptions} placeholder="Search card type" />{fieldError(assignCardForm, 'membership_card_type_id')}</div>
                     <div><label className="ta-field-label">Card number</label><input className="ta-input" inputMode="numeric" pattern="[0-9]*" value={assignCardForm.data.card_number} onChange={(e) => assignCardForm.setData('card_number', e.target.value)} placeholder="Digits only, auto if blank" />{fieldError(assignCardForm, 'card_number')}</div>
                     <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={assignCardForm.data.nfc_uid} onChange={(e) => assignCardForm.setData('nfc_uid', e.target.value)} />{fieldError(assignCardForm, 'nfc_uid')}</div>
                     <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('assign')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'assign' ? 'Reading...' : 'Read UID'}</button>

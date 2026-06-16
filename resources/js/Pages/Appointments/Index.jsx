@@ -149,7 +149,8 @@ const appointmentCategoryCardPalettes = {
     waxing: { backgroundColor: '#4ade80', borderColor: '#16a34a', color: '#000000' },
     nails: { backgroundColor: '#fb923c', borderColor: '#ea580c', color: '#000000' },
     hair_extension: { backgroundColor: '#60a5fa', borderColor: '#2563eb', color: '#000000' },
-    default: { backgroundColor: '#e2e8f0', borderColor: '#64748b', color: '#000000' },
+    brows: { backgroundColor: '#f472b6', borderColor: '#be185d', color: '#000000' },
+    default: { backgroundColor: '#cbd5e1', borderColor: '#475569', color: '#000000' },
 };
 const resolveAppointmentCategoryPalette = (value) => {
     const text = String(value || '').trim().toLowerCase();
@@ -157,6 +158,7 @@ const resolveAppointmentCategoryPalette = (value) => {
 
     if (text.includes('hair extension')) return appointmentCategoryCardPalettes.hair_extension;
     if (text.includes('eyelash') || text.includes('lashes') || text.includes('lash')) return appointmentCategoryCardPalettes.eyelash;
+    if (text.includes('eyebrow') || text.includes('brow')) return appointmentCategoryCardPalettes.brows;
     if (text.includes('thread')) return appointmentCategoryCardPalettes.threading;
     if (text.includes('makeup') || text.includes('make up')) return appointmentCategoryCardPalettes.makeup;
     if (text.includes('wax')) return appointmentCategoryCardPalettes.waxing;
@@ -409,7 +411,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const { app_currency_code: currencyCode = 'AED' } = usePage().props;
     const { flash, auth } = usePage().props;
     const serviceCategoryMap = useMemo(
-        () => Object.fromEntries((services || []).map((service) => [String(service.id), service.category || 'Uncategorized'])),
+        () => Object.fromEntries((services || []).map((service) => [String(service.id), `${service.category || ''} ${service.name || ''}`.trim() || 'Uncategorized'])),
         [services],
     );
     const roleName = String(auth?.user?.role?.name || '').toLowerCase();
@@ -694,51 +696,51 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const syncEditStartFromInput = (rawValue) => {
         const [ymd] = (rawValue || '').split('T');
         if (ymd) setEditStartYmd(ymd);
-        const clamped = clampAdminEditStartDatetimeLocal(rawValue || '', bookingRules, slotIntervalMinutes);
+        const nextStart = rawValue || '';
         editForm.setData((prev) => {
             const previousStart = prev.scheduled_start || '';
             const nextServiceStarts = {};
             (prev.service_ids || []).forEach((serviceId, index) => {
                 const lineKey = serviceLineKey(index);
                 const currentStart = serviceLineMapValue(prev.service_starts, index, serviceId, previousStart);
-                nextServiceStarts[lineKey] = index === 0 || !currentStart || currentStart === previousStart ? clamped : currentStart;
+                nextServiceStarts[lineKey] = index === 0 || !currentStart || currentStart === previousStart ? nextStart : currentStart;
             });
             const nextData = {
                 ...prev,
                 service_starts: nextServiceStarts,
-                scheduled_start: clamped,
+                scheduled_start: nextStart,
             };
 
             return {
                 ...nextData,
                 scheduled_end: !editEndManuallySet || !prev.scheduled_end
-                    ? calculateSuggestedEndWithServiceMeta(clamped, prev.service_ids, nextData)
+                    ? calculateSuggestedEndWithServiceMeta(nextStart, prev.service_ids, nextData)
                     : prev.scheduled_end,
             };
         });
-        if (editStartRef.current && editStartRef.current.value !== clamped) {
-            editStartRef.current.value = clamped;
+        if (editStartRef.current && editStartRef.current.value !== nextStart) {
+            editStartRef.current.value = nextStart;
         }
     };
 
     const buildEditTimingPayload = (rawValue) => {
-        const clamped = clampAdminEditStartDatetimeLocal(rawValue || '', bookingRules, slotIntervalMinutes);
+        const nextStart = rawValue || '';
         const previousStart = editForm.data.scheduled_start || '';
         const nextServiceStarts = {};
         (editForm.data.service_ids || []).forEach((serviceId, index) => {
             const lineKey = serviceLineKey(index);
             const currentStart = serviceLineMapValue(editForm.data.service_starts, index, serviceId, previousStart);
-            nextServiceStarts[lineKey] = index === 0 || !currentStart || currentStart === previousStart ? clamped : currentStart;
+            nextServiceStarts[lineKey] = index === 0 || !currentStart || currentStart === previousStart ? nextStart : currentStart;
         });
         const nextData = {
             ...editForm.data,
             service_starts: nextServiceStarts,
-            scheduled_start: clamped,
+            scheduled_start: nextStart,
         };
 
         return {
             ...nextData,
-            scheduled_end: calculateSuggestedEndWithServiceMeta(clamped, nextData.service_ids, nextData),
+            scheduled_end: calculateSuggestedEndWithServiceMeta(nextStart, nextData.service_ids, nextData),
         };
     };
 
@@ -1042,6 +1044,10 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const editSelectedCustomer = customers.find((c) => String(c.id) === String(editSelectedCustomerId)) || null;
     const customerOptions = customers.map((c) => ({ value: String(c.id), label: `${c.name}${c.phone ? ` - ${c.phone}` : ''}` }));
     const staffOptions = [{ value: '', label: 'Auto / Unassigned' }, ...staffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
+    const serviceOptions = services.map((service) => ({
+        value: String(service.id),
+        label: `${service.name} - ${formatMoney(service.price, currencyCode)}`,
+    }));
     const createAvailablePackages = createSelectedCustomer?.active_packages || [];
     const editAvailablePackages = editSelectedCustomer?.active_packages || [];
     const createSelectedPackage = createAvailablePackages.find((pkg) => String(pkg.id) === String(createSelectedPackageId)) || null;
@@ -1313,8 +1319,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 const endMinutes = Math.max(startMinutes + 30, Number.isNaN(rawEndMinutes) ? startMinutes : rawEndMinutes);
                 const top = Math.max(0, ((startMinutes - boardStartMinutes) / boardTotalMinutes) * 100);
                 const height = Math.max(7, (((endMinutes) - startMinutes) / boardTotalMinutes) * 100);
-                const isPaid = appt.status === 'completed' && (appt.checkout_status === 'paid' || !appt.awaiting_checkout);
-                const category = serviceCategoryMap[String(appt.service_id)] || 'Uncategorized';
+                const isPaid = appt.status === 'completed' && appt.checkout_status === 'paid';
+                const category = serviceCategoryMap[String(appt.service_id)] || `${appt.service_name || ''} Uncategorized`;
 
                 return {
                     ...appt,
@@ -2149,23 +2155,23 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 return (
                                     <div key={index} className="grid gap-3 md:grid-cols-12">
                                         <div className="md:col-span-5">
-                                            <label className="ta-field-label">Service</label>
-                                            <select className="ta-input" value={row.service_id} onChange={(e) => updateAdditionalServiceRow(index, 'service_id', e.target.value)}>
-                                                <option value="">Select service</option>
-                                                {services.map((service) => (
-                                                    <option key={service.id} value={service.id}>
-                                                        {service.name} - {formatMoney(service.price, currencyCode)}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                            <SearchableSelect
+                                                label="Service"
+                                                value={row.service_id}
+                                                onChange={(id) => updateAdditionalServiceRow(index, 'service_id', id)}
+                                                options={serviceOptions}
+                                                placeholder="Search service"
+                                            />
                                             {fieldError(completeForm, `additional_services.${index}.service_id`)}
                                         </div>
                                         <div className="md:col-span-3">
-                                            <label className="ta-field-label">Staff</label>
-                                            <select className="ta-input" value={row.staff_profile_id} onChange={(e) => updateAdditionalServiceRow(index, 'staff_profile_id', e.target.value)}>
-                                                <option value="">Same staff</option>
-                                                {staffProfiles.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
-                                            </select>
+                                            <SearchableSelect
+                                                label="Staff"
+                                                value={row.staff_profile_id}
+                                                onChange={(id) => updateAdditionalServiceRow(index, 'staff_profile_id', id)}
+                                                options={[{ value: '', label: 'Same staff' }, ...staffProfiles.map((staff) => ({ value: String(staff.id), label: staff.name }))]}
+                                                placeholder="Search staff"
+                                            />
                                             {fieldError(completeForm, `additional_services.${index}.staff_profile_id`)}
                                         </div>
                                         <div className="md:col-span-2">
@@ -2469,8 +2475,6 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 value={editForm.data.scheduled_start || editStartDefault}
                                 onInput={(e) => syncEditStartFromInput(e.currentTarget.value)}
                                 onChange={(e) => syncEditStartFromInput(e.currentTarget.value)}
-                                min={editSalonBounds.min}
-                                max={editSalonBounds.max}
                                 required
                             />
                             {fieldError(editForm, 'scheduled_start')}

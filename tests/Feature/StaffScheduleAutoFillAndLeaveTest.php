@@ -209,7 +209,7 @@ class StaffScheduleAutoFillAndLeaveTest extends TestCase
         }
     }
 
-    public function test_schedule_index_auto_fills_missing_month_rows(): void
+    public function test_schedule_index_auto_fills_missing_visible_range_rows(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-08 10:00:00'));
 
@@ -227,12 +227,45 @@ class StaffScheduleAutoFillAndLeaveTest extends TestCase
                 ->get(route('schedules.index'))
                 ->assertOk();
 
-            $this->assertSame(31, StaffSchedule::query()->count());
+            $this->assertSame(90, StaffSchedule::query()->count());
             $this->assertTrue(
                 StaffSchedule::query()
-                    ->whereDate('schedule_date', '2026-07-08')
+                    ->whereDate('schedule_date', '2026-09-05')
                     ->exists(),
-                'Expected schedules index to auto-fill through the next 31 days.',
+                'Expected schedules index to auto-fill through the visible schedule horizon.',
+            );
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_schedule_index_auto_fills_selected_date_filter_range(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-08 10:00:00'));
+
+        try {
+            $manager = $this->makeManagerUser();
+            $staff = StaffProfile::create([
+                'user_id' => User::factory()->create()->id,
+                'employee_code' => 'STF-INDEX-FILTER',
+                'is_active' => true,
+            ]);
+
+            $this->actingAs($manager)
+                ->get(route('schedules.index', [
+                    'staff_profile_id' => $staff->id,
+                    'date_from' => '2026-07-01',
+                    'date_to' => '2026-07-31',
+                ]))
+                ->assertOk();
+
+            $this->assertSame(31, StaffSchedule::query()->where('staff_profile_id', $staff->id)->count());
+            $this->assertTrue(
+                StaffSchedule::query()
+                    ->where('staff_profile_id', $staff->id)
+                    ->whereDate('schedule_date', '2026-07-31')
+                    ->exists(),
+                'Expected the selected filter end date to be auto-filled.',
             );
         } finally {
             Carbon::setTestNow();

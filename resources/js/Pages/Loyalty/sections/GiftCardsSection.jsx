@@ -1,3 +1,4 @@
+import SearchableSelect from '@/Components/SearchableSelect';
 import { useRef } from 'react';
 
 export default function GiftCardsSection({
@@ -26,6 +27,20 @@ export default function GiftCardsSection({
         }
         return String(a.customer_id) === String(selectedConsumeGiftCard.assigned_customer_id);
     });
+    const customerOptions = customers.map((customer) => ({
+        value: String(customer.id),
+        label: `${customer.name}${customer.phone ? ` - ${customer.phone}` : ''}`,
+    }));
+    const giftCardOptions = giftCards.map((card) => ({
+        value: String(card.id),
+        label: `${card.code} (${card.remaining_value})${card.customer_name ? ` - ${card.customer_name}` : ' - unassigned'}`,
+    }));
+    const activeGiftCardOptions = giftCards
+        .filter((card) => card.status === 'active')
+        .map((card) => ({
+            value: String(card.id),
+            label: `${card.code} (${card.remaining_value})${card.assigned_customer_id ? '' : ' - unassigned'}`,
+        }));
 
     return (
         <div className="space-y-6">
@@ -46,7 +61,7 @@ export default function GiftCardsSection({
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Issue gift card</h3>
                 <form onSubmit={(e) => { e.preventDefault(); giftCardForm.post(route('loyalty.gift-cards.store'), { onSuccess: () => giftCardForm.reset('assigned_customer_id', 'initial_value', 'random_voucher', 'nfc_uid', 'notes') }); }} className="grid gap-3 md:grid-cols-6">
-                    <div><label className="ta-field-label">Customer</label><select className="ta-input" value={giftCardForm.data.assigned_customer_id} onChange={(e) => giftCardForm.setData('assigned_customer_id', e.target.value)}><option value="">Unassigned</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select>{fieldError(giftCardForm, 'assigned_customer_id')}</div>
+                    <div><SearchableSelect label="Customer" value={giftCardForm.data.assigned_customer_id} onChange={(id) => giftCardForm.setData('assigned_customer_id', id)} options={[{ value: '', label: 'Unassigned' }, ...customerOptions]} placeholder="Search customer" />{fieldError(giftCardForm, 'assigned_customer_id')}</div>
                     <div><label className="ta-field-label">Initial value</label><input className="ta-input" type="number" min="0.01" step="0.01" value={giftCardForm.data.initial_value} onChange={(e) => giftCardForm.setData('initial_value', e.target.value)} required={!giftCardForm.data.random_voucher} disabled={giftCardForm.data.random_voucher} />{fieldError(giftCardForm, 'initial_value')}</div>
                     <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={giftCardForm.data.random_voucher} onChange={(e) => giftCardForm.setData((current) => ({ ...current, random_voucher: e.target.checked, initial_value: e.target.checked ? '' : current.initial_value }))} />Random voucher 100 / 200 / 300</label>
                     <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={giftCardForm.data.nfc_uid} onChange={(e) => giftCardForm.setData('nfc_uid', e.target.value)} placeholder="Optional physical NFC gift card" />{fieldError(giftCardForm, 'nfc_uid')}</div>
@@ -68,19 +83,11 @@ export default function GiftCardsSection({
                     className="grid gap-3 md:grid-cols-3"
                 >
                     <div>
-                        <label className="ta-field-label">Gift card</label>
-                        <select className="ta-input" value={assignGiftCardForm.data.gift_card_id} onChange={(e) => assignGiftCardForm.setData('gift_card_id', e.target.value)} required>
-                            <option value="">Select gift card</option>
-                            {giftCards.map((card) => <option key={card.id} value={card.id}>{card.code} ({card.remaining_value})</option>)}
-                        </select>
+                        <SearchableSelect label="Gift card" value={assignGiftCardForm.data.gift_card_id} onChange={(id) => assignGiftCardForm.setData('gift_card_id', id)} options={giftCardOptions} placeholder="Search gift card" />
                         {fieldError(assignGiftCardForm, 'gift_card_id')}
                     </div>
                     <div>
-                        <label className="ta-field-label">Customer</label>
-                        <select className="ta-input" value={assignGiftCardForm.data.assigned_customer_id} onChange={(e) => assignGiftCardForm.setData('assigned_customer_id', e.target.value)} required>
-                            <option value="">Select customer</option>
-                            {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                        </select>
+                        <SearchableSelect label="Customer" value={assignGiftCardForm.data.assigned_customer_id} onChange={(id) => assignGiftCardForm.setData('assigned_customer_id', id)} options={customerOptions} placeholder="Search customer" />
                         {fieldError(assignGiftCardForm, 'assigned_customer_id')}
                     </div>
                     <button className="ta-btn-primary" disabled={assignGiftCardForm.processing || !canManage}>Assign gift card</button>
@@ -90,7 +97,7 @@ export default function GiftCardsSection({
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Consume gift card</h3>
                 <form onSubmit={(e) => { e.preventDefault(); consumeGiftCardForm.post(route('loyalty.gift-cards.consume', consumeGiftCardForm.data.gift_card_id), { onSuccess: () => consumeGiftCardForm.reset('amount', 'reason', 'notes', 'appointment_id') }); }} className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
-                    <div><label className="ta-field-label">Gift card</label><select className="ta-input" value={consumeGiftCardForm.data.gift_card_id} onChange={(e) => { consumeGiftCardForm.setData('gift_card_id', e.target.value); consumeGiftCardForm.setData('appointment_id', ''); }} required><option value="">Select gift card</option>{giftCards.filter((card) => card.status === 'active').map((card) => <option key={card.id} value={card.id}>{card.code} ({card.remaining_value}){card.assigned_customer_id ? '' : ' — unassigned'}</option>)}</select>{fieldError(consumeGiftCardForm, 'gift_card_id')}</div>
+                    <div><SearchableSelect label="Gift card" value={consumeGiftCardForm.data.gift_card_id} onChange={(id) => { consumeGiftCardForm.setData('gift_card_id', id); consumeGiftCardForm.setData('appointment_id', ''); }} options={activeGiftCardOptions} placeholder="Search gift card" />{fieldError(consumeGiftCardForm, 'gift_card_id')}</div>
                     <div className="lg:col-span-2">
                         <label className="ta-field-label">Link to visit (optional)</label>
                         <select className="ta-input" value={consumeGiftCardForm.data.appointment_id} onChange={(e) => consumeGiftCardForm.setData('appointment_id', e.target.value)} disabled={!consumeGiftCardForm.data.gift_card_id}>
@@ -128,7 +135,7 @@ export default function GiftCardsSection({
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Bind / replace gift card NFC UID</h3>
                 <form onSubmit={(e) => { e.preventDefault(); giftNfcBindForm.post(route('loyalty.gift-cards.nfc-bind'), { onSuccess: () => giftNfcBindForm.reset('nfc_uid', 'replace_existing') }); }} className="grid gap-3 md:grid-cols-4">
-                    <div><label className="ta-field-label">Gift card</label><select className="ta-input" value={giftNfcBindForm.data.gift_card_id} onChange={(e) => giftNfcBindForm.setData('gift_card_id', e.target.value)} required><option value="">Select gift card</option>{giftCards.map((card) => <option key={card.id} value={card.id}>{card.code} ({card.remaining_value})</option>)}</select>{fieldError(giftNfcBindForm, 'gift_card_id')}</div>
+                    <div><SearchableSelect label="Gift card" value={giftNfcBindForm.data.gift_card_id} onChange={(id) => giftNfcBindForm.setData('gift_card_id', id)} options={giftCardOptions} placeholder="Search gift card" />{fieldError(giftNfcBindForm, 'gift_card_id')}</div>
                     <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={giftNfcBindForm.data.nfc_uid} onChange={(e) => giftNfcBindForm.setData('nfc_uid', e.target.value)} placeholder="Scan new UID" required />{fieldError(giftNfcBindForm, 'nfc_uid')}</div>
                     <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('gift_bind')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'gift_bind' ? 'Reading...' : 'Read UID'}</button>
                     <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={giftNfcBindForm.data.replace_existing} onChange={(e) => giftNfcBindForm.setData('replace_existing', e.target.checked)} />Replace existing binding if UID is already linked to another gift card</label>

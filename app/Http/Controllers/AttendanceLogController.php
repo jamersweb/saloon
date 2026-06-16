@@ -59,10 +59,11 @@ class AttendanceLogController extends Controller
 
         $todayLog = null;
 
-        if ($staffProfileId) {
+        $todayLogStaffProfileId = $filters['staff_profile_id'] ?: $staffProfileId;
+        if ($todayLogStaffProfileId) {
             $todayLog = AttendanceLog::query()
-                ->where('staff_profile_id', $staffProfileId)
-                ->where('attendance_date', $today)
+                ->where('staff_profile_id', $todayLogStaffProfileId)
+                ->whereDate('attendance_date', $today)
                 ->latest('id')
                 ->first();
         }
@@ -131,24 +132,35 @@ class AttendanceLogController extends Controller
             $lateMinutes = max(0, $actual->diffInMinutes($scheduled, false));
         }
 
-        $log = AttendanceLog::updateOrCreate(
-            [
+        $log = AttendanceLog::query()
+            ->where('staff_profile_id', $staffProfile->id)
+            ->whereDate('attendance_date', $today)
+            ->first();
+
+        $payload = [
+            'scheduled_start' => $schedule?->start_time,
+            'clock_in' => $clockInTime,
+            'clock_in_latitude' => array_key_exists('clock_in_latitude', $data) && $data['clock_in_latitude'] !== null && $data['clock_in_latitude'] !== '' ? (float) $data['clock_in_latitude'] : null,
+            'clock_in_longitude' => array_key_exists('clock_in_longitude', $data) && $data['clock_in_longitude'] !== null && $data['clock_in_longitude'] !== '' ? (float) $data['clock_in_longitude'] : null,
+            'late_minutes' => $lateMinutes,
+            'notes' => $data['notes'] ?? null,
+        ];
+
+        if ($log) {
+            $log->update($payload);
+        } else {
+            $log = AttendanceLog::create([
                 'staff_profile_id' => $staffProfile->id,
                 'attendance_date' => $today,
-            ],
-            [
-                'scheduled_start' => $schedule?->start_time,
-                'clock_in' => $clockInTime,
-                'clock_in_latitude' => array_key_exists('clock_in_latitude', $data) && $data['clock_in_latitude'] !== null && $data['clock_in_latitude'] !== '' ? (float) $data['clock_in_latitude'] : null,
-                'clock_in_longitude' => array_key_exists('clock_in_longitude', $data) && $data['clock_in_longitude'] !== null && $data['clock_in_longitude'] !== '' ? (float) $data['clock_in_longitude'] : null,
-                'late_minutes' => $lateMinutes,
-                'notes' => $data['notes'] ?? null,
-            ],
-        );
+                ...$payload,
+            ]);
+        }
 
         Audit::log($request->user()->id, 'attendance.clock_in', 'AttendanceLog', $log->id, ['late_minutes' => $lateMinutes]);
 
-        return back()->with('status', 'Clock in recorded.');
+        return redirect()
+            ->route('attendance.index', ['staff_profile_id' => $staffProfile->id])
+            ->with('status', 'Clock in recorded.');
     }
 
     public function clockOut(Request $request): RedirectResponse
@@ -164,12 +176,17 @@ class AttendanceLogController extends Controller
         $now = Carbon::now(config('app.timezone'));
         $today = $now->toDateString();
 
-        $log = AttendanceLog::query()->firstOrCreate(
-            [
+        $log = AttendanceLog::query()
+            ->where('staff_profile_id', $staffProfile->id)
+            ->whereDate('attendance_date', $today)
+            ->first();
+
+        if (! $log) {
+            $log = AttendanceLog::create([
                 'staff_profile_id' => $staffProfile->id,
                 'attendance_date' => $today,
-            ],
-        );
+            ]);
+        }
 
         $log->update([
             'clock_out' => $now->format('H:i:s'),
@@ -178,7 +195,9 @@ class AttendanceLogController extends Controller
 
         Audit::log($request->user()->id, 'attendance.clock_out', 'AttendanceLog', $log->id);
 
-        return back()->with('status', 'Clock out recorded.');
+        return redirect()
+            ->route('attendance.index', ['staff_profile_id' => $staffProfile->id])
+            ->with('status', 'Clock out recorded.');
     }
 
     private function resolveStaffProfile(Request $request): ?StaffProfile

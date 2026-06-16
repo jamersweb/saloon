@@ -462,4 +462,56 @@ class MembershipCardsTest extends TestCase
             ])
             ->assertSessionHasErrors('card_number');
     }
+
+    public function test_updating_gift_style_membership_card_syncs_linked_gift_card(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-GIFT-SYNC',
+            'name' => 'Gift Sync Customer',
+            'phone' => '5557001000',
+            'is_active' => true,
+        ]);
+
+        $giftType = MembershipCardType::create([
+            'name' => 'Gift Membership',
+            'slug' => 'gift-membership',
+            'kind' => 'gift',
+            'min_points' => 0,
+            'direct_purchase_price' => 300,
+            'is_active' => true,
+        ]);
+
+        $card = CustomerMembershipCard::create([
+            'customer_id' => $customer->id,
+            'membership_card_type_id' => $giftType->id,
+            'card_number' => '3602567010010010',
+            'status' => 'active',
+            'issued_at' => now(),
+            'activated_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->put(route('loyalty.cards.update', $card), [
+                'membership_card_type_id' => $giftType->id,
+                'card_number' => '3602567010010011',
+                'status' => 'active',
+                'notes' => 'Updated during testing',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('gift_cards', [
+            'code' => '3602 5670 1001 0011',
+            'assigned_customer_id' => $customer->id,
+            'initial_value' => 300,
+            'remaining_value' => 300,
+            'status' => 'active',
+        ]);
+    }
 }
