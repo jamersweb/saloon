@@ -1112,6 +1112,92 @@ class AppointmentServiceWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_multiple_visit_services_can_be_completed_together(): void
+    {
+        $manager = $this->createManagerUser();
+
+        $firstService = SalonService::create([
+            'name' => 'Gel Manicure',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 120,
+            'is_active' => true,
+        ]);
+        $secondService = SalonService::create([
+            'name' => 'Blowdry',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 180,
+            'is_active' => true,
+        ]);
+        $customer = Customer::create([
+            'customer_code' => 'CUST-MULTI-FINISH',
+            'name' => 'Multi Finish Customer',
+            'phone' => '5557778888',
+            'is_active' => true,
+        ]);
+        $visitId = '22222222-2222-2222-2222-222222222222';
+        $firstAppointment = Appointment::create([
+            'customer_id' => $customer->id,
+            'visit_id' => $visitId,
+            'service_id' => $firstService->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_IN_PROGRESS,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 14:45:00',
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+        $secondAppointment = Appointment::create([
+            'customer_id' => $customer->id,
+            'visit_id' => $visitId,
+            'service_id' => $secondService->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 14:45:00',
+            'scheduled_end' => '2026-05-12 15:45:00',
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.service-complete', $firstAppointment), [
+            'service_report' => 'Visit finished together.',
+            'completion_notes' => 'Both services finished at checkout.',
+            'complete_visit_service_ids' => [$firstAppointment->id, $secondAppointment->id],
+            'create_tax_invoice_draft' => true,
+        ])->assertSessionHasNoErrors();
+
+        $firstAppointment->refresh();
+        $secondAppointment->refresh();
+
+        $this->assertSame(Appointment::STATUS_COMPLETED, $firstAppointment->status);
+        $this->assertSame(Appointment::STATUS_COMPLETED, $secondAppointment->status);
+        $this->assertSame('Visit finished together.', $firstAppointment->notes);
+        $this->assertSame('Visit finished together.', $secondAppointment->notes);
+        $this->assertDatabaseHas('appointment_service_logs', [
+            'appointment_id' => $firstAppointment->id,
+            'completion_notes' => 'Both services finished at checkout.',
+        ]);
+        $this->assertDatabaseHas('appointment_service_logs', [
+            'appointment_id' => $secondAppointment->id,
+            'completion_notes' => 'Both services finished at checkout.',
+        ]);
+
+        $invoice = TaxInvoice::query()->where('appointment_id', $firstAppointment->id)->first();
+        $this->assertNotNull($invoice);
+        $this->assertSame(300.0, (float) $invoice->subtotal);
+        $this->assertDatabaseHas('tax_invoice_items', [
+            'tax_invoice_id' => $invoice->id,
+            'salon_service_id' => $firstService->id,
+            'unit_price' => '120.00',
+        ]);
+        $this->assertDatabaseHas('tax_invoice_items', [
+            'tax_invoice_id' => $invoice->id,
+            'salon_service_id' => $secondService->id,
+            'unit_price' => '180.00',
+        ]);
+    }
+
     public function test_staff_only_sees_their_own_appointments_on_the_appointments_screen(): void
     {
         [$user, $staffProfile] = $this->createStaffUser();

@@ -11,6 +11,8 @@ const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 te
 const isSeedReferenceNote = (value) => /^SEED-APPT-\d{12}-\d+$/i.test(String(value || '').trim());
 const pad2 = (value) => String(value).padStart(2, '0');
 const SALON_TIME_ZONE = 'Asia/Dubai';
+const BOARD_STAFF_NAME_MATCHES = ['hengameh', 'dulce', 'jocelyn', 'majd', 'sahar', 'mona'];
+const COMPLETABLE_SERVICE_STATUSES = ['confirmed', 'in_progress'];
 const salonDateFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: SALON_TIME_ZONE,
     year: 'numeric',
@@ -477,6 +479,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         after_photo: null,
         products: [],
         additional_services: [],
+        complete_visit_service_ids: [],
     });
 
     useEffect(() => {
@@ -996,6 +999,13 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     };
 
     const openCompleteService = (appt, preferredCheckoutFlow = null) => {
+        const visitServices = Array.isArray(appt.grouped_services) && appt.grouped_services.length > 0
+            ? appt.grouped_services
+            : [{ id: appt.id, name: appt.service_name, status: appt.status, quantity: appt.service_quantity || 1 }];
+        const selectableServiceIds = visitServices
+            .filter((service) => COMPLETABLE_SERVICE_STATUSES.includes(service.status))
+            .map((service) => String(service.id));
+
         setCompleteServiceId(appt.id);
         setStartServiceId(null);
         setCheckoutFlow(preferredCheckoutFlow || (canCheckout ? 'draft' : 'skip'));
@@ -1010,6 +1020,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             checkout_gift_card_id: '',
             checkout_paid_at: new Date().toISOString().slice(0, 16),
             after_photo: null,
+            complete_visit_service_ids: selectableServiceIds.length > 0 ? selectableServiceIds : [String(appt.id)],
             additional_services: [],
             products: appt.product_usages?.length
                 ? appt.product_usages.map((usage) => ({
@@ -1217,6 +1228,15 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     };
     const addAdditionalServiceRow = () => completeForm.setData('additional_services', [...(completeForm.data.additional_services || []), { service_id: '', staff_profile_id: '', quantity: 1 }]);
     const removeAdditionalServiceRow = (index) => completeForm.setData('additional_services', (completeForm.data.additional_services || []).filter((_, rowIndex) => rowIndex !== index));
+    const toggleCompleteVisitService = (serviceId) => {
+        const id = String(serviceId);
+        const selectedIds = (completeForm.data.complete_visit_service_ids || []).map((value) => String(value));
+        const nextIds = selectedIds.includes(id)
+            ? selectedIds.filter((value) => value !== id)
+            : [...selectedIds, id];
+
+        completeForm.setData('complete_visit_service_ids', nextIds);
+    };
 
     const createSalonBounds = adminStartBoundsForYmd(createStartYmd, bookingRules);
     const editSalonBounds = adminEditStartBoundsForYmd(editStartYmd, bookingRules);
@@ -1225,12 +1245,32 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const editingAppt = appointments.find((a) => String(a.id) === String(editingId));
     const editStartDefault = editingAppt ? toDateTimeLocal(editingAppt.scheduled_start) : (editForm.data.scheduled_start || '');
     const completingAppt = appointments.find((a) => String(a.id) === String(completeServiceId));
-    const completingService = services.find((s) => String(s.id) === String(completingAppt?.service_id));
     const completingCustomer = customers.find((customer) => String(customer.id) === String(completingAppt?.customer_id));
-    const completingServiceQuantity = Math.max(1, Number(completingAppt?.service_quantity || 1));
-    const completingServiceUnitPrice = Number(completingAppt?.service_unit_price ?? completingService?.price ?? 0);
-    const completingServiceDiscountAmount = Number(completingAppt?.service_discount_amount || 0);
-    const completingServiceAmount = completingAppt?.customer_package_id ? 0 : Math.max(0, (completingServiceUnitPrice * completingServiceQuantity) - completingServiceDiscountAmount);
+    const completingVisitServiceRows = completingAppt
+        ? (Array.isArray(completingAppt.grouped_services) && completingAppt.grouped_services.length > 0
+            ? completingAppt.grouped_services
+            : [{
+                id: completingAppt.id,
+                service_id: completingAppt.service_id,
+                name: completingAppt.service_name,
+                quantity: completingAppt.service_quantity || 1,
+                service_unit_price: completingAppt.service_unit_price,
+                service_discount_amount: completingAppt.service_discount_amount || 0,
+                status: completingAppt.status,
+                staff_name: completingAppt.staff_name || 'Unassigned',
+                customer_package_id: completingAppt.customer_package_id,
+            }])
+        : [];
+    const selectedCompletionServiceIds = (completeForm.data.complete_visit_service_ids || []).map((id) => String(id));
+    const selectedCompletionServiceRows = completingVisitServiceRows.filter((service) => selectedCompletionServiceIds.includes(String(service.id)));
+    const completingServiceAmount = selectedCompletionServiceRows.reduce((sum, row) => {
+        const service = services.find((item) => String(item.id) === String(row.service_id));
+        const quantity = Math.max(1, Number(row.quantity || 1));
+        const unitPrice = Number(row.service_unit_price ?? service?.price ?? 0);
+        const discountAmount = Number(row.service_discount_amount || 0);
+
+        return sum + (row.customer_package_id ? 0 : Math.max(0, (unitPrice * quantity) - discountAmount));
+    }, 0);
     const selectedProductLines = (completeForm.data.products || [])
         .map((row) => {
             const item = inventoryItems.find((inv) => String(inv.id) === String(row.inventory_item_id));
@@ -1298,9 +1338,20 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
         return initials || (staff?.id ? `#${staff.id}` : '?');
     };
+    const boardStaffProfiles = useMemo(() => staffProfiles.filter((staff) => {
+        const name = String(staff?.name || '').toLowerCase();
+
+        return BOARD_STAFF_NAME_MATCHES.some((match) => name.includes(match));
+    }), [staffProfiles]);
+    const boardStaffOptions = [{ value: '', label: 'Auto / Unassigned' }, ...boardStaffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
     const boardStaffList = boardStaffFilter === 'all'
-        ? staffProfiles
-        : staffProfiles.filter((staff) => String(staff.id) === String(boardStaffFilter));
+        ? boardStaffProfiles
+        : boardStaffProfiles.filter((staff) => String(staff.id) === String(boardStaffFilter));
+    useEffect(() => {
+        if (boardStaffFilter !== 'all' && !boardStaffProfiles.some((staff) => String(staff.id) === String(boardStaffFilter))) {
+            setBoardStaffFilter('all');
+        }
+    }, [boardStaffFilter, boardStaffProfiles]);
     const boardScheduleMap = useMemo(() => Object.fromEntries((staffSchedules || [])
         .filter((schedule) => schedule.schedule_date)
         .map((schedule) => [`${schedule.staff_profile_id}-${schedule.schedule_date}`, schedule])), [staffSchedules]);
@@ -1955,6 +2006,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                             e.preventDefault();
                             completeForm.transform((data) => ({
                                 ...data,
+                                complete_visit_service_ids: (data.complete_visit_service_ids || []).map((id) => String(id)),
                                 create_tax_invoice_draft: canCheckout && checkoutFlow !== 'skip',
                                 finish_and_pay: canCheckout && canFinishAndPayNow && checkoutFlow === 'pay',
                             }));
@@ -1973,6 +2025,50 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                         }}
                         className="grid gap-3 md:grid-cols-2"
                     >
+                        {completingVisitServiceRows.length > 1 ? (
+                            <div className="md:col-span-2 rounded-xl border border-slate-200 p-4">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <h4 className="text-sm font-semibold text-slate-700">Finish services</h4>
+                                    <button
+                                        type="button"
+                                        className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700"
+                                        onClick={() => completeForm.setData('complete_visit_service_ids', completingVisitServiceRows
+                                            .filter((service) => COMPLETABLE_SERVICE_STATUSES.includes(service.status))
+                                            .map((service) => String(service.id)))}
+                                    >
+                                        Select all available
+                                    </button>
+                                </div>
+                                <div className="space-y-2">
+                                    {completingVisitServiceRows.map((service) => {
+                                        const isCompletable = COMPLETABLE_SERVICE_STATUSES.includes(service.status);
+                                        const checked = selectedCompletionServiceIds.includes(String(service.id));
+                                        const quantity = Math.max(1, Number(service.quantity || 1));
+
+                                        return (
+                                            <label key={service.id} className={`flex items-start gap-3 rounded-lg border px-3 py-2 text-sm ${isCompletable ? 'cursor-pointer border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-1 rounded border-slate-300"
+                                                    checked={checked}
+                                                    disabled={!isCompletable}
+                                                    onChange={() => toggleCompleteVisitService(service.id)}
+                                                />
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="block font-semibold text-slate-800">
+                                                        {service.name || 'Service'}{quantity > 1 ? ` x ${quantity}` : ''}
+                                                    </span>
+                                                    <span className="mt-0.5 block text-xs text-slate-500">
+                                                        {service.staff_name || 'Unassigned'} - {statusLabels[service.status] || service.status || 'Unknown'}
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                {fieldError(completeForm, 'complete_visit_service_ids')}
+                            </div>
+                        ) : null}
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Service Report (optional)</label>
                             <textarea className="ta-input min-h-[120px]" value={completeForm.data.service_report} onChange={(e) => completeForm.setData('service_report', e.target.value)} />
@@ -2032,13 +2128,29 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 {checkoutFlow !== 'skip' ? (
                                     <div className="grid gap-3 border-t border-slate-200 pt-3 md:grid-cols-2">
                                         <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
-                                            <div className="flex items-center justify-between">
-                                                <span>
-                                                    Service ({completingService?.name || 'Selected service'}{completingServiceQuantity > 1 ? ` x ${completingServiceQuantity}` : ''})
-                                                    {completingAppt?.customer_package_id ? ` - ${completingAppt?.package_name || 'Package session'}` : ''}
-                                                </span>
-                                                <span className="font-medium">{formatMoney(completingServiceAmount, currencyCode)}</span>
-                                            </div>
+                                            {selectedCompletionServiceRows.length > 0 ? (
+                                                selectedCompletionServiceRows.map((row) => {
+                                                    const service = services.find((item) => String(item.id) === String(row.service_id));
+                                                    const quantity = Math.max(1, Number(row.quantity || 1));
+                                                    const unitPrice = Number(row.service_unit_price ?? service?.price ?? 0);
+                                                    const discountAmount = Number(row.service_discount_amount || 0);
+                                                    const lineTotal = row.customer_package_id ? 0 : Math.max(0, (unitPrice * quantity) - discountAmount);
+
+                                                    return (
+                                                        <div key={row.id} className="flex items-center justify-between">
+                                                            <span>
+                                                                Service ({row.name || service?.name || 'Selected service'}{quantity > 1 ? ` x ${quantity}` : ''})
+                                                                {row.customer_package_id ? ' - Package session' : ''}
+                                                            </span>
+                                                            <span className="font-medium">{formatMoney(lineTotal, currencyCode)}</span>
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                                                    Select at least one service to finish.
+                                                </div>
+                                            )}
                                             {selectedProductLines.length > 0 ? (
                                                 selectedProductLines.map((line, idx) => (
                                                     <div key={`${line.inventory_item_id}-${idx}`} className="mt-1 flex items-center justify-between text-xs text-slate-600">
@@ -2236,7 +2348,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                         </div>
                         <div className="md:col-span-2 flex flex-wrap justify-end gap-2 pt-2">
                             <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setCompleteServiceId(null)}>Close</button>
-                            <button className="ta-btn-primary" disabled={completeForm.processing}>
+                            <button className="ta-btn-primary" disabled={completeForm.processing || selectedCompletionServiceIds.length === 0}>
                                 {checkoutFlow === 'pay' && canCheckout ? 'Finish & pay' : 'Finish service'}
                             </button>
                         </div>
@@ -2558,7 +2670,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     onChange={(e) => setBoardStaffFilter(e.target.value)}
                                 >
                                     <option value="all" className="bg-[#151516] text-white">All team</option>
-                                    {staffProfiles.map((staff) => (
+                                    {boardStaffProfiles.map((staff) => (
                                         <option key={staff.id} value={staff.id} className="bg-[#151516] text-white">{boardStaffShortLabel(staff)}</option>
                                     ))}
                                 </select>
@@ -2572,7 +2684,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        const firstStaff = boardStaffList[0]?.id || staffProfiles[0]?.id || '';
+                                        const firstStaff = boardStaffList[0]?.id || boardStaffProfiles[0]?.id || '';
                                         setBoardStaffMenu(null);
                                         openCalendarQuickAction(firstStaff, defaultBoardActionMinutes(), 0);
                                     }}
@@ -2882,7 +2994,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Team member</label>
                                         <select className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" value={blockForm.data.staff_profile_id} onChange={(e) => blockForm.setData('staff_profile_id', e.target.value)}>
                                             <option value="">All team</option>
-                                            {staffProfiles.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
+                                            {boardStaffProfiles.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
                                         </select>
                                         {fieldError(blockForm, 'staff_profile_id')}
                                     </div>
@@ -3096,7 +3208,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                 value={meta.staffId}
                                                                 onChange={(e) => updateCreateServiceMeta(calendarServiceEditor, { staffId: e.target.value })}
                                                             >
-                                                                {staffOptions.map((staff) => <option key={staff.value || 'auto'} value={staff.value}>{staff.label}</option>)}
+                                                                {boardStaffOptions.map((staff) => <option key={staff.value || 'auto'} value={staff.value}>{staff.label}</option>)}
                                                             </select>
                                                         </div>
 
@@ -3252,7 +3364,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         <div>
                                             <label className="mb-1 block text-xs font-bold uppercase text-slate-400">Team member</label>
                                             <select className="w-full rounded-md border border-white/15 bg-[#18181a] px-3 py-3 text-sm text-white" value={createForm.data.staff_profile_id} onChange={(e) => createForm.setData('staff_profile_id', e.target.value)}>
-                                                {staffOptions.map((staff) => <option key={staff.value || 'auto'} value={staff.value}>{staff.label}</option>)}
+                                                {boardStaffOptions.map((staff) => <option key={staff.value || 'auto'} value={staff.value}>{staff.label}</option>)}
                                             </select>
                                             {fieldError(createForm, 'staff_profile_id')}
                                         </div>

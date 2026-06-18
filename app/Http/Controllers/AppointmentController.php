@@ -612,11 +612,13 @@ class AppointmentController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
-        if (! in_array($appointment->status, [Appointment::STATUS_CONFIRMED, Appointment::STATUS_IN_PROGRESS], true)) {
-            return back()->withErrors(['service' => 'Only confirmed or in-progress appointments can be completed.']);
-        }
-
         $request->merge([
+            'complete_visit_service_ids' => collect($request->input('complete_visit_service_ids', []))
+                ->filter(fn ($id) => filled($id))
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all(),
             'products' => collect($request->input('products', []))
                 ->filter(function ($product) {
                     $inventoryId = $product['inventory_item_id'] ?? null;
@@ -660,6 +662,8 @@ class AppointmentController extends Controller
             'additional_services.*.service_id' => ['required_with:additional_services', 'exists:salon_services,id'],
             'additional_services.*.quantity' => ['required_with:additional_services', 'integer', 'min:1'],
             'additional_services.*.staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
+            'complete_visit_service_ids' => ['nullable', 'array'],
+            'complete_visit_service_ids.*' => ['integer', 'exists:appointments,id'],
             'exclude_loyalty_earn' => ['nullable', 'boolean'],
             'create_tax_invoice_draft' => ['nullable', 'boolean'],
             'finish_and_pay' => ['nullable', 'boolean'],
@@ -689,41 +693,88 @@ class AppointmentController extends Controller
             ])->withInput();
         }
 
-        $createdTaxInvoiceId = null;
+        $visitAppointments = app(AppointmentVisitService::class)->forAppointment($appointment)->keyBy('id');
+        $selectedAppointmentIds = collect($data['complete_visit_service_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
 
-        DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager, $packageBalanceService, &$createdTaxInvoiceId, $canInvoice, $finishAndPay, $user): void {
+        if ($selectedAppointmentIds->isEmpty()) {
+            $selectedAppointmentIds = collect([(int) $appointment->id]);
+        }
+
+        if ($selectedAppointmentIds->diff($visitAppointments->keys())->isNotEmpty()) {
+            return back()->withErrors([
+                'complete_visit_service_ids' => 'Only services from the same appointment visit can be completed together.',
+            ])->withInput();
+        }
+
+        $appointmentsToComplete = $visitAppointments
+            ->only($selectedAppointmentIds->all())
+            ->values();
+
+        if ($appointmentsToComplete->isEmpty()) {
+            return back()->withErrors(['service' => 'Select at least one service to complete.'])->withInput();
+        }
+
+        $blockedService = $appointmentsToComplete->first(fn (Appointment $serviceAppointment) => ! in_array($serviceAppointment->status, [Appointment::STATUS_CONFIRMED, Appointment::STATUS_IN_PROGRESS], true));
+
+        if ($blockedService) {
+            return back()->withErrors([
+                'complete_visit_service_ids' => 'Only confirmed or in-progress services can be completed together.',
+            ])->withInput();
+        }
+
+        $createdTaxInvoiceId = null;
+        $completedServiceIds = [];
+
+        DB::transaction(function () use ($request, $appointment, $data, $loyaltyService, $dueServiceManager, $packageBalanceService, &$createdTaxInvoiceId, &$completedServiceIds, $canInvoice, $finishAndPay, $user, $visitAppointments, $appointmentsToComplete): void {
             $visitId = $appointment->visit_id ?: (string) Str::uuid();
             if (! $appointment->visit_id) {
-                $implicitVisit = app(AppointmentVisitService::class)->forAppointment($appointment);
                 Appointment::query()
-                    ->whereIn('id', $implicitVisit->pluck('id'))
+                    ->whereIn('id', $visitAppointments->pluck('id'))
                     ->whereNull('visit_id')
                     ->update(['visit_id' => $visitId]);
                 $appointment->refresh();
             }
 
-            $appointment->update([
-                'status' => Appointment::STATUS_COMPLETED,
-                'visit_id' => $visitId,
-                'exclude_loyalty_earn' => (bool) ($data['exclude_loyalty_earn'] ?? false),
-            ]);
+            foreach ($appointmentsToComplete as $serviceAppointment) {
+                $serviceAppointment->refresh();
+                $serviceAppointment->update([
+                    'status' => Appointment::STATUS_COMPLETED,
+                    'visit_id' => $visitId,
+                    'exclude_loyalty_earn' => (bool) ($data['exclude_loyalty_earn'] ?? false),
+                ]);
 
-            $log = AppointmentServiceLog::query()->firstOrNew([
-                'appointment_id' => $appointment->id,
-            ]);
+                $log = AppointmentServiceLog::query()->firstOrNew([
+                    'appointment_id' => $serviceAppointment->id,
+                ]);
 
-            $log->fill([
-                'staff_profile_id' => $appointment->staff_profile_id,
-                'started_by' => $log->started_by ?? $request->user()?->id,
-                'started_at' => $log->started_at ?? $appointment->service_start_time ?? now(),
-                'completed_by' => $request->user()?->id,
-                'completed_at' => now(),
-                'service_notes' => $appointment->notes,
-                'completion_notes' => $data['completion_notes'] ?? null,
-                'materials_used' => $data['materials_used'] ?? null,
-                'intake_notes' => $log->intake_notes,
-            ]);
-            $log->save();
+                $log->fill([
+                    'staff_profile_id' => $serviceAppointment->staff_profile_id,
+                    'started_by' => $log->started_by ?? $request->user()?->id,
+                    'started_at' => $log->started_at ?? $serviceAppointment->service_start_time ?? now(),
+                    'completed_by' => $request->user()?->id,
+                    'completed_at' => now(),
+                    'service_notes' => $serviceAppointment->notes,
+                    'completion_notes' => $data['completion_notes'] ?? null,
+                    'materials_used' => $data['materials_used'] ?? null,
+                    'intake_notes' => $log->intake_notes,
+                ]);
+                $log->save();
+
+                $serviceAppointment->update([
+                    'notes' => $data['service_report'] ?? $serviceAppointment->notes,
+                ]);
+
+                $serviceAppointment->refresh();
+                $loyaltyService->earnFromCompletedAppointment($serviceAppointment, $request->user()?->id);
+                $dueServiceManager->syncForAppointment($serviceAppointment);
+                $this->consumePackageSessionForCompletedAppointment($serviceAppointment, $packageBalanceService, $request->user()?->id);
+
+                $completedServiceIds[] = $serviceAppointment->id;
+            }
 
             if ($request->hasFile('after_photo')) {
                 $path = $request->file('after_photo')->store('appointment-photos', 'public');
@@ -748,10 +799,6 @@ class AppointmentController extends Controller
                     'notes' => $product['notes'] ?? null,
                 ]);
             }
-
-            $appointment->update([
-                'notes' => $data['service_report'] ?? $appointment->notes,
-            ]);
 
             foreach ($data['additional_services'] ?? [] as $additionalService) {
                 $service = SalonService::query()->find((int) $additionalService['service_id']);
@@ -799,53 +846,6 @@ class AppointmentController extends Controller
             }
 
             $appointment->refresh();
-            $loyaltyService->earnFromCompletedAppointment($appointment, $request->user()?->id);
-            $dueServiceManager->syncForAppointment($appointment);
-
-            if ($appointment->customer_package_id && ! $appointment->package_session_applied) {
-                $customerPackage = CustomerPackage::query()
-                    ->with(['package.salonServices', 'usages'])
-                    ->find($appointment->customer_package_id);
-
-                if (! $customerPackage) {
-                    throw ValidationException::withMessages([
-                        'service' => 'The linked package could not be found for this appointment.',
-                    ]);
-                }
-
-                $packageService = collect($customerPackage->package?->salonServices ?? [])
-                    ->firstWhere('id', $appointment->service_id);
-
-                if (! $packageService) {
-                    throw ValidationException::withMessages([
-                        'service' => 'This appointment service is not included in the selected package.',
-                    ]);
-                }
-
-                $includedSessions = (int) ($packageService->pivot?->included_sessions ?? 1);
-                $alreadyUsedForService = (int) $customerPackage->usages
-                    ->where('salon_service_id', $appointment->service_id)
-                    ->count();
-
-                if ($alreadyUsedForService >= $includedSessions) {
-                    throw ValidationException::withMessages([
-                        'service' => 'No remaining package sessions are available for this service.',
-                    ]);
-                }
-
-                $packageBalanceService->consume(
-                    $customerPackage,
-                    1,
-                    0,
-                    $request->user()?->id,
-                    'Applied to appointment #'.$appointment->id,
-                    $appointment->id,
-                    $appointment->service_id,
-                );
-
-                $appointment->update(['package_session_applied' => true]);
-                $appointment->refresh();
-            }
 
             $createDraft = $canInvoice && (
                 $finishAndPay
@@ -929,13 +929,16 @@ class AppointmentController extends Controller
         });
 
         Audit::log($request->user()?->id, 'appointment.service_completed', 'Appointment', $appointment->id, [
+            'appointment_ids' => $completedServiceIds,
             'product_count' => count($data['products'] ?? []),
             'tax_invoice_draft_id' => $createdTaxInvoiceId,
         ]);
 
-        $status = 'Service completed.';
+        $status = count($completedServiceIds) > 1 ? 'Services completed.' : 'Service completed.';
         if ($finishAndPay && $createdTaxInvoiceId) {
-            $status = 'Service completed, tax receipt issued, and payment recorded.';
+            $status = count($completedServiceIds) > 1
+                ? 'Services completed, tax receipt issued, and payment recorded.'
+                : 'Service completed, tax receipt issued, and payment recorded.';
         } elseif ($createdTaxInvoiceId) {
             $status .= ' Tax invoice draft created.';
         }
@@ -943,6 +946,56 @@ class AppointmentController extends Controller
         return back()
             ->with('status', $status)
             ->with('created_tax_invoice_id', $createdTaxInvoiceId);
+    }
+
+    private function consumePackageSessionForCompletedAppointment(Appointment $appointment, PackageBalanceService $packageBalanceService, ?int $userId): void
+    {
+        if (! $appointment->customer_package_id || $appointment->package_session_applied) {
+            return;
+        }
+
+        $customerPackage = CustomerPackage::query()
+            ->with(['package.salonServices', 'usages'])
+            ->find($appointment->customer_package_id);
+
+        if (! $customerPackage) {
+            throw ValidationException::withMessages([
+                'service' => 'The linked package could not be found for this appointment.',
+            ]);
+        }
+
+        $packageService = collect($customerPackage->package?->salonServices ?? [])
+            ->firstWhere('id', $appointment->service_id);
+
+        if (! $packageService) {
+            throw ValidationException::withMessages([
+                'service' => 'This appointment service is not included in the selected package.',
+            ]);
+        }
+
+        $includedSessions = (int) ($packageService->pivot?->included_sessions ?? 1);
+        $alreadyUsedForService = (int) $customerPackage->usages
+            ->where('salon_service_id', $appointment->service_id)
+            ->count();
+
+        if ($alreadyUsedForService >= $includedSessions) {
+            throw ValidationException::withMessages([
+                'service' => 'No remaining package sessions are available for this service.',
+            ]);
+        }
+
+        $packageBalanceService->consume(
+            $customerPackage,
+            1,
+            0,
+            $userId,
+            'Applied to appointment #'.$appointment->id,
+            $appointment->id,
+            $appointment->service_id,
+        );
+
+        $appointment->update(['package_session_applied' => true]);
+        $appointment->refresh();
     }
 
     public function checkout(Request $request, Appointment $appointment): RedirectResponse
