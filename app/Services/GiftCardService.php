@@ -126,10 +126,22 @@ class GiftCardService
 
     public function findByNfcUid(string $nfcUid): ?GiftCard
     {
+        $candidateUids = $this->nfcLookupCandidates($nfcUid);
+
+        $giftCard = GiftCard::query()
+            ->with(['customer:id,name,phone,email'])
+            ->whereIn('nfc_uid', $candidateUids)
+            ->first();
+
+        if ($giftCard) {
+            return $giftCard;
+        }
+
         return GiftCard::query()
             ->with(['customer:id,name,phone,email'])
-            ->where('nfc_uid', $this->normalizeNfcUid($nfcUid))
-            ->first();
+            ->whereNotNull('nfc_uid')
+            ->get()
+            ->first(fn (GiftCard $row): bool => in_array($this->normalizeNfcUid($row->nfc_uid), $candidateUids, true));
     }
 
     public function backfillGiftCardsForCustomer(int $customerId, ?int $issuedBy = null): void
@@ -229,8 +241,33 @@ class GiftCardService
         }
 
         $normalized = strtoupper(trim($nfcUid));
+        $hexOnly = preg_replace('/[^A-F0-9]/', '', $normalized) ?? '';
+        if ($hexOnly !== '') {
+            $normalized = $hexOnly;
+        }
 
         return $normalized === '' ? null : $normalized;
+    }
+
+    /**
+     * NFC readers can report the same UID with separators or reversed byte order.
+     *
+     * @return list<string>
+     */
+    private function nfcLookupCandidates(string $nfcUid): array
+    {
+        $normalized = $this->normalizeNfcUid($nfcUid);
+        if ($normalized === null) {
+            return [];
+        }
+
+        $candidates = [$normalized];
+        if (strlen($normalized) >= 4 && strlen($normalized) % 2 === 0) {
+            $bytes = str_split($normalized, 2);
+            $candidates[] = implode('', array_reverse($bytes));
+        }
+
+        return array_values(array_unique($candidates));
     }
 
     private function nextGiftCardCodeForValue(float $value): string

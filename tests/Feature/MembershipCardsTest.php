@@ -206,6 +206,49 @@ class MembershipCardsTest extends TestCase
             ->assertSessionHas('nfc_lookup.card_number', '555099000001');
     }
 
+    public function test_membership_nfc_lookup_accepts_separators_and_reversed_reader_order(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-NFC-REVERSE',
+            'name' => 'Gold NFC Customer',
+            'phone' => '5551414141',
+            'is_active' => true,
+        ]);
+
+        $cardType = MembershipCardType::create([
+            'name' => 'Gold Card',
+            'slug' => 'gold-card-test',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'is_active' => true,
+        ]);
+
+        CustomerMembershipCard::create([
+            'customer_id' => $customer->id,
+            'membership_card_type_id' => $cardType->id,
+            'card_number' => '2602567810000001',
+            'nfc_uid' => '90212D4232AD04',
+            'status' => 'active',
+            'issued_at' => now()->subDay(),
+            'activated_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.nfc-lookup'), [
+                'nfc_uid' => '04:AD:32:42:2D:21:90',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('nfc_lookup.customer_name', 'Gold NFC Customer')
+            ->assertSessionHas('nfc_lookup.card_number', '2602567810000001');
+    }
+
     public function test_binding_nfc_uid_can_replace_existing_link_when_requested(): void
     {
         $managerRole = Role::create([
