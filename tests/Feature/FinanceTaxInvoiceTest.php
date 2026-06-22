@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\TaxInvoiceReceiptMail;
+use App\Models\Appointment;
 use App\Models\Customer;
 use App\Models\CustomerMembershipCard;
 use App\Models\FinanceSetting;
@@ -303,6 +304,79 @@ class FinanceTaxInvoiceTest extends TestCase
         $this->assertSame(InvoicePayment::METHOD_CASH, $payments->first()->method);
         $this->assertSame('100.00', $giftCard->fresh()->remaining_value);
         $this->assertSame('active', $giftCard->fresh()->status);
+    }
+
+    public function test_gift_card_payment_finds_card_from_linked_appointment_customer(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+        $user = User::factory()->create(['role_id' => $ownerRole->id]);
+
+        FinanceSetting::current();
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-GIFT-APPT',
+            'name' => 'Appointment Gift Customer',
+            'phone' => '5553332200',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Facial',
+            'category' => 'Skin',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 200,
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => now()->subHour(),
+            'scheduled_end' => now(),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $giftCard = GiftCard::create([
+            'code' => 'GIFT-INVOICE-APPT',
+            'assigned_customer_id' => $customer->id,
+            'initial_value' => 250,
+            'remaining_value' => 250,
+            'status' => 'active',
+            'issued_by' => $user->id,
+        ]);
+
+        $invoice = TaxInvoice::create([
+            'invoice_number' => 'TAX-APPT-GIFT-1',
+            'customer_id' => null,
+            'customer_display_name' => $customer->name,
+            'appointment_id' => $appointment->id,
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'subtotal' => 200,
+            'vat_amount' => 10,
+            'total' => 210,
+            'issued_at' => now(),
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)->post(route('finance.invoices.payments.store', $invoice), [
+            'amount' => 210,
+            'method' => InvoicePayment::METHOD_GIFT_CARD,
+            'paid_at' => now()->toDateTimeString(),
+        ])->assertSessionHasNoErrors();
+
+        $payment = $invoice->fresh()->payments()->first();
+
+        $this->assertNotNull($payment);
+        $this->assertSame(InvoicePayment::METHOD_GIFT_CARD, $payment->method);
+        $this->assertEqualsWithDelta(210.0, (float) $payment->amount, 0.02);
+        $this->assertSame('40.00', $giftCard->fresh()->remaining_value);
     }
 
     public function test_receipt_html_shows_payment_method_label(): void

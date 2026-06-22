@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\TaxInvoiceReceiptMail;
 use App\Models\Appointment;
 use App\Models\Customer;
+use App\Models\CustomerMembershipCard;
 use App\Models\FinanceSetting;
 use App\Models\GiftCard;
 use App\Models\InventoryItem;
@@ -204,24 +205,17 @@ class TaxInvoiceController extends Controller
                 ->all()
             : [];
 
-        $giftCardsForPayment = [];
-        if ($invoice->customer_id && ($invoice->status !== TaxInvoice::STATUS_VOID)
-            && ($invoice->isEditable() || $invoice->balanceDue() > 0.009)) {
-            app(GiftCardService::class)->backfillGiftCardsForCustomer((int) $invoice->customer_id, $request->user()?->id);
-            $giftCardsForPayment = GiftCard::query()
-                ->where('status', 'active')
-                ->where('assigned_customer_id', $invoice->customer_id)
-                ->where('remaining_value', '>', 0)
-                ->orderBy('code')
-                ->get(['id', 'code', 'remaining_value'])
-                ->map(fn (GiftCard $card) => [
-                    'id' => $card->id,
-                    'code' => $card->code,
-                    'remaining_value' => (float) $card->remaining_value,
-                ])
-                ->values()
-                ->all();
-        }
+        $giftCardsForPayment = ($invoice->status !== TaxInvoice::STATUS_VOID)
+            && ($invoice->isEditable() || $invoice->balanceDue() > 0.009)
+                ? $this->eligibleGiftCardsForPayment($invoice, $request->user()?->id)
+                    ->map(fn (GiftCard $card) => [
+                        'id' => $card->id,
+                        'code' => $card->code,
+                        'remaining_value' => (float) $card->remaining_value,
+                    ])
+                    ->values()
+                    ->all()
+                : [];
 
         return Inertia::render('Finance/Invoices/Show', [
             'invoice' => [
@@ -427,17 +421,11 @@ class TaxInvoiceController extends Controller
             }
         }
 
-        if (($data['method'] ?? null) === InvoicePayment::METHOD_GIFT_CARD && empty($data['gift_card_id']) && $invoice->customer_id) {
-            app(GiftCardService::class)->backfillGiftCardsForCustomer((int) $invoice->customer_id, $request->user()?->id);
-            $eligibleAssignedCards = GiftCard::query()
-                ->where('status', 'active')
-                ->where('assigned_customer_id', $invoice->customer_id)
-                ->where('remaining_value', '>', 0)
-                ->orderBy('code')
-                ->get(['id']);
+        if (($data['method'] ?? null) === InvoicePayment::METHOD_GIFT_CARD && empty($data['gift_card_id'])) {
+            $eligibleGiftCards = $this->eligibleGiftCardsForPayment($invoice, $request->user()?->id);
 
-            if ($eligibleAssignedCards->count() === 1) {
-                $data['gift_card_id'] = (int) $eligibleAssignedCards->first()->id;
+            if ($eligibleGiftCards->count() === 1) {
+                $data['gift_card_id'] = (int) $eligibleGiftCards->first()->id;
             }
         }
 
@@ -587,6 +575,114 @@ class TaxInvoiceController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, GiftCard>
+     */
+    private function eligibleGiftCardsForPayment(TaxInvoice $invoice, ?int $issuedBy = null)
+    {
+        $customerId = $this->invoicePaymentCustomerId($invoice);
+
+        if (! $customerId) {
+            return collect();
+        }
+
+        app(GiftCardService::class)->backfillGiftCardsForCustomer($customerId, $issuedBy);
+
+        $membershipCards = CustomerMembershipCard::query()
+            ->where('customer_id', $customerId)
+            ->where('status', 'active')
+            ->get(['card_number', 'nfc_uid']);
+
+        $cardCodes = $membershipCards
+            ->flatMap(fn (CustomerMembershipCard $card) => $this->giftCardCodeCandidates($card->card_number))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $nfcUids = $membershipCards
+            ->map(fn (CustomerMembershipCard $card) => $this->normalizeNfcUidForLookup($card->nfc_uid))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return GiftCard::query()
+            ->where('status', 'active')
+            ->where('remaining_value', '>', 0)
+            ->where(function ($query) use ($customerId, $cardCodes, $nfcUids) {
+                $query->where('assigned_customer_id', $customerId);
+
+                if ($cardCodes->isNotEmpty() || $nfcUids->isNotEmpty()) {
+                    $query->orWhere(function ($linkedQuery) use ($cardCodes, $nfcUids) {
+                        $linkedQuery->whereNull('assigned_customer_id')
+                            ->where(function ($matchQuery) use ($cardCodes, $nfcUids) {
+                                if ($cardCodes->isNotEmpty()) {
+                                    $matchQuery->whereIn('code', $cardCodes->all());
+                                }
+
+                                if ($nfcUids->isNotEmpty()) {
+                                    $method = $cardCodes->isNotEmpty() ? 'orWhereIn' : 'whereIn';
+                                    $matchQuery->{$method}('nfc_uid', $nfcUids->all());
+                                }
+                            });
+                    });
+                }
+            })
+            ->orderBy('code')
+            ->get(['id', 'code', 'remaining_value', 'assigned_customer_id']);
+    }
+
+    private function invoicePaymentCustomerId(TaxInvoice $invoice): ?int
+    {
+        if ($invoice->customer_id) {
+            return (int) $invoice->customer_id;
+        }
+
+        if (! $invoice->appointment_id) {
+            return null;
+        }
+
+        $appointmentCustomerId = Appointment::query()
+            ->whereKey($invoice->appointment_id)
+            ->value('customer_id');
+
+        return $appointmentCustomerId ? (int) $appointmentCustomerId : null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function giftCardCodeCandidates(?string $cardNumber): array
+    {
+        if ($cardNumber === null || trim($cardNumber) === '') {
+            return [];
+        }
+
+        $digits = preg_replace('/\D+/', '', $cardNumber) ?? '';
+        if ($digits === '') {
+            return [trim($cardNumber)];
+        }
+
+        $padded = str_pad($digits, 16, '0', STR_PAD_LEFT);
+
+        return array_values(array_unique([
+            trim($cardNumber),
+            $digits,
+            trim(chunk_split($padded, 4, ' ')),
+        ]));
+    }
+
+    private function normalizeNfcUidForLookup(?string $nfcUid): ?string
+    {
+        if ($nfcUid === null) {
+            return null;
+        }
+
+        $normalized = strtoupper(trim($nfcUid));
+        $hexOnly = preg_replace('/[^A-F0-9]/', '', $normalized) ?? '';
+
+        return ($hexOnly !== '' ? $hexOnly : $normalized) ?: null;
     }
 
     private function resolveSettlementLabel(TaxInvoice $invoice): ?string

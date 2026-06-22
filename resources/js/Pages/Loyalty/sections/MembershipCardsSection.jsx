@@ -46,6 +46,18 @@ export default function MembershipCardsSection({
     const cardTypeOptions = cardTypes
         .filter((type) => type.is_active)
         .map((cardType) => ({ value: String(cardType.id), label: cardType.name }));
+    const cardTypeActsAsGift = (cardType) => Boolean(
+        cardType
+        && Number(cardType.direct_purchase_price || 0) > 0
+        && (
+            String(cardType.kind || '').toLowerCase() === 'gift'
+            || String(cardType.name || '').toLowerCase().includes('gift')
+            || String(cardType.slug || '').toLowerCase().includes('gift')
+        )
+    );
+    const membershipCardActsAsGift = (card) => cardTypeActsAsGift(
+        (cardTypes || []).find((cardType) => String(cardType.id) === String(card?.membership_card_type_id)),
+    );
     const ROWS_PER_PAGE = 10;
     const importFileRef = useRef(null);
     const [membershipCardTypeFilter, setMembershipCardTypeFilter] = useState('');
@@ -179,6 +191,10 @@ export default function MembershipCardsSection({
     const selectedMembershipCard = useMemo(
         () => (membershipCards || []).find((card) => String(card.id) === String(selectedMembershipCardId)) || null,
         [membershipCards, selectedMembershipCardId],
+    );
+    const editingMembershipCard = useMemo(
+        () => (membershipCards || []).find((card) => String(card.id) === String(editingMembershipCardId)) || null,
+        [membershipCards, editingMembershipCardId],
     );
 
     const selectedCustomerId = selectedMembershipCard?.customer_id ? String(selectedMembershipCard.customer_id) : null;
@@ -361,15 +377,7 @@ export default function MembershipCardsSection({
     const editingMembershipCardType = (cardTypes || []).find(
         (cardType) => String(cardType.id) === String(editMembershipCardForm.data.membership_card_type_id),
     );
-    const editingMembershipCardActsAsGift = Boolean(
-        editingMembershipCardType
-        && Number(editingMembershipCardType.direct_purchase_price || 0) > 0
-        && (
-            String(editingMembershipCardType.kind || '').toLowerCase() === 'gift'
-            || String(editingMembershipCardType.name || '').toLowerCase().includes('gift')
-            || String(editingMembershipCardType.slug || '').toLowerCase().includes('gift')
-        )
-    );
+    const editingMembershipCardActsAsGift = cardTypeActsAsGift(editingMembershipCardType);
 
     return (
         <div className="space-y-6">
@@ -859,7 +867,7 @@ export default function MembershipCardsSection({
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Card</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">NFC UID</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
                         <tbody>
                             {nfcRegistryPageRows.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="6">No NFC cards match the current filters.</td></tr>}
-                            {nfcRegistryPageRows.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.customer_id == null ? <span className="text-amber-700">Inventory (unassigned)</span> : card.customer_name}<div className="text-xs text-slate-500">{card.customer_id == null ? '—' : card.customer_phone || 'No phone'}</div></td><td className="px-5 py-3 text-slate-600">{card.card_number || '—'}</td><td className="px-5 py-3 text-slate-600">{card.card_type_name}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEditMembershipCard(card)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => { if (window.confirm(`Delete card ${card.card_number || card.id}?`)) { router.delete(route('loyalty.cards.destroy', card.id), { preserveScroll: true }); } }}>Delete</button><button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => copyNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Copy NFC URL</button><button type="button" className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => openNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Open NFC URL</button></div></td></tr>)}
+                            {nfcRegistryPageRows.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.customer_id == null ? <span className="text-amber-700">Inventory (unassigned)</span> : card.customer_name}<div className="text-xs text-slate-500">{card.customer_id == null ? '—' : card.customer_phone || 'No phone'}</div></td><td className="px-5 py-3 text-slate-600">{card.card_number || '—'}</td><td className="px-5 py-3 text-slate-600">{card.card_type_name}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEditMembershipCard(card)}>{membershipCardActsAsGift(card) ? 'Refill' : 'Edit'}</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => { if (window.confirm(`Delete card ${card.card_number || card.id}?`)) { router.delete(route('loyalty.cards.destroy', card.id), { preserveScroll: true }); } }}>Delete</button><button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => copyNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Copy NFC URL</button><button type="button" className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => openNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Open NFC URL</button></div></td></tr>)}
                         </tbody>
                     </table>
                 </div>
@@ -885,10 +893,15 @@ export default function MembershipCardsSection({
 
             <Modal show={Boolean(editingMembershipCardId)} onClose={() => !editMembershipCardForm.processing && setEditingMembershipCardId(null)} maxWidth="3xl">
                 <div className="p-6">
-                    <h3 className="mb-4 text-base font-semibold text-slate-800">Edit membership card #{editingMembershipCardId}</h3>
+                    <h3 className="mb-4 text-base font-semibold text-slate-800">
+                        {editingMembershipCardActsAsGift ? 'Refill gift card' : 'Edit membership card'} #{editingMembershipCardId}
+                    </h3>
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
+                            if (editingMembershipCardActsAsGift) {
+                                return;
+                            }
                             editMembershipCardForm.put(route('loyalty.cards.update', editingMembershipCardId), {
                                 preserveScroll: true,
                                 onSuccess: () => setEditingMembershipCardId(null),
@@ -896,11 +909,38 @@ export default function MembershipCardsSection({
                         }}
                         className="grid gap-3 md:grid-cols-2"
                     >
-                        <div><label className="ta-field-label">Card type</label><select className="ta-input" value={editMembershipCardForm.data.membership_card_type_id} onChange={(e) => editMembershipCardForm.setData('membership_card_type_id', e.target.value)} required><option value="">Select card type</option>{cardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}</select>{fieldError(editMembershipCardForm, 'membership_card_type_id')}</div>
-                        <div><label className="ta-field-label">Status</label><select className="ta-input" value={editMembershipCardForm.data.status} onChange={(e) => editMembershipCardForm.setData('status', e.target.value)} required><option value="pending">pending</option><option value="active">active</option><option value="inactive">inactive</option><option value="expired">expired</option></select>{fieldError(editMembershipCardForm, 'status')}</div>
-                        <div><label className="ta-field-label">Card number</label><input className="ta-input" value={editMembershipCardForm.data.card_number} onChange={(e) => editMembershipCardForm.setData('card_number', e.target.value)} required />{fieldError(editMembershipCardForm, 'card_number')}</div>
-                        <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={editMembershipCardForm.data.nfc_uid} onChange={(e) => editMembershipCardForm.setData('nfc_uid', e.target.value)} />{fieldError(editMembershipCardForm, 'nfc_uid')}</div>
-                        <div className="md:col-span-2"><label className="ta-field-label">Notes</label><textarea className="ta-input min-h-[96px]" value={editMembershipCardForm.data.notes} onChange={(e) => editMembershipCardForm.setData('notes', e.target.value)} />{fieldError(editMembershipCardForm, 'notes')}</div>
+                        {editingMembershipCardActsAsGift ? (
+                            <div className="md:col-span-2 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
+                                <div>
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Card type</div>
+                                    <div className="mt-1 text-slate-800">{editingMembershipCard?.card_type_name || editingMembershipCardType?.name || '-'}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</div>
+                                    <div className="mt-1 text-slate-800">{editingMembershipCard?.status || editMembershipCardForm.data.status || '-'}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Card number</div>
+                                    <div className="mt-1 text-slate-800">{editingMembershipCard?.card_number || '-'}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">NFC UID</div>
+                                    <div className="mt-1 text-slate-800">{editingMembershipCard?.nfc_uid || 'Unbound'}</div>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes</div>
+                                    <div className="mt-1 text-slate-800">{editingMembershipCard?.notes || '-'}</div>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <div><label className="ta-field-label">Card type</label><select className="ta-input" value={editMembershipCardForm.data.membership_card_type_id} onChange={(e) => editMembershipCardForm.setData('membership_card_type_id', e.target.value)} required><option value="">Select card type</option>{cardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}</select>{fieldError(editMembershipCardForm, 'membership_card_type_id')}</div>
+                                <div><label className="ta-field-label">Status</label><select className="ta-input" value={editMembershipCardForm.data.status} onChange={(e) => editMembershipCardForm.setData('status', e.target.value)} required><option value="pending">pending</option><option value="active">active</option><option value="inactive">inactive</option><option value="expired">expired</option></select>{fieldError(editMembershipCardForm, 'status')}</div>
+                                <div><label className="ta-field-label">Card number</label><input className="ta-input" value={editMembershipCardForm.data.card_number} onChange={(e) => editMembershipCardForm.setData('card_number', e.target.value)} required />{fieldError(editMembershipCardForm, 'card_number')}</div>
+                                <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={editMembershipCardForm.data.nfc_uid} onChange={(e) => editMembershipCardForm.setData('nfc_uid', e.target.value)} />{fieldError(editMembershipCardForm, 'nfc_uid')}</div>
+                                <div className="md:col-span-2"><label className="ta-field-label">Notes</label><textarea className="ta-input min-h-[96px]" value={editMembershipCardForm.data.notes} onChange={(e) => editMembershipCardForm.setData('notes', e.target.value)} />{fieldError(editMembershipCardForm, 'notes')}</div>
+                            </>
+                        )}
                         {editingMembershipCardActsAsGift ? (
                             <div className="md:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                                 <p className="text-sm font-semibold text-emerald-900">Refill gift card balance</p>
@@ -948,7 +988,9 @@ export default function MembershipCardsSection({
                             </div>
                         ) : null}
                         <div className="md:col-span-2 flex gap-2">
-                            <button className="ta-btn-primary" disabled={editMembershipCardForm.processing || !canManage}>Save</button>
+                            {!editingMembershipCardActsAsGift ? (
+                                <button className="ta-btn-primary" disabled={editMembershipCardForm.processing || !canManage}>Save</button>
+                            ) : null}
                             <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingMembershipCardId(null)}>Cancel</button>
                             <button
                                 type="button"
