@@ -491,6 +491,54 @@ class AppointmentServiceWorkflowTest extends TestCase
         $this->assertSame('2026-05-12 19:00:00', $appointment->scheduled_end->format('Y-m-d H:i:s'));
     }
 
+    public function test_update_allows_manual_appointment_time_outside_salon_hours(): void
+    {
+        Queue::fake();
+
+        $manager = $this->createManagerUser();
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '18:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Late Adjustment',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 150,
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::create([
+            'service_id' => $service->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-05-12 14:00:00',
+            'scheduled_end' => '2026-05-12 14:30:00',
+            'customer_name' => 'Late Client',
+            'customer_phone' => '971500007777',
+        ]);
+
+        $this->actingAs($manager)->put(route('appointments.update', $appointment), [
+            'customer_name' => 'Late Client',
+            'customer_phone' => '971500007777',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'scheduled_start' => '2026-05-12 23:10:00',
+            'scheduled_end' => '2026-05-12 23:55:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $appointment->refresh();
+
+        $this->assertSame('2026-05-12 23:10:00', $appointment->scheduled_start->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-12 23:55:00', $appointment->scheduled_end->format('Y-m-d H:i:s'));
+    }
+
     public function test_board_move_updates_staff_and_time(): void
     {
         Queue::fake();

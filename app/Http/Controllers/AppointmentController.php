@@ -308,7 +308,7 @@ class AppointmentController extends Controller
         $serviceDiscountAmounts = $this->resolveServiceMoneyMapFromPayload($data, $serviceIds, 'service_discount_amounts');
 
         $start = Carbon::parse($data['scheduled_start']);
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, null, $serviceQuantities, $staffAssignments, $serviceStarts, $serviceDurations, $serviceExtraMinutes, $serviceUnitPrices, $serviceDiscountAmounts);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities, $staffAssignments, $serviceStarts, $serviceDurations, $serviceExtraMinutes, $serviceUnitPrices, $serviceDiscountAmounts);
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start, enforceSlotInterval: false, enforceMinAdvance: false)) {
             return back()->withErrors(['scheduled_start' => $windowError])->withInput();
@@ -407,14 +407,11 @@ class AppointmentController extends Controller
 
         $start = Carbon::parse($data['scheduled_start']);
         $serviceStarts['line_0'] = $start->copy();
-        $servicePlans = $this->buildServicePlans($serviceIds, $start, null, $serviceQuantities, $staffAssignments, $serviceStarts, $serviceDurations, $serviceExtraMinutes, $serviceUnitPrices, $serviceDiscountAmounts);
+        $servicePlans = $this->buildServicePlans($serviceIds, $start, $data['scheduled_end'] ?? null, $serviceQuantities, $staffAssignments, $serviceStarts, $serviceDurations, $serviceExtraMinutes, $serviceUnitPrices, $serviceDiscountAmounts);
 
         foreach ($servicePlans as $idx => $plan) {
             if ($timeRangeError = $this->validateTimeRange($plan['start'], $plan['end'])) {
                 return back()->withErrors(['scheduled_end' => $timeRangeError])->withInput();
-            }
-            if ($salonError = $availabilityService->validateSalonHours($plan['start'], $plan['end'])) {
-                return back()->withErrors(['scheduled_start' => $salonError])->withInput();
             }
         }
 
@@ -1409,6 +1406,8 @@ class AppointmentController extends Controller
         ))));
         $runInParallel = count($serviceIds) > 1 && count($assignedStaffIds) > 1;
 
+        $manualEnd = $requestedEnd && count($serviceIds) === 1 ? Carbon::parse($requestedEnd) : null;
+
         foreach ($serviceIds as $idx => $serviceId) {
             /** @var SalonService|null $service */
             $service = $services->get($serviceId);
@@ -1422,7 +1421,8 @@ class AppointmentController extends Controller
                 : ($runInParallel ? $start->copy() : $cursor->copy());
             $durationMinutes = max(1, (int) $this->servicePlanValue($serviceDurations, $idx, (int) $serviceId, $service->duration_minutes));
             $extraMinutes = max(0, (int) $this->servicePlanValue($serviceExtraMinutes, $idx, (int) $serviceId, 0));
-            $itemEnd = $itemStart->copy()->addMinutes($durationMinutes + $extraMinutes + (int) $service->buffer_minutes);
+            $computedEnd = $itemStart->copy()->addMinutes($durationMinutes + $extraMinutes + (int) $service->buffer_minutes);
+            $itemEnd = $manualEnd && $itemStart->equalTo($start) && $manualEnd->greaterThan($itemStart) ? $manualEnd->copy() : $computedEnd;
             $unitPriceValue = $this->servicePlanValue($serviceUnitPrices, $idx, (int) $serviceId);
             $unitPrice = $unitPriceValue !== null ? (float) $unitPriceValue : null;
             $quantity = max(1, (int) $this->servicePlanValue($serviceQuantities, $idx, (int) $serviceId, 1));

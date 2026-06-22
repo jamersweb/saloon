@@ -253,6 +253,17 @@ const filterServiceMap = (serviceIds, map) => {
         Object.entries(map || {}).filter(([key, value]) => (allowedLineKeys.has(String(key)) || allowedServiceIds.has(String(key))) && value !== undefined && value !== null && value !== ''),
     );
 };
+const rekeyServiceMapByLines = (serviceIds, map) => {
+    const next = {};
+    (serviceIds || []).forEach((serviceId, index) => {
+        const value = serviceLineMapValue(map, index, serviceId);
+        if (value !== undefined && value !== null && value !== '') {
+            next[serviceLineKey(index)] = value;
+        }
+    });
+
+    return next;
+};
 const normalizeServiceStarts = (serviceIds, serviceStarts, fallbackStart = '') => {
     const next = {};
     (serviceIds || []).forEach((serviceId, index) => {
@@ -566,7 +577,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             const nextData = {
                 ...prev,
                 ...(() => {
-                    const nextAssignments = filterServiceMap(nextIds, prev.staff_assignments);
+                    const nextAssignments = rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.staff_assignments));
                     return {
                         staff_assignments: nextAssignments,
                         staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
@@ -574,10 +585,10 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 })(),
                 service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
                 service_starts: nextServiceStarts,
-                service_durations: filterServiceMap(nextIds, prev.service_durations),
-                service_extra_minutes: filterServiceMap(nextIds, prev.service_extra_minutes),
-                service_unit_prices: filterServiceMap(nextIds, prev.service_unit_prices),
-                service_discount_amounts: filterServiceMap(nextIds, prev.service_discount_amounts),
+                service_durations: rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.service_durations)),
+                service_extra_minutes: rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.service_extra_minutes)),
+                service_unit_prices: rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.service_unit_prices)),
+                service_discount_amounts: rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.service_discount_amounts)),
                 package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
                 service_ids: nextIds,
                 service_id: nextIds[0] || '',
@@ -623,13 +634,10 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             editForm.setData('scheduled_end', value);
             return;
         }
-        const { min, max } = salonSelectableBoundsForYmd(d, bookingRules, slotIntervalMinutes);
         const start = editStartRef.current?.value || editForm.data.scheduled_start || '';
-        const floor = start && start.startsWith(`${d}T`) ? start : min;
         let v = value;
-        if (dateTimeLocalCompare(v, floor) < 0) v = floor;
-        if (dateTimeLocalCompare(v, max) > 0) v = max;
-        editForm.setData('scheduled_end', clampDateTimeLocalToSalon(v, bookingRules, slotIntervalMinutes));
+        if (start && start.startsWith(`${d}T`) && dateTimeLocalCompare(v, start) < 0) v = start;
+        editForm.setData('scheduled_end', v);
     };
 
     const handleEditServiceChange = (nextIds) => {
@@ -640,7 +648,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             const nextData = {
                 ...prev,
                 ...(() => {
-                    const nextAssignments = filterServiceMap(nextIds, prev.staff_assignments);
+                    const nextAssignments = rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.staff_assignments));
                     return {
                         staff_assignments: nextAssignments,
                         staff_profile_id: hasAssignmentsForAllServices(nextIds, nextAssignments) ? '' : prev.staff_profile_id,
@@ -648,10 +656,10 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 })(),
                 service_quantities: normalizeServiceQuantities(nextIds, prev.service_quantities),
                 service_starts: nextServiceStarts,
-                service_durations: filterServiceMap(nextIds, prev.service_durations),
-                service_extra_minutes: filterServiceMap(nextIds, prev.service_extra_minutes),
-                service_unit_prices: filterServiceMap(nextIds, prev.service_unit_prices),
-                service_discount_amounts: filterServiceMap(nextIds, prev.service_discount_amounts),
+                service_durations: rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.service_durations)),
+                service_extra_minutes: rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.service_extra_minutes)),
+                service_unit_prices: rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.service_unit_prices)),
+                service_discount_amounts: rekeyServiceMapByLines(nextIds, filterServiceMap(nextIds, prev.service_discount_amounts)),
                 package_service_ids: (prev.package_service_ids || []).filter((serviceId) => nextIds.includes(String(serviceId))),
                 service_ids: nextIds,
                 service_id: nextIds[0] || '',
@@ -743,7 +751,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
         return {
             ...nextData,
-            scheduled_end: calculateSuggestedEndWithServiceMeta(nextStart, nextData.service_ids, nextData),
+            scheduled_end: editForm.data.scheduled_end || calculateSuggestedEndWithServiceMeta(nextStart, nextData.service_ids, nextData),
         };
     };
 
@@ -1185,7 +1193,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
     useEffect(() => {
         const startValue = editStartRef.current?.value || editForm.data.scheduled_start || '';
-        const endValue = editForm.data.scheduled_end || calculateSuggestedEnd(startValue, editSelectedServices);
+        const endValue = editForm.data.scheduled_end || calculateSuggestedEndWithServiceMeta(startValue, editSelectedServices, editForm.data);
         if (!editingId || !startValue) {
             setEditStaffAvailability({});
             return;
@@ -2486,7 +2494,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     if (!s) return null;
                                     return (
                                         <button key={serviceLineKey(index)} type="button" className="rounded-full border border-rose-300/40 bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-200" onClick={() => handleEditServiceChange(editSelectedServices.filter((_, selectedIndex) => selectedIndex !== index))}>
-                                            {s.name}{Number(editForm.data.service_quantities?.[String(id)] || 1) > 1 ? ` x${editForm.data.service_quantities?.[String(id)]}` : ''} x
+                                            {s.name}{Number(serviceLineMapValue(editForm.data.service_quantities, index, id, 1)) > 1 ? ` x${serviceLineMapValue(editForm.data.service_quantities, index, id, 1)}` : ''} x
                                         </button>
                                     );
                                 })}
@@ -2525,11 +2533,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                             <div className="md:col-span-2 rounded-md border border-white/10 bg-white/[0.03] p-4">
                                 <p className="mb-2 text-xs font-bold uppercase text-slate-400">Staff per service</p>
                                 <div className="grid gap-2 md:grid-cols-2">
-                                    {editSelectedServices.map((serviceId) => {
+                                    {editSelectedServices.map((serviceId, index) => {
                                         const service = services.find((s) => String(s.id) === String(serviceId));
-                                        const assignmentKey = String(serviceId);
+                                        const assignmentKey = serviceLineKey(index);
                                         return (
-                                            <div key={`edit-staff-${serviceId}`}>
+                                            <div key={`edit-staff-${assignmentKey}`}>
                                                 <label className="ta-field-label">{service?.name || `Service #${serviceId}`}</label>
                                                 <div className="mb-2">
                                                     <label className="ta-field-label">Qty</label>
@@ -2590,6 +2598,17 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 required
                             />
                             {fieldError(editForm, 'scheduled_start')}
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Scheduled End</label>
+                            <input
+                                className="ta-input [color-scheme:dark]"
+                                type="datetime-local"
+                                value={editForm.data.scheduled_end || ''}
+                                onInput={(e) => handleEditEndChange(e.currentTarget.value)}
+                                onChange={(e) => handleEditEndChange(e.currentTarget.value)}
+                            />
+                            {fieldError(editForm, 'scheduled_end')}
                         </div>
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><input className="ta-input" value={editForm.data.notes} onChange={(e) => editForm.setData('notes', e.target.value)} placeholder="Notes" />{fieldError(editForm, 'notes')}</div>
                         <div className="md:col-span-2 flex justify-end gap-2 border-t border-white/10 pt-5">
