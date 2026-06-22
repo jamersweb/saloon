@@ -10,6 +10,7 @@ use App\Models\GiftCard;
 use App\Models\InventoryItem;
 use App\Models\InvoicePayment;
 use App\Models\SalonService;
+use App\Models\StaffProfile;
 use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
 use App\Services\AppointmentVisitService;
@@ -98,6 +99,7 @@ class TaxInvoiceController extends Controller
         return Inertia::render('Finance/Invoices/Create', [
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
+            'staff_profiles' => $this->staffProfileOptions(),
             'inventory_items' => InventoryItem::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku', 'selling_price']),
             'appointments' => Appointment::query()
                 ->with(['customer:id,name', 'service:id,name'])
@@ -126,6 +128,7 @@ class TaxInvoiceController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.salon_service_id' => ['nullable', 'exists:salon_services,id'],
+            'items.*.staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01', 'max:9999'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
@@ -156,6 +159,7 @@ class TaxInvoiceController extends Controller
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => $row['salon_service_id'] ?? null,
+                    'staff_profile_id' => $row['staff_profile_id'] ?? null,
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
                     'unit_price' => $row['unit_price'],
@@ -184,7 +188,7 @@ class TaxInvoiceController extends Controller
 
         $invoice = $this->refreshDraftIfMissingVisitItems($invoice, $request);
 
-        $invoice->load(['items.salonService:id,name', 'customer.membershipCards.type:id,name', 'customer:id,name,phone,email', 'appointment.service:id,name', 'payments.createdBy:id,name']);
+        $invoice->load(['items.salonService:id,name', 'items.staffProfile.user:id,name', 'customer.membershipCards.type:id,name', 'customer:id,name,phone,email', 'appointment.service:id,name', 'payments.createdBy:id,name']);
 
         $settings = FinanceSetting::current();
 
@@ -239,6 +243,8 @@ class TaxInvoiceController extends Controller
                 'items' => $invoice->items->map(fn (TaxInvoiceItem $item) => [
                     'id' => $item->id,
                     'salon_service_id' => $item->salon_service_id,
+                    'staff_profile_id' => $item->staff_profile_id,
+                    'staff_name' => $item->staffProfile?->user?->name,
                     'description' => $item->description,
                     'quantity' => (float) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
@@ -261,6 +267,7 @@ class TaxInvoiceController extends Controller
             ],
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
+            'staff_profiles' => $this->staffProfileOptions(),
             'inventory_items' => InventoryItem::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku', 'selling_price']),
             'vat_rate_percent' => (float) $settings->vat_rate_percent,
             'currency_code' => $settings->currency_code,
@@ -291,6 +298,7 @@ class TaxInvoiceController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.salon_service_id' => ['nullable', 'exists:salon_services,id'],
+            'items.*.staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01', 'max:9999'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
@@ -318,6 +326,7 @@ class TaxInvoiceController extends Controller
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => $row['salon_service_id'] ?? null,
+                    'staff_profile_id' => $row['staff_profile_id'] ?? null,
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
                     'unit_price' => $row['unit_price'],
@@ -542,6 +551,7 @@ class TaxInvoiceController extends Controller
             ->filter(fn (Appointment $item) => $item->service !== null)
             ->map(fn (Appointment $item) => [
                 'salon_service_id' => $item->service_id ? (string) $item->service_id : '',
+                'staff_profile_id' => $item->staff_profile_id ? (string) $item->staff_profile_id : '',
                 'description' => $item->customer_package_id
                     ? $item->service->name.' (package session)'
                     : $item->service->name,
@@ -559,6 +569,24 @@ class TaxInvoiceController extends Controller
             'service_id' => $appointment->service_id,
             'visit_items' => $visitItems,
         ];
+    }
+
+    /**
+     * @return list<array{id: int, name: string|null}>
+     */
+    private function staffProfileOptions(): array
+    {
+        return StaffProfile::query()
+            ->with('user:id,name')
+            ->where('is_active', true)
+            ->orderBy('employee_code')
+            ->get()
+            ->map(fn (StaffProfile $staff) => [
+                'id' => $staff->id,
+                'name' => $staff->user?->name,
+            ])
+            ->values()
+            ->all();
     }
 
     private function resolveSettlementLabel(TaxInvoice $invoice): ?string

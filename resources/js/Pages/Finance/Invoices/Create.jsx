@@ -5,12 +5,13 @@ import { useMemo } from 'react';
 
 const blankItem = () => ({
     salon_service_id: '',
+    staff_profile_id: '',
     description: '',
     quantity: '1',
     unit_price: '',
 });
 
-export default function FinanceInvoicesCreate({ customers, services, inventory_items = [], appointments, vat_rate_percent, currency_code }) {
+export default function FinanceInvoicesCreate({ customers, services, staff_profiles = [], inventory_items = [], appointments, vat_rate_percent, currency_code }) {
     const { flash } = usePage().props;
 
     const form = useForm({
@@ -37,6 +38,10 @@ export default function FinanceInvoicesCreate({ customers, services, inventory_i
         ...services.map((s) => ({ value: `service:${s.id}`, label: `${s.name} (${currency_code} ${s.price})` })),
         ...inventory_items.map((item) => ({ value: `inventory:${item.id}`, label: `${item.name}${item.sku ? ` (${item.sku})` : ''} (${currency_code} ${item.selling_price})` })),
     ]), [services, inventory_items, currency_code]);
+    const staffOptions = useMemo(() => ([
+        { value: '', label: 'Unassigned' },
+        ...staff_profiles.map((staff) => ({ value: String(staff.id), label: staff.name || `Staff #${staff.id}` })),
+    ]), [staff_profiles]);
 
     const addRow = () => form.setData('items', [...form.data.items, blankItem()]);
 
@@ -132,6 +137,7 @@ export default function FinanceInvoicesCreate({ customers, services, inventory_i
                                 appointment_id: data.appointment_id || null,
                                 items: data.items.map((row) => ({
                                     salon_service_id: row.salon_service_id || null,
+                                    staff_profile_id: row.staff_profile_id || null,
                                     description: row.description,
                                     quantity: parseFloat(row.quantity) || 0,
                                     unit_price: parseFloat(row.unit_price) || 0,
@@ -196,7 +202,7 @@ export default function FinanceInvoicesCreate({ customers, services, inventory_i
                                                 placeholder="Search service or product"
                                             />
                                         </div>
-                                        <div className="md:col-span-4">
+                                        <div className="md:col-span-3">
                                             <label className="text-xs text-slate-500">Description</label>
                                             <input
                                                 className="ta-input mt-1"
@@ -210,6 +216,20 @@ export default function FinanceInvoicesCreate({ customers, services, inventory_i
                                             />
                                         </div>
                                         <div className="md:col-span-2">
+                                            <label className="text-xs text-slate-500">Staff</label>
+                                            <SearchableSelect
+                                                className="mt-1"
+                                                value={row.staff_profile_id || ''}
+                                                onChange={(staffId) => {
+                                                    const next = [...form.data.items];
+                                                    next[idx] = { ...next[idx], staff_profile_id: staffId };
+                                                    form.setData('items', next);
+                                                }}
+                                                options={staffOptions}
+                                                placeholder="Search staff"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-1">
                                             <label className="text-xs text-slate-500">Qty</label>
                                             <input
                                                 className="ta-input mt-1"

@@ -99,6 +99,7 @@ class TaxInvoiceDraftFromAppointmentService
             TaxInvoiceItem::query()->create([
                 'tax_invoice_id' => $invoice->id,
                 'salon_service_id' => $service->id,
+                'staff_profile_id' => $visitAppointment->staff_profile_id,
                 'description' => $visitAppointment->customer_package_id
                     ? $service->name.' (package session)'
                     : $service->name,

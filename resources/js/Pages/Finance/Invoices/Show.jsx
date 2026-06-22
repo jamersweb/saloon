@@ -24,6 +24,7 @@ const lineTotals = (row, vatRatePercent = 0) => {
 
 const blankItem = () => ({
     salon_service_id: '',
+    staff_profile_id: '',
     description: '',
     quantity: '1',
     unit_price: '',
@@ -34,6 +35,7 @@ export default function FinanceInvoicesShow({
     invoice,
     customers,
     services,
+    staff_profiles = [],
     inventory_items = [],
     appointments = [],
     vat_rate_percent,
@@ -56,6 +58,7 @@ export default function FinanceInvoicesShow({
         items: invoice.items.length
             ? invoice.items.map((r) => ({
                   salon_service_id: r.salon_service_id ? String(r.salon_service_id) : '',
+                  staff_profile_id: r.staff_profile_id ? String(r.staff_profile_id) : '',
                   description: r.description,
                   quantity: String(r.quantity),
                   unit_price: String(r.unit_price),
@@ -95,6 +98,10 @@ export default function FinanceInvoicesShow({
         ...services.map((s) => ({ value: `service:${s.id}`, label: s.name })),
         ...inventory_items.map((item) => ({ value: `inventory:${item.id}`, label: `${item.name}${item.sku ? ` (${item.sku})` : ''}` })),
     ]), [services, inventory_items]);
+    const staffOptions = useMemo(() => ([
+        { value: '', label: 'Unassigned' },
+        ...staff_profiles.map((staff) => ({ value: String(staff.id), label: staff.name || `Staff #${staff.id}` })),
+    ]), [staff_profiles]);
 
     const selectedLineName = (row) => {
         if (row.salon_service_id && serviceById[String(row.salon_service_id)]?.name) {
@@ -301,6 +308,7 @@ export default function FinanceInvoicesShow({
                                     appointment_id: data.appointment_id ? data.appointment_id : null,
                                     items: data.items.map((row) => ({
                                         salon_service_id: row.salon_service_id || null,
+                                        staff_profile_id: row.staff_profile_id || null,
                                         description: row.description,
                                         quantity: parseFloat(row.quantity) || 0,
                                         unit_price: parseFloat(row.unit_price) || 0,
@@ -365,7 +373,7 @@ export default function FinanceInvoicesShow({
                                                 </div>
                                             </div>
                                             <div className="grid gap-3 lg:grid-cols-12 lg:items-start">
-                                                <div className="lg:col-span-3">
+                                                <div className="lg:col-span-2">
                                                     <SearchableSelect
                                                         label="Choose service or product"
                                                         value={row.salon_service_id ? `service:${row.salon_service_id}` : ''}
@@ -374,7 +382,7 @@ export default function FinanceInvoicesShow({
                                                         placeholder="Search service or product"
                                                     />
                                                 </div>
-                                                <div className="lg:col-span-4">
+                                                <div className="lg:col-span-3">
                                                     <label className="ta-field-label">Service name on invoice</label>
                                                     <input
                                                         className="ta-input"
@@ -386,6 +394,19 @@ export default function FinanceInvoicesShow({
                                                         }}
                                                         placeholder="Example: Blowdry Curly/Wavy with Iron Short"
                                                         required
+                                                    />
+                                                </div>
+                                                <div className="lg:col-span-2">
+                                                    <SearchableSelect
+                                                        label="Staff"
+                                                        value={row.staff_profile_id || ''}
+                                                        onChange={(staffId) => {
+                                                            const next = [...editForm.data.items];
+                                                            next[idx] = { ...next[idx], staff_profile_id: staffId };
+                                                            editForm.setData('items', next);
+                                                        }}
+                                                        options={staffOptions}
+                                                        placeholder="Search staff"
                                                     />
                                                 </div>
                                                 <div className="lg:col-span-1">
@@ -482,6 +503,7 @@ export default function FinanceInvoicesShow({
                                     <thead className="text-left text-xs uppercase text-slate-500">
                                         <tr>
                                             <th className="py-2">Service / item</th>
+                                            <th className="py-2">Staff</th>
                                             <th className="py-2 text-right">Qty</th>
                                             <th className="py-2 text-right">Price</th>
                                             <th className="py-2 text-right">Discount</th>
@@ -493,6 +515,7 @@ export default function FinanceInvoicesShow({
                                         {invoice.items.map((row) => (
                                             <tr key={row.id} className="border-t border-slate-100">
                                                 <td className="py-2">{row.description}</td>
+                                                <td className="py-2">{row.staff_name || 'Unassigned'}</td>
                                                 <td className="py-2 text-right">{row.quantity}</td>
                                                 <td className="py-2 text-right">{money(row.unit_price, currency_code)}</td>
                                                 <td className="py-2 text-right">{money(row.discount_amount, currency_code)}</td>

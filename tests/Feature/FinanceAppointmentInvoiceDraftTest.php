@@ -87,6 +87,7 @@ class FinanceAppointmentInvoiceDraftTest extends TestCase
         $this->assertSame($customer->id, $invoice->customer_id);
         $this->assertCount(1, $invoice->items);
         $this->assertSame('Styling', $invoice->items->first()->description);
+        $this->assertSame($staffProfile->id, $invoice->items->first()->staff_profile_id);
     }
 
     public function test_invoice_draft_uses_adjusted_service_price_and_discount(): void

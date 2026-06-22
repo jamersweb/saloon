@@ -11,6 +11,7 @@ use App\Models\InvoicePayment;
 use App\Models\MembershipCardType;
 use App\Models\Role;
 use App\Models\SalonService;
+use App\Models\StaffProfile;
 use App\Models\TaxInvoice;
 use App\Models\User;
 use App\Support\TaxReceiptPdfView;
@@ -35,6 +36,12 @@ class FinanceTaxInvoiceTest extends TestCase
 
         FinanceSetting::current();
 
+        $staff = StaffProfile::create([
+            'user_id' => $user->id,
+            'employee_code' => 'FIN-STAFF-1',
+            'is_active' => true,
+        ]);
+
         $customer = Customer::create([
             'customer_code' => 'FIN-C1',
             'name' => 'Soraya',
@@ -58,6 +65,7 @@ class FinanceTaxInvoiceTest extends TestCase
                 'items' => [
                     [
                         'salon_service_id' => $service->id,
+                        'staff_profile_id' => $staff->id,
                         'description' => $service->name,
                         'quantity' => 1,
                         'unit_price' => 550,
@@ -71,6 +79,7 @@ class FinanceTaxInvoiceTest extends TestCase
         $invoice = TaxInvoice::query()->latest()->first();
         $this->assertNotNull($invoice);
         $this->assertSame(TaxInvoice::STATUS_DRAFT, $invoice->status);
+        $this->assertSame($staff->id, $invoice->items()->first()->staff_profile_id);
         $this->assertEqualsWithDelta(500.0, (float) $invoice->subtotal, 0.02);
         $this->assertEqualsWithDelta(25.0, (float) $invoice->vat_amount, 0.02);
         $this->assertEqualsWithDelta(525.0, (float) $invoice->total, 0.02);
