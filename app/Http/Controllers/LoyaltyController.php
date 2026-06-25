@@ -276,13 +276,15 @@ class LoyaltyController extends Controller
                         .' ('.$appointment->status.')',
                 ]),
             'customerPackages' => CustomerPackage::query()
-                ->with(['customer:id,name', 'package:id,name'])
+                ->with(['customer:id,name,phone', 'package:id,name'])
                 ->latest()
-                ->limit(80)
+                ->limit(500)
                 ->get()
                 ->map(fn (CustomerPackage $package) => [
                     'id' => $package->id,
+                    'customer_id' => $package->customer_id,
                     'customer_name' => $package->customer?->name,
+                    'customer_phone' => $package->customer?->phone,
                     'package_name' => $package->package?->name,
                     'remaining_sessions' => $package->remaining_sessions,
                     'remaining_value' => $package->remaining_value,

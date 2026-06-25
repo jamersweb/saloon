@@ -1736,6 +1736,7 @@ class AppointmentController extends Controller
     private function serializeAppointment(Appointment $appointment, Request $request): array
     {
         $checkout = $appointment->checkoutSummary();
+        $invoicePayment = $this->invoicePaymentSummaryForAppointment($appointment);
         $canCheckoutUi = $request->user() && (
             $request->user()->hasRole('owner', 'manager')
             || $request->user()->hasPermission('can_manage_finance')
@@ -1790,6 +1791,41 @@ class AppointmentController extends Controller
             'awaiting_checkout' => $canCheckoutUi ? $checkout['awaiting_checkout'] : false,
             'checkout_invoice_id' => $canCheckoutUi ? $checkout['checkout_invoice_id'] : null,
             'checkout_status' => $canCheckoutUi ? $checkout['checkout_status'] : 'not_required',
+            'invoice_total' => $canCheckoutUi ? $invoicePayment['total'] : 0.0,
+            'invoice_amount_paid' => $canCheckoutUi ? $invoicePayment['amount_paid'] : 0.0,
+            'invoice_balance_due' => $canCheckoutUi ? $invoicePayment['balance_due'] : 0.0,
+        ];
+    }
+
+    /**
+     * @return array{total: float, amount_paid: float, balance_due: float}
+     */
+    private function invoicePaymentSummaryForAppointment(Appointment $appointment): array
+    {
+        if (! empty($appointment->visit_id)) {
+            $visitAppointmentIds = Appointment::query()
+                ->where('visit_id', $appointment->visit_id)
+                ->pluck('id');
+
+            $invoices = TaxInvoice::query()
+                ->with('payments')
+                ->whereIn('appointment_id', $visitAppointmentIds)
+                ->where('status', '!=', TaxInvoice::STATUS_VOID)
+                ->get();
+        } else {
+            $appointment->loadMissing('taxInvoices.payments');
+            $invoices = $appointment->taxInvoices
+                ->where('status', '!=', TaxInvoice::STATUS_VOID)
+                ->values();
+        }
+
+        $total = (float) $invoices->sum(fn (TaxInvoice $invoice) => (float) $invoice->total);
+        $amountPaid = (float) $invoices->sum(fn (TaxInvoice $invoice) => (float) $invoice->payments->sum('amount'));
+
+        return [
+            'total' => round($total, 2),
+            'amount_paid' => round($amountPaid, 2),
+            'balance_due' => round(max(0, $total - $amountPaid), 2),
         ];
     }
 

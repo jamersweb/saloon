@@ -1,5 +1,6 @@
 import SearchableSelect from '@/Components/SearchableSelect';
 import { router } from '@inertiajs/react';
+import { useMemo, useState } from 'react';
 
 const formatMoney = (value, currencyCode = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2 }).format(Number(value || 0));
@@ -158,6 +159,7 @@ export default function PackagesSection({
     customerPackages,
     salonServices,
 }) {
+    const [customerPackageSearch, setCustomerPackageSearch] = useState('');
     const activePackages = packages.filter((pkg) => pkg.is_active);
     const customerOptions = customers.map((customer) => ({
         value: String(customer.id),
@@ -171,8 +173,33 @@ export default function PackagesSection({
         .filter((pkg) => pkg.status === 'active')
         .map((pkg) => ({
             value: String(pkg.id),
-            label: `${pkg.customer_name} - ${pkg.package_name}`,
+            label: `${pkg.customer_name}${pkg.customer_phone ? ` - ${pkg.customer_phone}` : ''} - ${pkg.package_name}`,
         }));
+    const filteredCustomerPackages = useMemo(() => {
+        const terms = customerPackageSearch
+            .trim()
+            .toLowerCase()
+            .split(/\s+/)
+            .filter(Boolean);
+
+        if (terms.length === 0) {
+            return customerPackages;
+        }
+
+        return customerPackages.filter((pkg) => {
+            const searchable = [
+                pkg.customer_name,
+                pkg.customer_phone,
+                pkg.package_name,
+                pkg.status,
+            ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+
+            return terms.every((term) => searchable.includes(term));
+        });
+    }, [customerPackageSearch, customerPackages]);
 
     return (
         <div className="space-y-6">
@@ -296,11 +323,45 @@ export default function PackagesSection({
             </section>
 
             <section className="ta-card overflow-hidden">
-                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Customer packages</h3></div>
+                <div className="border-b border-slate-200 px-5 py-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-700">Customer packages</h3>
+                            <p className="mt-1 text-xs text-slate-500">Search by client name, phone, package, or status.</p>
+                        </div>
+                        <div className="w-full md:w-80">
+                            <label className="ta-field-label">Find client</label>
+                            <input
+                                className="ta-input"
+                                value={customerPackageSearch}
+                                onChange={(e) => setCustomerPackageSearch(e.target.value)}
+                                placeholder="Type client name, e.g. Raheel"
+                            />
+                        </div>
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Package</th><th className="px-5 py-3">Sessions</th><th className="px-5 py-3">Value</th><th className="px-5 py-3">Status</th></tr></thead>
-                        <tbody>{customerPackages.map((pkg) => <tr key={pkg.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{pkg.customer_name}</td><td className="px-5 py-3 text-slate-600">{pkg.package_name}</td><td className="px-5 py-3 text-slate-600">{pkg.remaining_sessions ?? 'n/a'}</td><td className="px-5 py-3 text-slate-600">{pkg.remaining_value !== null ? formatMoney(pkg.remaining_value, currencyCode) : 'n/a'}</td><td className="px-5 py-3 text-slate-600">{pkg.status}</td></tr>)}</tbody>
+                        <tbody>
+                            {filteredCustomerPackages.map((pkg) => (
+                                <tr key={pkg.id} className="border-t border-slate-100">
+                                    <td className="px-5 py-3 text-slate-700">
+                                        <div className="font-medium">{pkg.customer_name}</div>
+                                        {pkg.customer_phone ? <div className="mt-1 text-xs text-slate-500">{pkg.customer_phone}</div> : null}
+                                    </td>
+                                    <td className="px-5 py-3 text-slate-600">{pkg.package_name}</td>
+                                    <td className="px-5 py-3 text-slate-600">{pkg.remaining_sessions ?? 'n/a'}</td>
+                                    <td className="px-5 py-3 text-slate-600">{pkg.remaining_value !== null ? formatMoney(pkg.remaining_value, currencyCode) : 'n/a'}</td>
+                                    <td className="px-5 py-3 text-slate-600">{pkg.status}</td>
+                                </tr>
+                            ))}
+                            {filteredCustomerPackages.length === 0 ? (
+                                <tr className="border-t border-slate-100">
+                                    <td className="px-5 py-6 text-sm text-slate-500" colSpan="5">No customer packages match this search.</td>
+                                </tr>
+                            ) : null}
+                        </tbody>
                     </table>
                 </div>
             </section>

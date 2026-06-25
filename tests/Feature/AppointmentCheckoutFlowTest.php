@@ -124,6 +124,8 @@ class AppointmentCheckoutFlowTest extends TestCase
                 ->where('appointments.0.status', Appointment::STATUS_COMPLETED)
                 ->where('appointments.0.awaiting_checkout', false)
                 ->where('appointments.0.checkout_status', 'paid')
+                ->where('appointments.0.invoice_amount_paid', fn ($value) => abs((float) $value - 105.0) < 0.02)
+                ->where('appointments.0.invoice_balance_due', fn ($value) => (float) $value < 0.02)
             );
     }
 

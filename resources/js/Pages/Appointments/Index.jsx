@@ -1498,6 +1498,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             })),
             awaiting_checkout: rows.some((row) => row.awaiting_checkout),
             checkout_invoice_id: rows.find((row) => row.checkout_invoice_id)?.checkout_invoice_id || null,
+            invoice_total: Math.max(...rows.map((row) => Number(row.invoice_total || 0))),
+            invoice_amount_paid: Math.max(...rows.map((row) => Number(row.invoice_amount_paid || 0))),
+            invoice_balance_due: Math.max(...rows.map((row) => Number(row.invoice_balance_due || 0))),
         };
     }).sort((a, b) => {
         const aTime = dateTimeLocalMs(a.scheduled_start);
@@ -2953,6 +2956,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     <div className="text-xs font-semibold text-black">{appt.timeLabel}</div>
                                                     <div className="mt-1 text-sm font-semibold leading-tight text-black">{appt.customer_name}</div>
                                                     <div className="text-xs font-semibold leading-tight text-black">{appt.service_name}</div>
+                                                    {Number(appt.invoice_amount_paid || 0) > 0 ? <div className="mt-1 text-[11px] font-black leading-tight text-black">Paid {formatMoney(appt.invoice_amount_paid, currencyCode)}</div> : null}
                                                     {appt.customer_package_id ? <div className="mt-1 text-[11px] font-semibold text-black">Package session</div> : null}
                                                     {appt.awaiting_checkout ? <div className="mt-1 text-[11px] font-semibold text-black">Needs payment</div> : null}
                                                     {canBoardFinishPay ? (
