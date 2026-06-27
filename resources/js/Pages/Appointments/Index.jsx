@@ -459,6 +459,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [boardStaffMenu, setBoardStaffMenu] = useState(null);
     const [calendarQuickAction, setCalendarQuickAction] = useState(null);
     const [calendarDrawer, setCalendarDrawer] = useState(null);
+    const [calendarAppointmentId, setCalendarAppointmentId] = useState(null);
     const [calendarServiceEditorId, setCalendarServiceEditorId] = useState('');
     const [createStaffAvailability, setCreateStaffAvailability] = useState({});
     const [editStaffAvailability, setEditStaffAvailability] = useState({});
@@ -808,6 +809,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             endsAt: end,
         });
         setCalendarDrawer(null);
+        setCalendarAppointmentId(null);
     };
 
     const seedCreateFromCalendar = (quickAction = calendarQuickAction, groupMode = false) => {
@@ -1512,6 +1514,16 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             ? safeATime - safeBTime
             : safeBTime - safeATime;
     });
+    const selectedCalendarAppointment = calendarAppointmentId
+        ? appointmentQueueRows.find((row) => String(row.id) === String(calendarAppointmentId) || (row.grouped_services || []).some((service) => String(service.id) === String(calendarAppointmentId)))
+        : null;
+    const selectedCalendarCompletableServices = selectedCalendarAppointment?.grouped_services?.filter((service) => COMPLETABLE_SERVICE_STATUSES.includes(service.status)) || [];
+    const selectedCalendarCanFinish = selectedCalendarCompletableServices.length > 0;
+    const openCalendarAppointmentDrawer = (appt) => {
+        setCalendarQuickAction(null);
+        setCalendarDrawer(null);
+        setCalendarAppointmentId(appt.id);
+    };
 
     return (
         <AuthenticatedLayout
@@ -2645,6 +2657,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 setShowBoardView(false);
                 setCalendarQuickAction(null);
                 setCalendarDrawer(null);
+                setCalendarAppointmentId(null);
                 setBoardStaffMenu(null);
             }}>
                 <div className="appointment-board flex h-[92vh] overflow-hidden bg-[#0b0b0c] font-sans text-white antialiased">
@@ -2718,7 +2731,126 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                             </div>
                         </div>
 
-                        <div className="flex min-h-0 flex-1 overflow-auto">
+                        <div className="flex min-h-0 flex-1 overflow-hidden">
+                            {selectedCalendarAppointment ? (
+                                <aside className="flex w-[390px] shrink-0 flex-col border-r border-white/10 bg-[#0f0f10]">
+                                    <div className="flex items-start justify-between border-b border-white/10 px-5 py-4">
+                                        <div className="min-w-0">
+                                            <div className="text-xs font-bold uppercase tracking-wide text-violet-300">Appointment</div>
+                                            <h3 className="mt-1 truncate text-xl font-black text-white">{selectedCalendarAppointment.customer_name || 'Client'}</h3>
+                                            <p className="mt-1 text-sm text-slate-400">{selectedCalendarAppointment.customer_phone || 'No phone'}</p>
+                                        </div>
+                                        <button type="button" className="text-2xl leading-none text-slate-300 hover:text-white" onClick={() => setCalendarAppointmentId(null)}>x</button>
+                                    </div>
+
+                                    <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-5">
+                                        <div className="rounded-lg border border-white/10 bg-[#18181a] p-4">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Time</div>
+                                                    <div className="mt-1 text-sm font-bold text-white">
+                                                        {formatDateTime(selectedCalendarAppointment.scheduled_start)}
+                                                    </div>
+                                                </div>
+                                                <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs font-bold capitalize text-slate-200">
+                                                    {String(selectedCalendarAppointment.status || '').replace('_', ' ')}
+                                                </span>
+                                            </div>
+                                            <div className="mt-4 border-t border-white/10 pt-4">
+                                                <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Team</div>
+                                                <div className="mt-1 text-sm font-bold text-white">{selectedCalendarAppointment.staff_name || 'Unassigned'}</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-lg border border-white/10 bg-[#18181a] p-4">
+                                            <div className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Services</div>
+                                            <div className="space-y-3">
+                                                {(selectedCalendarAppointment.grouped_services || [{
+                                                    id: selectedCalendarAppointment.id,
+                                                    name: selectedCalendarAppointment.service_name,
+                                                    status: selectedCalendarAppointment.status,
+                                                    staff_name: selectedCalendarAppointment.staff_name,
+                                                    quantity: selectedCalendarAppointment.service_quantity || 1,
+                                                }]).map((service) => (
+                                                    <div key={service.id} className="rounded-md border border-white/10 bg-[#111112] px-3 py-3">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="min-w-0">
+                                                                <div className="truncate text-sm font-bold text-white">
+                                                                    {service.name || 'Service'}{Number(service.quantity || 1) > 1 ? ` x${service.quantity}` : ''}
+                                                                </div>
+                                                                <div className="mt-1 text-xs text-slate-400">{service.staff_name || 'Unassigned'}</div>
+                                                            </div>
+                                                            <span className="shrink-0 text-xs font-bold capitalize text-slate-300">{String(service.status || '').replace('_', ' ')}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-lg border border-white/10 bg-[#18181a] p-4">
+                                            <div className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Checkout</div>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="flex justify-between gap-3 text-slate-300">
+                                                    <span>Total</span>
+                                                    <span className="font-bold text-white">{formatMoney(selectedCalendarAppointment.invoice_total || 0, currencyCode)}</span>
+                                                </div>
+                                                <div className="flex justify-between gap-3 text-slate-300">
+                                                    <span>Paid</span>
+                                                    <span className="font-bold text-white">{formatMoney(selectedCalendarAppointment.invoice_amount_paid || 0, currencyCode)}</span>
+                                                </div>
+                                                <div className="flex justify-between gap-3 border-t border-white/10 pt-2 text-slate-300">
+                                                    <span>Balance</span>
+                                                    <span className="font-black text-white">{formatMoney(selectedCalendarAppointment.invoice_balance_due || 0, currencyCode)}</span>
+                                                </div>
+                                                {selectedCalendarAppointment.awaiting_checkout ? (
+                                                    <div className="mt-3 rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-bold text-amber-100">
+                                                        Needs checkout/payment
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+
+                                        {selectedCalendarAppointment.notes && !isSeedReferenceNote(selectedCalendarAppointment.notes) ? (
+                                            <div className="rounded-lg border border-white/10 bg-[#18181a] p-4">
+                                                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Notes</div>
+                                                <p className="whitespace-pre-wrap text-sm text-slate-200">{selectedCalendarAppointment.notes}</p>
+                                            </div>
+                                        ) : null}
+                                    </div>
+
+                                    <div className="space-y-2 border-t border-white/10 p-5">
+                                        {selectedCalendarCanFinish ? (
+                                            <button
+                                                type="button"
+                                                className="w-full rounded-full bg-violet-500 px-4 py-2.5 text-sm font-black text-white hover:bg-violet-400"
+                                                onClick={() => openCompleteService(selectedCalendarAppointment, canCheckout && canFinishAndPayNow ? 'pay' : null)}
+                                            >
+                                                {canCheckout && canFinishAndPayNow ? 'Complete & pay' : 'Complete appointment'}
+                                            </button>
+                                        ) : null}
+                                        {selectedCalendarAppointment.status === 'confirmed' ? (
+                                            <button type="button" className="w-full rounded-full border border-white/15 px-4 py-2.5 text-sm font-bold text-slate-100 hover:bg-white/5" onClick={() => openStartService(selectedCalendarAppointment)}>
+                                                Start service
+                                            </button>
+                                        ) : null}
+                                        {selectedCalendarAppointment.awaiting_checkout ? (
+                                            selectedCalendarAppointment.checkout_invoice_id ? (
+                                                <Link href={route('finance.invoices.show', selectedCalendarAppointment.checkout_invoice_id)} className="block w-full rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-2.5 text-center text-sm font-bold text-amber-100 hover:bg-amber-300/20">
+                                                    Open invoice & pay
+                                                </Link>
+                                            ) : (
+                                                <button type="button" className="w-full rounded-full border border-amber-300/40 bg-amber-300/10 px-4 py-2.5 text-sm font-bold text-amber-100 hover:bg-amber-300/20" onClick={() => router.post(route('appointments.checkout', selectedCalendarAppointment.id))}>
+                                                    Create checkout
+                                                </button>
+                                            )
+                                        ) : null}
+                                        <button type="button" className="w-full rounded-full border border-white/15 px-4 py-2.5 text-sm font-bold text-slate-100 hover:bg-white/5" onClick={() => startEdit(selectedCalendarAppointment)}>
+                                            Edit details
+                                        </button>
+                                    </div>
+                                </aside>
+                            ) : null}
+                            <div className="flex min-h-0 min-w-0 flex-1 overflow-auto">
                             <div className="sticky left-0 z-30 w-16 shrink-0 border-r border-white/10 bg-[#0b0b0c]">
                                 <div className="h-28 border-b border-white/10" />
                                 <div className="relative" style={{ height: `${boardCanvasHeight}px` }}>
@@ -2934,13 +3066,12 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     }}
                                                     onDragEnd={() => setDraggingAppointmentId(null)}
                                                     onClick={() => {
-                                                        setCalendarQuickAction(null);
-                                                        startEdit(appt);
+                                                        openCalendarAppointmentDrawer(appt);
                                                     }}
                                                     onKeyDown={(event) => {
                                                         if (event.key === 'Enter' || event.key === ' ') {
                                                             event.preventDefault();
-                                                            startEdit(appt);
+                                                            openCalendarAppointmentDrawer(appt);
                                                         }
                                                     }}
                                                     className={`absolute overflow-hidden rounded-md border p-2 text-left shadow-lg transition hover:scale-[1.01] ${draggingAppointmentId === appt.id ? 'opacity-60' : ''}`}
@@ -2981,6 +3112,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 {boardCardsByStaff.length === 0 ? (
                                     <div className="flex flex-1 items-center justify-center text-sm text-slate-400">No staff selected.</div>
                                 ) : null}
+                            </div>
                             </div>
                         </div>
                     </div>
