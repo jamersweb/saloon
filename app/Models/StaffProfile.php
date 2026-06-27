@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,12 @@ class StaffProfile extends Model
 {
     use HasFactory;
     use SoftDeletes;
+
+    private const EXCLUDED_SERVICE_STAFF_NAMES = [
+        'Analisa Rabanal Domenden',
+        'Jenifer Palisoc Jazmin',
+        'Jeniffer Palisoc Jazmin',
+    ];
 
     protected $fillable = [
         'user_id',
@@ -54,5 +61,12 @@ class StaffProfile extends Model
     public function leaveRequests(): HasMany
     {
         return $this->hasMany(LeaveRequest::class);
+    }
+
+    public function scopeAssignableToServices(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('user', function (Builder $userQuery): void {
+            $userQuery->whereIn('name', self::EXCLUDED_SERVICE_STAFF_NAMES);
+        });
     }
 }

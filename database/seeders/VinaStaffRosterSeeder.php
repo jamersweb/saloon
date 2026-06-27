@@ -32,11 +32,14 @@ class VinaStaffRosterSeeder extends Seeder
             ['Hengameh Dortaj', 'hengameh.dortaj@vina.local', 'VINA-04', 'staff', 'Nail technician'],
             ['Dulce Aguilar', 'dulce.aguilar@vina.local', 'VINA-05', 'staff', 'Nail technician'],
             ['Jocelyn Caburnay Caquista', 'jocelyn.caquista@vina.local', 'VINA-06', 'staff', 'Nail technician'],
+        ];
+
+        $inactiveRows = [
             ['Analisa Rabanal Domenden', 'analisa.domenden@vina.local', 'VINA-07', 'reception', 'Receptionist'],
             ['Jenifer Palisoc Jazmin', 'jenifer.jazmin@vina.local', 'VINA-08', 'staff', 'Hair dresser'],
         ];
 
-        foreach ($rows as $row) {
+        foreach ([...$rows, ...$inactiveRows] as $row) {
             $roleId = match ($row[3]) {
                 'manager' => (int) $managerRoleId,
                 'reception' => (int) $receptionRoleId,
@@ -59,7 +62,7 @@ class VinaStaffRosterSeeder extends Seeder
                     'employee_code' => $row[2],
                     'phone' => null,
                     'skills' => [$row[4]],
-                    'is_active' => true,
+                    'is_active' => ! in_array($row, $inactiveRows, true),
                 ],
             );
         }

@@ -567,6 +567,7 @@ class TaxInvoiceController extends Controller
         return StaffProfile::query()
             ->with('user:id,name')
             ->where('is_active', true)
+            ->assignableToServices()
             ->orderBy('employee_code')
             ->get()
             ->map(fn (StaffProfile $staff) => [

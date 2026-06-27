@@ -23,9 +23,7 @@ class ApplyVinaStaffScheduleCommand extends Command
     private array $morningNames = [
         'Mona Bassagh',
         'Sahar Shams',
-        'Analisa Rabanal Domenden',
         'Jocelyn Caburnay Caquista',
-        'Jenifer Palisoc Jazmin',
         'Hengameh Dortaj',
     ];
 

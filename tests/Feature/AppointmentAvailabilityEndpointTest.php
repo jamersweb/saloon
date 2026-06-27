@@ -117,4 +117,34 @@ class AppointmentAvailabilityEndpointTest extends TestCase
                 ->exists(),
         );
     }
+
+    public function test_staff_availability_endpoint_excludes_removed_service_staff(): void
+    {
+        $role = Role::create(['name' => 'manager', 'label' => 'Manager']);
+        $user = User::factory()->create(['role_id' => $role->id]);
+
+        BookingRule::create([
+            'opening_time' => '10:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $removedUser = User::factory()->create(['role_id' => $role->id, 'name' => 'Analisa Rabanal Domenden']);
+        StaffProfile::create(['user_id' => $removedUser->id, 'employee_code' => 'VINA-07', 'is_active' => true]);
+
+        $activeUser = User::factory()->create(['role_id' => $role->id, 'name' => 'Majd Alabaza']);
+        $activeStaff = StaffProfile::create(['user_id' => $activeUser->id, 'employee_code' => 'VINA-03', 'is_active' => true]);
+
+        $response = $this->actingAs($user)->get(route('appointments.staff-availability', [
+            'scheduled_start' => '2026-06-08 17:00:00',
+            'scheduled_end' => '2026-06-08 18:00:00',
+        ]));
+
+        $response->assertOk()
+            ->assertJsonCount(1, 'staff')
+            ->assertJsonPath('staff.0.id', $activeStaff->id)
+            ->assertJsonPath('staff.0.name', 'Majd Alabaza');
+    }
 }

@@ -29,6 +29,7 @@ class StaffScheduleGeneratorService
         $added = 0;
         $staffIds = StaffProfile::query()
             ->where('is_active', true)
+            ->assignableToServices()
             ->when($staffProfileIds !== null, fn ($query) => $query->whereIn('id', $staffProfileIds))
             ->pluck('id');
 

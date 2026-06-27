@@ -69,6 +69,7 @@ class AppointmentController extends Controller
         $staff = StaffProfile::query()
             ->with('user:id,name')
             ->where('is_active', true)
+            ->assignableToServices()
             ->orderBy('employee_code')
             ->get()
             ->map(function (StaffProfile $profile) use ($availabilityService, $start, $end, $ignoreAppointmentId) {
@@ -221,7 +222,7 @@ class AppointmentController extends Controller
                 ->each(fn (Customer $customer) => app(GiftCardService::class)->backfillGiftCardsForCustomer((int) $customer->id, $request->user()?->id))
                 ->load('giftCards')
                 ->map(fn (Customer $customer) => $this->serializeCustomerForAppointments($customer)),
-            'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
+            'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->assignableToServices()->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'name' => $staff->user?->name,
             ]),
@@ -1500,6 +1501,10 @@ class AppointmentController extends Controller
 
             if ($serviceSpecificStaffId !== null || $fallbackSelectedStaffId !== null) {
                 $resolvedStaffId = $serviceSpecificStaffId ?? $fallbackSelectedStaffId;
+                if (! $this->isAssignableServiceStaffId((int) $resolvedStaffId)) {
+                    throw ValidationException::withMessages(['staff_profile_id' => 'Selected staff is unavailable for service booking.']);
+                }
+
                 $availabilityError = $availabilityService->validateStaffAvailability((int) $resolvedStaffId, $plan['start'], $plan['end'], $ignoreAppointmentId);
                 if ($availabilityError) {
                     throw ValidationException::withMessages(['staff_profile_id' => $availabilityError]);
@@ -1535,6 +1540,7 @@ class AppointmentController extends Controller
     {
         $staffProfiles = StaffProfile::query()
             ->where('is_active', true)
+            ->assignableToServices()
             ->orderBy('employee_code')
             ->get(['id', 'skills']);
 
@@ -1571,6 +1577,15 @@ class AppointmentController extends Controller
         }
 
         return null;
+    }
+
+    private function isAssignableServiceStaffId(int $staffProfileId): bool
+    {
+        return StaffProfile::query()
+            ->whereKey($staffProfileId)
+            ->where('is_active', true)
+            ->assignableToServices()
+            ->exists();
     }
 
     /**

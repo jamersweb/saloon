@@ -66,7 +66,7 @@ class StaffScheduleController extends Controller
             'defaultShiftStart' => $rules->defaultShiftStart(),
             'defaultShiftEnd' => $rules->defaultShiftEnd(),
             'salonHoursLabel' => $rules->defaultShiftStart().'–'.$rules->defaultShiftEnd(),
-            'staffProfiles' => StaffProfile::query()->with('user')->where('is_active', true)->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
+            'staffProfiles' => StaffProfile::query()->with('user')->where('is_active', true)->assignableToServices()->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'employee_code' => $staff->employee_code,
                 'name' => $staff->user?->name,

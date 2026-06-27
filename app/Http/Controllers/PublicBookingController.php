@@ -153,6 +153,16 @@ class PublicBookingController extends Controller
         $resolvedStaffId = ! empty($data['staff_profile_id']) ? (int) $data['staff_profile_id'] : null;
 
         if ($resolvedStaffId) {
+            $canAssignSelectedStaff = StaffProfile::query()
+                ->whereKey($resolvedStaffId)
+                ->where('is_active', true)
+                ->assignableToServices()
+                ->exists();
+
+            if (! $canAssignSelectedStaff) {
+                return back()->withErrors(['staff_profile_id' => 'Selected staff is unavailable for online booking.'])->withInput();
+            }
+
             foreach ($plans as $plan) {
                 $staffAvailabilityError = $availabilityService->validateStaffAvailability($resolvedStaffId, $plan['start'], $plan['end']);
                 if ($staffAvailabilityError) {
@@ -250,7 +260,11 @@ class PublicBookingController extends Controller
 
     private function findAnyFullyAvailableStaffId(array $plans, BookingAvailabilityService $availabilityService): ?int
     {
-        $staffIds = StaffProfile::query()->where('is_active', true)->pluck('id')->all();
+        $staffIds = StaffProfile::query()
+            ->where('is_active', true)
+            ->assignableToServices()
+            ->pluck('id')
+            ->all();
 
         foreach ($staffIds as $staffId) {
             $allAvailable = true;

@@ -160,4 +160,101 @@ class PublicEmbedBookingTest extends TestCase
 
         $this->assertSame(1, CommunicationLog::query()->where('context', 'public_booking_team_alert')->count());
     }
+
+    public function test_embed_booking_does_not_assign_removed_service_staff(): void
+    {
+        $staffRole = Role::create(['name' => 'staff', 'label' => 'Staff']);
+
+        $removedUser = User::factory()->create(['role_id' => $staffRole->id, 'name' => 'Jenifer Palisoc Jazmin']);
+        $removedStaff = StaffProfile::create([
+            'user_id' => $removedUser->id,
+            'employee_code' => 'VINA-08',
+            'is_active' => true,
+        ]);
+
+        $activeUser = User::factory()->create(['role_id' => $staffRole->id, 'name' => 'Majd Alabaza']);
+        $activeStaff = StaffProfile::create([
+            'user_id' => $activeUser->id,
+            'employee_code' => 'VINA-03',
+            'is_active' => true,
+        ]);
+
+        $start = now()->addDays(3)->setTime(11, 0);
+
+        foreach ([$removedStaff, $activeStaff] as $staff) {
+            StaffSchedule::create([
+                'staff_profile_id' => $staff->id,
+                'schedule_date' => $start->toDateString(),
+                'start_time' => '09:00:00',
+                'end_time' => '17:00:00',
+                'is_day_off' => false,
+            ]);
+        }
+
+        $service = SalonService::create([
+            'name' => 'Embed Cut',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 10,
+            'price' => 100,
+            'is_active' => true,
+        ]);
+
+        $this->followingRedirects()->post(route('embed.booking.store'), [
+            'customer_name' => 'Embed User',
+            'customer_phone' => '5558889998',
+            'customer_email' => 'embed-skip@example.com',
+            'service_id' => $service->id,
+            'scheduled_start' => $start->toDateTimeString(),
+        ])->assertOk();
+
+        $appointment = Appointment::query()->where('customer_phone', '5558889998')->latest()->first();
+        $this->assertNotNull($appointment);
+        $this->assertSame($activeStaff->id, $appointment->staff_profile_id);
+    }
+
+    public function test_embed_booking_rejects_removed_service_staff_id(): void
+    {
+        $staffRole = Role::create(['name' => 'staff', 'label' => 'Staff']);
+
+        $removedUser = User::factory()->create(['role_id' => $staffRole->id, 'name' => 'Analisa Rabanal Domenden']);
+        $removedStaff = StaffProfile::create([
+            'user_id' => $removedUser->id,
+            'employee_code' => 'VINA-07',
+            'is_active' => true,
+        ]);
+
+        $start = now()->addDays(3)->setTime(11, 0);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $removedStaff->id,
+            'schedule_date' => $start->toDateString(),
+            'start_time' => '09:00:00',
+            'end_time' => '17:00:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Embed Color',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 10,
+            'price' => 140,
+            'is_active' => true,
+        ]);
+
+        $this->from(route('embed.booking'))
+            ->post(route('embed.booking.store'), [
+                'customer_name' => 'Embed Rejected',
+                'customer_phone' => '5558877777',
+                'customer_email' => 'embed-rejected@example.com',
+                'service_id' => $service->id,
+                'staff_profile_id' => $removedStaff->id,
+                'scheduled_start' => $start->toDateTimeString(),
+            ])
+            ->assertRedirect(route('embed.booking'))
+            ->assertSessionHasErrors('staff_profile_id');
+
+        $this->assertDatabaseMissing('appointments', [
+            'customer_phone' => '5558877777',
+        ]);
+    }
 }
