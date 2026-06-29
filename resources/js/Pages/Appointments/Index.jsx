@@ -526,6 +526,57 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         }
     }, [editForm.data.scheduled_start, editingId]);
 
+    const selectedStaffShiftEnd = (startValue, formData = {}) => {
+        const startYmd = dateTimeLocalYmd(startValue);
+        const startMinutes = dateTimeLocalMinutes(startValue);
+        if (!startYmd || Number.isNaN(startMinutes)) return '';
+
+        const selectedStaffIds = [...new Set([
+            formData.staff_profile_id,
+            ...Object.values(formData.staff_assignments || {}),
+        ].map((id) => String(id || '')).filter(Boolean))];
+
+        if (selectedStaffIds.length !== 1) return '';
+
+        const shiftEnds = selectedStaffIds.map((staffId) => {
+            const schedule = staffSchedules.find((item) => (
+                String(item.staff_profile_id) === staffId
+                && item.schedule_date === startYmd
+                && !item.is_day_off
+                && item.start_time
+                && item.end_time
+            ));
+
+            if (!schedule) return '';
+
+            const shiftStart = dateTimeLocalMinutes(`${startYmd}T${String(schedule.start_time).slice(0, 5)}`);
+            let shiftEnd = dateTimeLocalMinutes(`${startYmd}T${String(schedule.end_time).slice(0, 5)}`);
+            if (Number.isNaN(shiftStart) || Number.isNaN(shiftEnd)) return '';
+            if (shiftEnd <= shiftStart) shiftEnd += 1440;
+            if (startMinutes > shiftEnd) return '';
+
+            return minutesToDateTimeLocal(startYmd, shiftEnd);
+        }).filter(Boolean);
+
+        if (shiftEnds.length === 0) return '';
+
+        return shiftEnds.reduce((earliest, value) => (dateTimeLocalCompare(value, earliest) < 0 ? value : earliest), shiftEnds[0]);
+    };
+
+    const capSuggestedEndToStaffShift = (startValue, endValue, formData = {}) => {
+        const shiftEnd = selectedStaffShiftEnd(startValue, formData);
+        if (
+            shiftEnd
+            && endValue
+            && dateTimeLocalCompare(endValue, shiftEnd) > 0
+            && dateTimeLocalCompare(shiftEnd, startValue) > 0
+        ) {
+            return shiftEnd;
+        }
+
+        return endValue;
+    };
+
     const calculateSuggestedEnd = (startValue, serviceIds) => {
         if (!startValue || !Array.isArray(serviceIds) || serviceIds.length === 0) return '';
 
@@ -567,7 +618,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             endStr = clampDateTimeLocalToSalon(startValue, bookingRules, slotIntervalMinutes);
         }
 
-        return endStr;
+        return capSuggestedEndToStaffShift(startValue, endStr, formData);
     };
 
     const handleCreateServiceChange = (nextIds) => {
@@ -1108,6 +1159,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         const extraMinutes = Math.max(0, Number(serviceLineMapValue(createForm.data.service_extra_minutes, lineIndex, sid, 0)));
         const staffId = String(serviceLineMapValue(createForm.data.staff_assignments, lineIndex, sid, createSelectedServices.length === 1 ? createForm.data.staff_profile_id : '') || '');
         const staff = staffProfiles.find((item) => String(item.id) === staffId);
+        const packageCovered = Boolean(createSelectedPackage && (createForm.data.package_service_ids || []).map(String).includes(sid));
 
         return {
             sid,
@@ -1120,7 +1172,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             extraMinutes,
             staffId,
             staffName: staff?.name || 'Auto / Unassigned',
-            lineTotal: Math.max(0, (unitPrice * quantity) - discountAmount),
+            packageCovered,
+            packageCoverage: createPackageCoverageMap[sid] || null,
+            lineTotal: packageCovered ? 0 : Math.max(0, (unitPrice * quantity) - discountAmount),
         };
     };
     const createDrawerServicesSubtotal = createSelectedServiceRows.reduce((sum, service) => sum + getCreateServiceMeta(service).lineTotal, 0);
@@ -1596,7 +1650,9 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 createForm.setData((prev) => ({
                                     ...prev,
                                     scheduled_start: v,
-                                    scheduled_end: calculateSuggestedEndWithServiceMeta(v, prev.service_ids, prev),
+                                    scheduled_end: createEndManuallySet && prev.scheduled_end
+                                        ? prev.scheduled_end
+                                        : calculateSuggestedEndWithServiceMeta(v, prev.service_ids, prev),
                                 }));
                             });
                             createForm.post(route('appointments.store'), {
@@ -3193,6 +3249,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                 setCreateCustomerSearch('');
                                                 setCreateServiceSearch('');
                                                 setCreateSelectedCustomerId('');
+                                                setCreateSelectedPackageId('');
                                                 setCreateCustomerMode('new');
                                             },
                                         });
@@ -3225,7 +3282,16 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     onClick={() => {
                                                         setCreateCustomerMode('new');
                                                         setCreateSelectedCustomerId('');
-                                                        createForm.setData({ ...createForm.data, customer_id: '', customer_name: 'Walk-in Client', customer_phone: '', customer_email: '' });
+                                                        setCreateSelectedPackageId('');
+                                                        createForm.setData({
+                                                            ...createForm.data,
+                                                            customer_id: '',
+                                                            customer_name: 'Walk-in Client',
+                                                            customer_phone: '',
+                                                            customer_email: '',
+                                                            customer_package_id: '',
+                                                            package_service_ids: [],
+                                                        });
                                                     }}
                                                 >
                                                     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-500/20 text-sm font-black text-violet-200">WI</span>
@@ -3263,6 +3329,43 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     <div className="rounded-md border border-white/10 px-3 py-4 text-sm text-slate-400">No matching clients.</div>
                                                 ) : null}
                                             </div>
+                                            {createSelectedCustomerId && createAvailablePackages.length > 0 ? (
+                                                <div className="mt-4 rounded-md border border-emerald-400/30 bg-emerald-500/10 p-3">
+                                                    <label className="mb-1 block text-xs font-bold uppercase text-emerald-200">Package</label>
+                                                    <select
+                                                        className="w-full rounded-md border border-emerald-300/30 bg-[#18181a] px-3 py-3 text-sm text-white"
+                                                        value={createSelectedPackageId}
+                                                        onChange={(e) => {
+                                                            const id = e.target.value;
+                                                            setCreateSelectedPackageId(id);
+                                                            setCreateCustomerMode(id ? 'package' : 'existing');
+                                                            createForm.setData({
+                                                                ...createForm.data,
+                                                                customer_package_id: id,
+                                                                package_service_ids: [],
+                                                            });
+                                                        }}
+                                                    >
+                                                        <option value="">No package</option>
+                                                        {createAvailablePackages.map((pkg) => (
+                                                            <option key={pkg.id} value={pkg.id}>
+                                                                {pkg.package_name}{pkg.expires_at ? ` - expires ${new Date(pkg.expires_at).toLocaleDateString()}` : ''}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    {createSelectedPackage ? (
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            {createSelectedPackage.services.map((service) => (
+                                                                <span key={service.id} className={`rounded-full px-2 py-1 text-xs ${service.remaining_sessions > 0 ? 'border border-emerald-300/40 bg-emerald-400/10 text-emerald-100' : 'border border-white/10 bg-white/5 text-slate-500'}`}>
+                                                                    {service.name} {service.remaining_sessions}/{service.included_sessions} left
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : null}
+                                                    {fieldError(createForm, 'customer_package_id')}
+                                                    {fieldError(createForm, 'package_service_ids')}
+                                                </div>
+                                            ) : null}
                                             <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
                                                 <input
                                                     ref={calendarClientNameRef}
@@ -3322,6 +3425,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                     <div className="mt-1 text-xs text-slate-400">
                                                                         {formatTimeFromDateTimeLocal(serviceStart) || 'Start not set'} - {meta.durationMinutes + meta.extraMinutes}m
                                                                         {meta.staffName ? ` - ${meta.staffName}` : ''}
+                                                                        {meta.packageCovered ? ' - Package session' : ''}
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex items-center gap-3">
@@ -3465,6 +3569,23 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                 Remove service
                                                             </button>
                                                         </div>
+                                                        {createSelectedPackage && meta.packageCoverage ? (
+                                                            <label className="flex items-center justify-between gap-3 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-100">
+                                                                <span>
+                                                                    <span className="block font-bold">Use package session</span>
+                                                                    <span className="mt-0.5 block text-xs text-emerald-200">{meta.packageCoverage.remaining_sessions} session{meta.packageCoverage.remaining_sessions === 1 ? '' : 's'} left for this service</span>
+                                                                </span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="h-4 w-4 rounded border-emerald-300 bg-[#18181a] text-emerald-500"
+                                                                    checked={meta.packageCovered}
+                                                                    disabled={meta.packageCoverage.remaining_sessions < 1 && !meta.packageCovered}
+                                                                    onChange={(e) => createForm.setData('package_service_ids', e.target.checked
+                                                                        ? [...new Set([...(createForm.data.package_service_ids || []), meta.sid])]
+                                                                        : (createForm.data.package_service_ids || []).filter((serviceId) => String(serviceId) !== meta.sid))}
+                                                                />
+                                                            </label>
+                                                        ) : null}
                                                     </div>
                                                 </div>
                                             );

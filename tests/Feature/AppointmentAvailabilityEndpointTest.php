@@ -118,6 +118,40 @@ class AppointmentAvailabilityEndpointTest extends TestCase
         );
     }
 
+    public function test_staff_availability_endpoint_allows_final_half_hour_before_shift_end(): void
+    {
+        $role = Role::create(['name' => 'manager', 'label' => 'Manager']);
+        $user = User::factory()->create(['role_id' => $role->id]);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staffUser = User::factory()->create(['role_id' => $role->id, 'name' => 'Final Slot Staff']);
+        $staff = StaffProfile::create(['user_id' => $staffUser->id, 'employee_code' => 'EMP-FINAL-30', 'is_active' => true]);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-06-08',
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+            'is_day_off' => false,
+        ]);
+
+        $response = $this->actingAs($user)->get(route('appointments.staff-availability', [
+            'scheduled_start' => '2026-06-08 17:30:00',
+            'scheduled_end' => '2026-06-08 18:00:00',
+        ]));
+
+        $response->assertOk()
+            ->assertJsonPath('staff.0.id', $staff->id)
+            ->assertJsonPath('staff.0.available', true);
+    }
+
     public function test_staff_availability_endpoint_excludes_removed_service_staff(): void
     {
         $role = Role::create(['name' => 'manager', 'label' => 'Manager']);

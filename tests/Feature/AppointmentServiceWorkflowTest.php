@@ -6,10 +6,12 @@ use App\Models\Appointment;
 use App\Models\BookingRule;
 use App\Models\CommunicationLog;
 use App\Models\Customer;
+use App\Models\CustomerPackage;
 use App\Models\InvoicePayment;
 use App\Models\InventoryItem;
 use App\Models\Role;
 use App\Models\SalonService;
+use App\Models\ServicePackage;
 use App\Models\StaffProfile;
 use App\Models\StaffSchedule;
 use App\Models\TaxInvoice;
@@ -1457,6 +1459,141 @@ class AppointmentServiceWorkflowTest extends TestCase
         } finally {
             Carbon::setTestNow();
         }
+    }
+
+    public function test_store_preserves_manual_end_time_at_staff_shift_end(): void
+    {
+        Queue::fake();
+
+        $manager = $this->createManagerUser();
+        $staffUser = User::factory()->create(['role_id' => $manager->role_id, 'name' => 'Final Slot Staff']);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-FINAL-SAVE',
+            'is_active' => true,
+        ]);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+            'is_day_off' => false,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Manual Final Slot',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 120,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.store'), [
+            'customer_name' => 'Final Slot Client',
+            'customer_phone' => '971500001830',
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'staff_profile_id' => $staff->id,
+            'scheduled_start' => '2026-05-12 17:30:00',
+            'scheduled_end' => '2026-05-12 18:00:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $appointment = Appointment::query()->where('customer_phone', '971500001830')->firstOrFail();
+
+        $this->assertSame('2026-05-12 17:30:00', $appointment->scheduled_start->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-12 18:00:00', $appointment->scheduled_end->format('Y-m-d H:i:s'));
+    }
+
+    public function test_store_links_selected_customer_package_session(): void
+    {
+        Queue::fake();
+
+        $manager = $this->createManagerUser();
+        $staffUser = User::factory()->create(['role_id' => $manager->role_id, 'name' => 'Package Staff']);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $staff = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-PKG-BOARD',
+            'is_active' => true,
+        ]);
+
+        StaffSchedule::create([
+            'staff_profile_id' => $staff->id,
+            'schedule_date' => '2026-05-12',
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+            'is_day_off' => false,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-PKG-BOARD',
+            'name' => 'Package Board Client',
+            'phone' => '971500009876',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Package Blowdry',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 120,
+            'is_active' => true,
+        ]);
+
+        $package = ServicePackage::create([
+            'name' => 'Board Package',
+            'price' => 300,
+            'usage_limit' => 3,
+            'is_active' => true,
+        ]);
+        $package->salonServices()->attach($service->id, ['included_sessions' => 3]);
+
+        $customerPackage = CustomerPackage::create([
+            'customer_id' => $customer->id,
+            'service_package_id' => $package->id,
+            'remaining_sessions' => 3,
+            'remaining_value' => 0,
+            'status' => 'active',
+            'assigned_by' => $manager->id,
+        ]);
+
+        $this->actingAs($manager)->post(route('appointments.store'), [
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+            'service_id' => $service->id,
+            'service_ids' => [$service->id],
+            'customer_package_id' => $customerPackage->id,
+            'package_service_ids' => [$service->id],
+            'staff_profile_id' => $staff->id,
+            'scheduled_start' => '2026-05-12 15:00:00',
+            'scheduled_end' => '2026-05-12 15:30:00',
+            'status' => 'confirmed',
+        ])->assertSessionHasNoErrors();
+
+        $appointment = Appointment::query()->where('customer_phone', '971500009876')->firstOrFail();
+
+        $this->assertSame($customerPackage->id, $appointment->customer_package_id);
+        $this->assertFalse((bool) $appointment->package_session_applied);
     }
 
     private function createManagerUser(): User
