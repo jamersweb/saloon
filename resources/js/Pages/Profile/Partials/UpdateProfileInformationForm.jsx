@@ -15,7 +15,15 @@ export default function UpdateProfileInformation({
     const fileInputRef = useRef(null);
     const [previewUrl, setPreviewUrl] = useState(null);
 
-    const { data, setData, patch, errors, processing, recentlySuccessful } =
+    const {
+        data,
+        setData,
+        post,
+        transform,
+        errors,
+        processing,
+        recentlySuccessful,
+    } =
         useForm({
             name: user.name,
             email: user.email,
@@ -26,7 +34,12 @@ export default function UpdateProfileInformation({
     const submit = (e) => {
         e.preventDefault();
 
-        patch(route('profile.update'), {
+        transform((data) => ({
+            ...data,
+            _method: 'patch',
+        }));
+
+        post(route('profile.update'), {
             forceFormData: true,
             onSuccess: () => {
                 setPreviewUrl(null);
