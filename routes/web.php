@@ -34,6 +34,10 @@ Route::get('/', [PublicBookingController::class, 'create'])->name('public.bookin
 Route::get('/privacy-policy', [PublicBookingController::class, 'privacyPolicy'])->name('public.privacy-policy');
 Route::get('/terms-of-service', [PublicBookingController::class, 'termsOfService'])->name('public.terms-of-service');
 Route::post('/book', [PublicBookingController::class, 'store'])->name('public.booking.store');
+Route::get('/whatsapp-webhook.php', [WhatsAppWebhookController::class, 'verify'])->name('whatsapp.webhook.verify.legacy');
+Route::post('/whatsapp-webhook.php', [WhatsAppWebhookController::class, 'receive'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
+    ->name('whatsapp.webhook.receive.legacy');
 Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])->name('whatsapp.webhook.verify');
 Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
