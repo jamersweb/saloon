@@ -128,4 +128,74 @@ class AttendanceIndexTest extends TestCase
             Carbon::setTestNow();
         }
     }
+
+    public function test_clock_in_cannot_overwrite_an_open_attendance_log(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-16 12:30:00'));
+
+        try {
+            $staffRole = Role::create([
+                'name' => 'staff',
+                'label' => 'Staff',
+                'permissions' => Permissions::defaultsForRole('staff'),
+            ]);
+            $staffUser = User::factory()->create(['role_id' => $staffRole->id]);
+            $profile = StaffProfile::create([
+                'user_id' => $staffUser->id,
+                'employee_code' => 'EMP-CLOCK-IN',
+                'is_active' => true,
+            ]);
+
+            AttendanceLog::create([
+                'staff_profile_id' => $profile->id,
+                'attendance_date' => '2026-06-16',
+                'clock_in' => '09:00:00',
+                'late_minutes' => 0,
+            ]);
+
+            $this->actingAs($staffUser)
+                ->from(route('attendance.index'))
+                ->post(route('attendance.clock-in'))
+                ->assertRedirect(route('attendance.index'))
+                ->assertSessionHasErrors('clock_in');
+
+            $this->assertDatabaseHas('attendance_logs', [
+                'staff_profile_id' => $profile->id,
+                'attendance_date' => '2026-06-16 00:00:00',
+                'clock_in' => '09:00:00',
+                'clock_out' => null,
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_clock_out_requires_an_open_clock_in(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-16 18:15:00'));
+
+        try {
+            $staffRole = Role::create([
+                'name' => 'staff',
+                'label' => 'Staff',
+                'permissions' => Permissions::defaultsForRole('staff'),
+            ]);
+            $staffUser = User::factory()->create(['role_id' => $staffRole->id]);
+            StaffProfile::create([
+                'user_id' => $staffUser->id,
+                'employee_code' => 'EMP-NO-CLOCK-IN',
+                'is_active' => true,
+            ]);
+
+            $this->actingAs($staffUser)
+                ->from(route('attendance.index'))
+                ->post(route('attendance.clock-out'))
+                ->assertRedirect(route('attendance.index'))
+                ->assertSessionHasErrors('clock_out');
+
+            $this->assertDatabaseCount('attendance_logs', 0);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
 }

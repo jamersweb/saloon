@@ -16,6 +16,9 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
     });
     const [now, setNow] = useState(new Date());
     const [toast, setToast] = useState('');
+    const hasClockedIn = Boolean(todayLog?.clock_in);
+    const hasClockedOut = Boolean(todayLog?.clock_out);
+    const hasOpenClockIn = hasClockedIn && !hasClockedOut;
 
     useEffect(() => {
         const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -96,6 +99,8 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
 
     const submitClockIn = async (e) => {
         e.preventDefault();
+        if (hasClockedIn) return;
+
         clockInForm.clearErrors('clock_in_latitude', 'clock_in_longitude');
         const position = await requestLocation();
         const latitude = position ? String(position.coords.latitude) : '';
@@ -161,12 +166,16 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
                         )}
                         <p className="text-xs text-slate-500">Location is optional. If browser permission is blocked, clock in will still work.</p>
                         {clockInForm.errors.clock_in_latitude && <p className="text-xs text-red-600">{clockInForm.errors.clock_in_latitude}</p>}
-                        <button className="ta-btn-primary w-full" disabled={clockInForm.processing}>Clock In</button>
+                        {hasOpenClockIn && <p className="text-xs text-amber-600">Already clocked in. Clock out before clocking in again.</p>}
+                        {hasClockedIn && hasClockedOut && <p className="text-xs text-slate-500">Today&apos;s attendance is complete.</p>}
+                        <button className="ta-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={clockInForm.processing || hasClockedIn}>Clock In</button>
                     </form>
 
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
+                            if (!hasOpenClockIn) return;
+
                             clockOutForm.post(route('attendance.clock-out'), {
                                 data: {
                                     ...clockOutForm.data,
@@ -186,7 +195,9 @@ export default function AttendanceIndex({ logs, staffProfiles, todayLog, appTime
                                 {staffProfiles.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         )}
-                        <button className="ta-btn-secondary w-full" disabled={clockOutForm.processing}>Clock Out</button>
+                        {!hasClockedIn && <p className="text-xs text-slate-500">Clock in before clocking out.</p>}
+                        {hasClockedOut && <p className="text-xs text-slate-500">Already clocked out today.</p>}
+                        <button className="ta-btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-60" disabled={clockOutForm.processing || !hasOpenClockIn}>Clock Out</button>
                     </form>
                 </section>
 

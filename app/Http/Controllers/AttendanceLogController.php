@@ -137,6 +137,14 @@ class AttendanceLogController extends Controller
             ->whereDate('attendance_date', $today)
             ->first();
 
+        if ($log?->clock_in && ! $log->clock_out) {
+            return back()->withErrors(['clock_in' => 'This staff member is already clocked in. Clock out before clocking in again.']);
+        }
+
+        if ($log?->clock_in && $log->clock_out) {
+            return back()->withErrors(['clock_in' => 'This staff member already has a completed attendance record for today.']);
+        }
+
         $payload = [
             'scheduled_start' => $schedule?->start_time,
             'clock_in' => $clockInTime,
@@ -181,11 +189,12 @@ class AttendanceLogController extends Controller
             ->whereDate('attendance_date', $today)
             ->first();
 
-        if (! $log) {
-            $log = AttendanceLog::create([
-                'staff_profile_id' => $staffProfile->id,
-                'attendance_date' => $today,
-            ]);
+        if (! $log || ! $log->clock_in) {
+            return back()->withErrors(['clock_out' => 'Clock in before clocking out.']);
+        }
+
+        if ($log->clock_out) {
+            return back()->withErrors(['clock_out' => 'This staff member is already clocked out for today.']);
         }
 
         $log->update([
