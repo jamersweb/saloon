@@ -2077,8 +2077,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 </div>
             </Modal>
 
-            <Modal show={Boolean(completeServiceId)} maxWidth="2xl" onClose={() => setCompleteServiceId(null)}>
-                <div className="p-6">
+            <Modal show={Boolean(completeServiceId)} maxWidth="5xl" onClose={() => setCompleteServiceId(null)}>
+                <div className="p-4 sm:p-6">
                     <h3 className="mb-4 text-base font-semibold text-slate-800">Complete Service for Appointment #{completeServiceId}</h3>
                     <form
                         onSubmit={(e) => {
@@ -2344,8 +2344,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                 const unitPrice = Number(selected?.price || 0);
 
                                 return (
-                                    <div key={index} className="grid gap-3 md:grid-cols-12">
-                                        <div className="md:col-span-5">
+                                    <div key={index} className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3 lg:grid-cols-12">
+                                        <div className="lg:col-span-5">
                                             <SearchableSelect
                                                 label="Service"
                                                 value={row.service_id}
@@ -2355,7 +2355,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             />
                                             {fieldError(completeForm, `additional_services.${index}.service_id`)}
                                         </div>
-                                        <div className="md:col-span-3">
+                                        <div className="lg:col-span-3">
                                             <SearchableSelect
                                                 label="Staff"
                                                 value={row.staff_profile_id}
@@ -2365,16 +2365,18 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             />
                                             {fieldError(completeForm, `additional_services.${index}.staff_profile_id`)}
                                         </div>
-                                        <div className="md:col-span-2">
-                                            <label className="ta-field-label">Qty</label>
-                                            <input className="ta-input" type="number" min="1" value={row.quantity} onChange={(e) => updateAdditionalServiceRow(index, 'quantity', e.target.value)} />
-                                            {fieldError(completeForm, `additional_services.${index}.quantity`)}
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="ta-field-label">Amount</label>
-                                            <div className="flex gap-2">
-                                                <div className="ta-input flex items-center">{formatMoney(unitPrice * quantity, currencyCode)}</div>
-                                                <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" onClick={() => removeAdditionalServiceRow(index)}>Remove</button>
+                                        <div className="grid gap-3 sm:grid-cols-2 lg:col-span-4 lg:grid-cols-1 xl:grid-cols-2">
+                                            <div>
+                                                <label className="ta-field-label">Qty</label>
+                                                <input className="ta-input" type="number" min="1" value={row.quantity} onChange={(e) => updateAdditionalServiceRow(index, 'quantity', e.target.value)} />
+                                                {fieldError(completeForm, `additional_services.${index}.quantity`)}
+                                            </div>
+                                            <div>
+                                                <label className="ta-field-label">Amount</label>
+                                                <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                                                    <div className="ta-input flex min-h-[38px] items-center whitespace-nowrap">{formatMoney(unitPrice * quantity, currencyCode)}</div>
+                                                    <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" onClick={() => removeAdditionalServiceRow(index)}>Remove</button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

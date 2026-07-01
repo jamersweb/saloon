@@ -116,7 +116,17 @@ class DashboardController extends Controller
             ],
             'upcomingAppointments' => (clone $appointmentsQuery)
                 ->with(['service:id,name', 'staffProfile.user:id,name'])
-                ->whereBetween('scheduled_start', [$dateFrom, $dateTo])
+                ->when(
+                    $isStaff,
+                    fn ($query) => $query
+                        ->where('scheduled_start', '>=', now()->startOfDay())
+                        ->whereIn('status', [
+                            Appointment::STATUS_PENDING,
+                            Appointment::STATUS_CONFIRMED,
+                            Appointment::STATUS_IN_PROGRESS,
+                        ]),
+                    fn ($query) => $query->whereBetween('scheduled_start', [$dateFrom, $dateTo])
+                )
                 ->orderBy('scheduled_start')
                 ->limit(12)
                 ->get()
