@@ -199,7 +199,6 @@
         <div class="footer-links">
             <a href="{{ route('public.privacy-policy') }}" target="_blank" rel="noreferrer">Privacy Policy</a>
             <a href="{{ route('public.terms-of-service') }}" target="_blank" rel="noreferrer">Terms of Service</a>
-            <a href="{{ route('login') }}">Staff login</a>
         </div>
     </div>
 </div>

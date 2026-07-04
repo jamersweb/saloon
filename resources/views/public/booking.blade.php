@@ -32,10 +32,6 @@
                 <textarea class="border rounded p-2 md:col-span-2" name="notes" placeholder="Notes"></textarea>
                 <button class="bg-indigo-600 text-white rounded px-4 py-2 md:col-span-2">Submit Booking</button>
             </form>
-
-            <div class="text-sm">
-                <a href="{{ route('login') }}" class="text-indigo-600">Staff login</a>
-            </div>
         </div>
     </div>
 </body>
