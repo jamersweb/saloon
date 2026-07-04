@@ -85,5 +85,42 @@
         </p>
     </div>
 </div>
+<script>
+(function () {
+    const postHeightToParent = function () {
+        if (window.parent === window) return;
+        const body = document.body;
+        const doc = document.documentElement;
+        const height = Math.max(
+            body ? body.scrollHeight : 0,
+            body ? body.offsetHeight : 0,
+            doc ? doc.clientHeight : 0,
+            doc ? doc.scrollHeight : 0,
+            doc ? doc.offsetHeight : 0
+        );
+
+        window.parent.postMessage({
+            type: 'vina-booking-resize',
+            height: height,
+        }, '*');
+    };
+
+    if ('ResizeObserver' in window) {
+        const resizeObserver = new ResizeObserver(function () {
+            postHeightToParent();
+        });
+
+        resizeObserver.observe(document.body);
+    } else {
+        window.addEventListener('resize', postHeightToParent);
+        setInterval(postHeightToParent, 500);
+    }
+
+    window.addEventListener('load', postHeightToParent);
+    window.addEventListener('pageshow', postHeightToParent);
+    requestAnimationFrame(postHeightToParent);
+    setTimeout(postHeightToParent, 150);
+})();
+</script>
 </body>
 </html>

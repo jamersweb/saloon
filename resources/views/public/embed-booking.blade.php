@@ -214,6 +214,24 @@
 @endphp
 <script>
 (function () {
+    const postHeightToParent = function () {
+        if (window.parent === window) return;
+        const body = document.body;
+        const doc = document.documentElement;
+        const height = Math.max(
+            body ? body.scrollHeight : 0,
+            body ? body.offsetHeight : 0,
+            doc ? doc.clientHeight : 0,
+            doc ? doc.scrollHeight : 0,
+            doc ? doc.offsetHeight : 0
+        );
+
+        window.parent.postMessage({
+            type: 'vina-booking-resize',
+            height: height,
+        }, '*');
+    };
+
     const pad2 = function (value) { return String(value).padStart(2, '0'); };
     const localYmd = function (d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
     const addDaysLocalYmd = function (dateYmd, days) {
@@ -336,6 +354,22 @@
     document.getElementById('embed-booking-form').addEventListener('submit', function () {
         document.getElementById('embed-submit').disabled = true;
     });
+
+    if ('ResizeObserver' in window) {
+        const resizeObserver = new ResizeObserver(function () {
+            postHeightToParent();
+        });
+
+        resizeObserver.observe(document.body);
+    } else {
+        window.addEventListener('resize', postHeightToParent);
+        setInterval(postHeightToParent, 500);
+    }
+
+    window.addEventListener('load', postHeightToParent);
+    window.addEventListener('pageshow', postHeightToParent);
+    requestAnimationFrame(postHeightToParent);
+    setTimeout(postHeightToParent, 150);
 })();
 </script>
 </body>

@@ -30,7 +30,8 @@ use App\Http\Controllers\TaxInvoiceController;
 use App\Http\Controllers\WhatsAppWebhookController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', [PublicBookingController::class, 'create'])->name('public.booking');
+Route::redirect('/', '/login');
+Route::get('/book', [PublicBookingController::class, 'create'])->name('public.booking');
 Route::get('/privacy-policy', [PublicBookingController::class, 'privacyPolicy'])->name('public.privacy-policy');
 Route::get('/terms-of-service', [PublicBookingController::class, 'termsOfService'])->name('public.terms-of-service');
 Route::post('/book', [PublicBookingController::class, 'store'])->name('public.booking.store');
@@ -222,6 +223,12 @@ Route::middleware('auth')->group(function () {
             Route::put('/expenses/{expense}', [ExpenseEntryController::class, 'update'])->name('expenses.update');
             Route::delete('/expenses/{expense}', [ExpenseEntryController::class, 'destroy'])->name('expenses.destroy');
             Route::patch('/expenses/{expense}/mark-paid', [ExpenseEntryController::class, 'markPaid'])->name('expenses.mark-paid');
+            Route::patch('/expenses/{expense}/approval', [ExpenseEntryController::class, 'updateApproval'])->name('expenses.approval.update');
+            Route::post('/expenses/petty-cash/issue', [ExpenseEntryController::class, 'issuePettyCash'])->name('expenses.petty-cash.issue');
+            Route::post('/expenses/petty-cash/close', [ExpenseEntryController::class, 'closePettyCash'])->name('expenses.petty-cash.close');
+            Route::get('/expenses/petty-cash/export', [ExpenseEntryController::class, 'exportPettyCash'])->name('expenses.petty-cash.export');
+            Route::get('/expenses/petty-cash/pdf', [ExpenseEntryController::class, 'pdfPettyCash'])->name('expenses.petty-cash.pdf');
+            Route::get('/expenses/petty-cash/print', [ExpenseEntryController::class, 'printPettyCash'])->name('expenses.petty-cash.print');
 
             Route::get('/payroll', [PayrollPeriodController::class, 'index'])->name('payroll.index');
             Route::post('/payroll', [PayrollPeriodController::class, 'store'])->name('payroll.store');

@@ -63,6 +63,21 @@ class StaffProfile extends Model
         return $this->hasMany(LeaveRequest::class);
     }
 
+    public function expenseEntries(): HasMany
+    {
+        return $this->hasMany(ExpenseEntry::class);
+    }
+
+    public function pettyCashEntries(): HasMany
+    {
+        return $this->hasMany(PettyCashEntry::class);
+    }
+
+    public function pettyCashClosings(): HasMany
+    {
+        return $this->hasMany(PettyCashClosing::class);
+    }
+
     public function scopeAssignableToServices(Builder $query): Builder
     {
         return $query->whereDoesntHave('user', function (Builder $userQuery): void {

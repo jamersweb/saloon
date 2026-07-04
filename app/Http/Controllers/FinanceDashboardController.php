@@ -79,6 +79,7 @@ class FinanceDashboardController extends Controller
 
         $accountsPayableExpenses = ExpenseEntry::query()
             ->where('payment_status', ExpenseEntry::STATUS_UNPAID)
+            ->with('staffProfile.user:id,name')
             ->orderBy('expense_date')
             ->limit(50)
             ->get()
@@ -86,7 +87,7 @@ class FinanceDashboardController extends Controller
                 'id' => $e->id,
                 'type' => 'expense',
                 'reference' => 'EXP-'.$e->id,
-                'vendor' => $e->vendor_name ?? $e->category,
+                'vendor' => $e->vendor_name ?? ($e->staffProfile?->user?->name ?? $e->category),
                 'due_date' => $e->expense_date->toDateString(),
                 'amount' => (float) $e->total_amount,
             ])
@@ -189,7 +190,7 @@ class FinanceDashboardController extends Controller
 
         return response()->streamDownload(function () use ($invoices, $payments, $expenses) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Section', 'Date', 'Reference', 'Party', 'Subtotal', 'VAT', 'Total', 'Method / Status']);
+            fputcsv($out, ['Section', 'Date', 'Reference', 'Party', 'Expense Type', 'Subcategory', 'Subtotal', 'VAT', 'Total', 'Method / Status']);
 
             foreach ($invoices as $inv) {
                 fputcsv($out, [
@@ -197,6 +198,8 @@ class FinanceDashboardController extends Controller
                     optional($inv->issued_at)?->format('Y-m-d H:i:s'),
                     $inv->invoice_number,
                     $inv->customer_display_name,
+                    '',
+                    '',
                     $inv->subtotal,
                     $inv->vat_amount,
                     $inv->total,
@@ -212,6 +215,8 @@ class FinanceDashboardController extends Controller
                     $pay->taxInvoice?->customer_display_name,
                     '',
                     '',
+                    '',
+                    '',
                     $pay->amount,
                     $pay->method,
                 ]);
@@ -223,6 +228,8 @@ class FinanceDashboardController extends Controller
                     $ex->expense_date->format('Y-m-d'),
                     'EXP-'.$ex->id,
                     $ex->vendor_name ?? $ex->category,
+                    $ex->expense_type,
+                    $ex->expense_subcategory,
                     $ex->amount_subtotal,
                     $ex->vat_amount,
                     $ex->total_amount,
