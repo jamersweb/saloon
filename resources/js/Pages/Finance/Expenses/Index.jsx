@@ -34,6 +34,7 @@ export default function FinanceExpensesIndex({
     const { flash, auth } = usePage().props;
     const [deleteExpenseId, setDeleteExpenseId] = useState(null);
     const [deleteExpenseBusy, setDeleteExpenseBusy] = useState(false);
+    const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState(null);
 
     const typeOptions = Object.entries(expenseTypes);
@@ -99,6 +100,60 @@ export default function FinanceExpensesIndex({
         date_to: filters.date_to,
         ...(filters.staff_profile_id ? { staff_profile_id: filters.staff_profile_id } : {}),
     }).toString();
+
+    const selectedClosingBalance = useMemo(
+        () =>
+            pettyCash.balances.find((row) =>
+                pettyCashCloseForm.data.staff_profile_id === ''
+                    ? row.staff_profile_id == null
+                    : String(row.staff_profile_id) === pettyCashCloseForm.data.staff_profile_id,
+            ) || null,
+        [pettyCash.balances, pettyCashCloseForm.data.staff_profile_id],
+    );
+
+    const expectedClosingBalance = Number(selectedClosingBalance?.balance || 0);
+    const countedClosingBalance = Number(pettyCashCloseForm.data.counted_closing_balance || 0);
+    const closingVariance = countedClosingBalance - expectedClosingBalance;
+    const selectedClosingCustodian = selectedClosingBalance?.custodian || 'General fund';
+
+    const selectedCustodianSnapshot = useMemo(() => {
+        const selectedId = pettyCashCloseForm.data.staff_profile_id;
+        const sameCustodian = (row) =>
+            selectedId === '' ? row.staff_profile_id == null : String(row.staff_profile_id) === selectedId;
+
+        return pettyCash.recent_entries.reduce(
+            (totals, row) => {
+                if (!sameCustodian(row)) {
+                    return totals;
+                }
+
+                const amount = Number(row.amount || 0);
+
+                if (row.direction === 'in') {
+                    totals.issued += amount;
+                } else {
+                    totals.deducted += amount;
+                }
+
+                return totals;
+            },
+            {
+                issued: 0,
+                deducted: 0,
+                remaining: expectedClosingBalance,
+            },
+        );
+    }, [expectedClosingBalance, pettyCash.recent_entries, pettyCashCloseForm.data.staff_profile_id]);
+
+    const submitPettyCashClose = () => {
+        pettyCashCloseForm.post(route('finance.expenses.petty-cash.close'), {
+            onSuccess: () => {
+                pettyCashCloseForm.reset('counted_closing_balance', 'notes');
+                setCloseConfirmOpen(false);
+            },
+            onError: () => setCloseConfirmOpen(false),
+        });
+    };
 
     const startEdit = (row) => {
         setEditingExpense(row);
@@ -185,40 +240,70 @@ export default function FinanceExpensesIndex({
                     </div>
                 </section>
 
-                <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-                    <div className="ta-card p-5">
-                        <div className="mb-4 flex items-start justify-between gap-3">
-                            <div>
-                                <h3 className="text-sm font-semibold text-slate-700">Petty cash</h3>
-                                <p className="mt-1 text-xs text-slate-500">Issue cash to a custodian and automatically deduct approved petty-cash expenses from that balance.</p>
+                <section className="ta-card p-5">
+                    <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="max-w-2xl">
+                            <h3 className="text-base font-semibold text-slate-800">Petty cash workspace</h3>
+                            <p className="mt-1 text-sm text-slate-500">
+                                Manage the full day here: issue cash, review live custodian balances, check recent movements, then close and sign off with the final counted amount.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch xl:max-w-xl xl:justify-end">
+                            <div className="rounded-2xl bg-indigo-50 px-5 py-4 sm:min-w-[220px]">
+                                <p className="text-[11px] uppercase tracking-[0.18em] text-indigo-600">Total balance</p>
+                                <p className="mt-2 text-3xl font-semibold text-indigo-950">{money(pettyCash.total_balance)}</p>
+                                <p className="mt-1 text-xs text-indigo-700">Available across general fund and all custodians.</p>
                             </div>
-                            <div className="flex flex-wrap items-start justify-end gap-2">
-                                <a href={`${route('finance.expenses.petty-cash.export')}?${pettyCashReportParams}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">
+                            <div className="grid gap-2 sm:min-w-[220px]">
+                                <a href={`${route('finance.expenses.petty-cash.export')}?${pettyCashReportParams}`} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-700">
                                     Export closing CSV
                                 </a>
-                                <a href={`${route('finance.expenses.petty-cash.pdf')}?${pettyCashReportParams}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">
+                                <a href={`${route('finance.expenses.petty-cash.pdf')}?${pettyCashReportParams}`} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-700">
                                     Download PDF
                                 </a>
-                                <a href={`${route('finance.expenses.petty-cash.print')}?${pettyCashReportParams}`} target="_blank" rel="noreferrer" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">
+                                <a href={`${route('finance.expenses.petty-cash.print')}?${pettyCashReportParams}`} target="_blank" rel="noreferrer" className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-700">
                                     Print closing
                                 </a>
-                                <div className="rounded-2xl bg-indigo-50 px-4 py-3 text-right">
-                                    <p className="text-[11px] uppercase tracking-wide text-indigo-600">Total balance</p>
-                                    <p className="mt-1 text-xl font-semibold text-indigo-900">{money(pettyCash.total_balance)}</p>
-                                </div>
                             </div>
                         </div>
-                        <div className="grid gap-4 lg:grid-cols-3">
-                            <form
-                                className="space-y-3 rounded-2xl border border-slate-200 p-4"
-                                onSubmit={(e) => {
-                                    e.preventDefault();
-                                    pettyCashIssueForm.post(route('finance.expenses.petty-cash.issue'), {
-                                        onSuccess: () => pettyCashIssueForm.reset('staff_profile_id', 'amount', 'notes'),
-                                    });
-                                }}
-                            >
-                                <h4 className="text-sm font-semibold text-slate-700">Issue petty cash</h4>
+                    </div>
+
+                    <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Selected custodian</p>
+                            <p className="mt-2 text-lg font-semibold text-slate-900">{selectedClosingCustodian}</p>
+                            <p className="mt-1 text-xs text-slate-500">Snapshot uses the custodian selected in the closing panel.</p>
+                        </div>
+                        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-emerald-700">Issued today</p>
+                            <p className="mt-2 text-2xl font-semibold text-emerald-900">{money(selectedCustodianSnapshot.issued)}</p>
+                        </div>
+                        <div className="rounded-3xl border border-amber-200 bg-amber-50 px-4 py-4">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-amber-700">Deducted today</p>
+                            <p className="mt-2 text-2xl font-semibold text-amber-900">{money(selectedCustodianSnapshot.deducted)}</p>
+                        </div>
+                        <div className="rounded-3xl border border-indigo-200 bg-indigo-50 px-4 py-4">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-indigo-700">Remaining now</p>
+                            <p className="mt-2 text-2xl font-semibold text-indigo-950">{money(selectedCustodianSnapshot.remaining)}</p>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-5 xl:grid-cols-12">
+                        <form
+                            className="space-y-4 rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm xl:col-span-4"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                pettyCashIssueForm.post(route('finance.expenses.petty-cash.issue'), {
+                                    onSuccess: () => pettyCashIssueForm.reset('staff_profile_id', 'amount', 'notes'),
+                                });
+                            }}
+                        >
+                            <div>
+                                <span className="inline-flex rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">Funding</span>
+                                <h4 className="mt-3 text-base font-semibold text-slate-800">1. Issue petty cash</h4>
+                                <p className="mt-1 text-xs text-slate-500">Create an opening balance, top-up, or event float for a staff custodian or the general fund.</p>
+                            </div>
+                            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                                 <div>
                                     <label className="ta-field-label">Custodian</label>
                                     <select className="ta-input" value={pettyCashIssueForm.data.staff_profile_id} onChange={(e) => pettyCashIssueForm.setData('staff_profile_id', e.target.value)}>
@@ -242,34 +327,111 @@ export default function FinanceExpensesIndex({
                                     <label className="ta-field-label">Notes</label>
                                     <input className="ta-input" value={pettyCashIssueForm.data.notes} onChange={(e) => pettyCashIssueForm.setData('notes', e.target.value)} placeholder="Opening cash, top-up, event float..." />
                                 </div>
-                                <button type="submit" className="ta-btn-primary" disabled={pettyCashIssueForm.processing}>
-                                    Issue cash
-                                </button>
-                            </form>
+                            </div>
+                            <button type="submit" className="ta-btn-primary" disabled={pettyCashIssueForm.processing}>
+                                Issue cash
+                            </button>
+                        </form>
 
-                            <div className="rounded-2xl border border-slate-200 p-4">
-                                <h4 className="mb-3 text-sm font-semibold text-slate-700">Balances by custodian</h4>
+                        <div className="grid gap-5 xl:col-span-4">
+                            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div className="mb-3">
+                                    <span className="inline-flex rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-700">Live balance</span>
+                                    <h4 className="text-base font-semibold text-slate-800">2. Balances by custodian</h4>
+                                    <p className="mt-1 text-xs text-slate-500">This should match what each person is holding before you close the day.</p>
+                                </div>
                                 <div className="space-y-2">
                                     {pettyCash.balances.map((row) => (
-                                        <div key={`${row.custodian}-${row.staff_profile_id ?? 'general'}`} className="flex items-center justify-between border-b border-slate-100 py-2 text-sm">
-                                            <span className="text-slate-600">{row.custodian}</span>
-                                            <span className={`font-semibold ${row.balance < 0 ? 'text-rose-700' : 'text-slate-900'}`}>{money(row.balance)}</span>
+                                        <div key={`${row.custodian}-${row.staff_profile_id ?? 'general'}`} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-3 text-sm">
+                                            <span className="font-medium text-slate-700">{row.custodian}</span>
+                                            <span className={`text-base font-semibold ${row.balance < 0 ? 'text-rose-700' : 'text-slate-900'}`}>{money(row.balance)}</span>
                                         </div>
                                     ))}
                                     {pettyCash.balances.length === 0 && <p className="text-sm text-slate-500">No petty-cash balances yet.</p>}
                                 </div>
                             </div>
 
-                            <form
-                                className="space-y-3 rounded-2xl border border-slate-200 p-4"
-                                onSubmit={(e) => {
-                                    e.preventDefault();
-                                    pettyCashCloseForm.post(route('finance.expenses.petty-cash.close'), {
-                                        onSuccess: () => pettyCashCloseForm.reset('counted_closing_balance', 'notes'),
-                                    });
-                                }}
-                            >
-                                <h4 className="text-sm font-semibold text-slate-700">Close & sign off</h4>
+                            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div className="mb-3">
+                                    <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">Review</span>
+                                    <h4 className="text-base font-semibold text-slate-800">3. Recent movements</h4>
+                                    <p className="mt-1 text-xs text-slate-500">Quick review of the latest issues, deductions, and adjustments before sign-off.</p>
+                                </div>
+                                <div className="overflow-hidden rounded-2xl border border-slate-100">
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-sm">
+                                            <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                                                <tr>
+                                                    <th className="px-3 py-2">Date</th>
+                                                    <th className="px-3 py-2">Type</th>
+                                                    <th className="px-3 py-2">Custodian</th>
+                                                    <th className="px-3 py-2 text-right">Amount</th>
+                                                    <th className="px-3 py-2">Notes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {pettyCash.recent_entries.map((row) => (
+                                                    <tr key={row.id} className="border-t border-slate-100 align-top">
+                                                        <td className="px-3 py-2 text-slate-600">{row.transaction_date}</td>
+                                                        <td className="px-3 py-2">
+                                                            <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${row.direction === 'in' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                                                {row.transaction_type === 'issue' ? 'Issue' : 'Expense'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3 py-2 text-slate-700">{row.custodian}</td>
+                                                        <td className={`px-3 py-2 text-right font-semibold ${row.direction === 'in' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                            {row.direction === 'in' ? '+' : '-'}{money(row.amount)}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-xs text-slate-500">
+                                                            {row.expense_subcategory ? `${subcategoryLabels[row.expense_subcategory] || row.expense_subcategory} · ` : ''}
+                                                            {row.notes || '-'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {pettyCash.recent_entries.length === 0 && <p className="p-3 text-sm text-slate-500">No petty-cash movements recorded yet.</p>}
+                                </div>
+                            </div>
+                        </div>
+
+                        <form
+                            className="space-y-4 rounded-3xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-5 shadow-sm xl:col-span-4"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                setCloseConfirmOpen(true);
+                            }}
+                        >
+                            <div>
+                                <span className="inline-flex rounded-full bg-rose-600 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">Closing</span>
+                                <h4 className="mt-3 text-base font-semibold text-slate-800">4. Close & sign off</h4>
+                                <p className="mt-1 text-xs text-slate-500">Enter the counted cash, record any variance, and lock that day from further petty-cash changes.</p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Expected</p>
+                                    <p className="mt-1 text-lg font-semibold text-slate-900">{money(expectedClosingBalance)}</p>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Counted</p>
+                                    <p className="mt-1 text-lg font-semibold text-slate-900">{money(countedClosingBalance)}</p>
+                                </div>
+                                <div className={`rounded-2xl border px-4 py-3 ${closingVariance === 0 ? 'border-emerald-200 bg-emerald-50' : closingVariance > 0 ? 'border-amber-200 bg-amber-50' : 'border-rose-200 bg-rose-50'}`}>
+                                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Variance</p>
+                                    <p className={`mt-1 text-lg font-semibold ${closingVariance === 0 ? 'text-emerald-700' : closingVariance > 0 ? 'text-amber-700' : 'text-rose-700'}`}>
+                                        {closingVariance > 0 ? '+' : ''}{money(closingVariance)}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className={`rounded-2xl border px-4 py-3 text-sm ${closingVariance === 0 ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : closingVariance > 0 ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>
+                                {closingVariance === 0
+                                    ? 'Counted cash matches the expected balance for this custodian.'
+                                    : closingVariance > 0
+                                      ? 'Counted cash is higher than expected. This will create a positive variance adjustment.'
+                                      : 'Counted cash is lower than expected. This will create a shortage variance adjustment.'}
+                            </div>
+                            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                                 <div>
                                     <label className="ta-field-label">Custodian</label>
                                     <select className="ta-input" value={pettyCashCloseForm.data.staff_profile_id} onChange={(e) => pettyCashCloseForm.setData('staff_profile_id', e.target.value)}>
@@ -293,39 +455,15 @@ export default function FinanceExpensesIndex({
                                     <label className="ta-field-label">Signed off by</label>
                                     <input className="ta-input" value={pettyCashCloseForm.data.signed_off_name} onChange={(e) => pettyCashCloseForm.setData('signed_off_name', e.target.value)} />
                                 </div>
-                                <div>
+                                <div className="sm:col-span-2 xl:col-span-1 2xl:col-span-2">
                                     <label className="ta-field-label">Notes</label>
                                     <input className="ta-input" value={pettyCashCloseForm.data.notes} onChange={(e) => pettyCashCloseForm.setData('notes', e.target.value)} placeholder="Variance explanation or closing comments" />
                                 </div>
-                                <button type="submit" className="ta-btn-primary" disabled={pettyCashCloseForm.processing}>
-                                    Close day
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-
-                    <div className="ta-card p-5">
-                        <h3 className="mb-3 text-sm font-semibold text-slate-700">Recent petty-cash movements</h3>
-                        <div className="space-y-2">
-                            {pettyCash.recent_entries.map((row) => (
-                                <div key={row.id} className="rounded-xl border border-slate-100 p-3">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="text-sm font-medium text-slate-800">{row.transaction_type === 'issue' ? 'Cash issued' : 'Expense deducted'}</p>
-                                            <p className="mt-1 text-xs text-slate-500">
-                                                {row.transaction_date} • {row.custodian}
-                                            </p>
-                                            {row.expense_subcategory && <p className="mt-1 text-xs text-slate-500">{subcategoryLabels[row.expense_subcategory] || row.expense_subcategory}</p>}
-                                            {row.notes && <p className="mt-1 text-xs text-slate-500">{row.notes}</p>}
-                                        </div>
-                                        <div className={`text-sm font-semibold ${row.direction === 'in' ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                            {row.direction === 'in' ? '+' : '-'}{money(row.amount)}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                            {pettyCash.recent_entries.length === 0 && <p className="text-sm text-slate-500">No petty-cash movements recorded yet.</p>}
-                        </div>
+                            </div>
+                            <button type="submit" className="ta-btn-primary" disabled={pettyCashCloseForm.processing}>
+                                Review and close day
+                            </button>
+                        </form>
                     </div>
                 </section>
 
@@ -699,6 +837,15 @@ export default function FinanceExpensesIndex({
                             },
                         });
                     }}
+                />
+                <ConfirmActionModal
+                    show={closeConfirmOpen}
+                    title="Close petty-cash day?"
+                    message={`Custodian: ${selectedClosingCustodian}\nExpected: ${money(expectedClosingBalance)}\nCounted: ${money(countedClosingBalance)}\nVariance: ${closingVariance > 0 ? '+' : ''}${money(closingVariance)}`}
+                    confirmText="Confirm closing"
+                    onClose={() => !pettyCashCloseForm.processing && setCloseConfirmOpen(false)}
+                    processing={pettyCashCloseForm.processing}
+                    onConfirm={submitPettyCashClose}
                 />
             </div>
         </AuthenticatedLayout>
