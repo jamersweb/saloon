@@ -77,11 +77,91 @@
             background: #fff;
             color: #3d2b28;
         }
-        #service_ids { min-height: 7rem; }
         textarea { min-height: 3.9rem; resize: vertical; }
         input:focus, select:focus, textarea:focus {
             outline: 2px solid rgba(163, 104, 104, 0.35);
             outline-offset: 1px;
+        }
+        .multi-select {
+            position: relative;
+        }
+        .multi-select-toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            font-family: system-ui, sans-serif;
+            font-size: 0.82rem;
+            padding: 0.6rem 0.7rem;
+            border: 1px solid #d4cfcb;
+            border-radius: 8px;
+            background: #fff;
+            color: #3d2b28;
+            cursor: pointer;
+            text-align: left;
+        }
+        .multi-select-toggle:focus {
+            outline: 2px solid rgba(163, 104, 104, 0.35);
+            outline-offset: 1px;
+        }
+        .multi-select-summary {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .multi-select-caret {
+            font-size: 0.72rem;
+            color: #6b534d;
+            flex: 0 0 auto;
+        }
+        .multi-select-panel {
+            position: absolute;
+            top: calc(100% + 0.35rem);
+            left: 0;
+            right: 0;
+            z-index: 20;
+            display: none;
+            border: 1px solid #d4cfcb;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 12px 28px rgba(61, 43, 40, 0.12);
+            overflow: hidden;
+        }
+        .multi-select.open .multi-select-panel {
+            display: block;
+        }
+        .multi-select-options {
+            max-height: 13rem;
+            overflow-y: auto;
+            padding: 0.35rem;
+        }
+        .multi-select-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.6rem;
+            padding: 0.5rem 0.55rem;
+            border-radius: 8px;
+            font-family: system-ui, sans-serif;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .multi-select-option:hover {
+            background: #f7f4f2;
+        }
+        .multi-select-option input {
+            width: auto;
+            margin-top: 0.1rem;
+        }
+        .multi-select-option-text {
+            line-height: 1.4;
+        }
+        .multi-select-helper {
+            padding: 0.55rem 0.75rem 0.7rem;
+            border-top: 1px solid #eee6e2;
+            font-family: system-ui, sans-serif;
+            font-size: 0.72rem;
+            color: #6b534d;
         }
         button[type="submit"] {
             font-family: system-ui, sans-serif;
@@ -141,13 +221,40 @@
             </div>
             <div class="field">
                 <label for="service_ids">Services</label>
-                <select id="service_ids" name="service_ids[]" multiple required size="6">
-                    @foreach ($services as $service)
-                        <option value="{{ $service->id }}" @selected(in_array((string) $service->id, array_map('strval', old('service_ids', [])), true))>
-                            {{ $service->name }} ({{ $service->duration_minutes }} min) - {{ number_format((float) $service->price, 2) }}
-                        </option>
-                    @endforeach
-                </select>
+                <div class="multi-select" id="service-multi-select">
+                    <button type="button" class="multi-select-toggle" id="service-multi-toggle" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="multi-select-summary" id="service-multi-summary">Select one or more services</span>
+                        <span class="multi-select-caret">▼</span>
+                    </button>
+                    <div class="multi-select-panel" id="service-multi-panel">
+                        <div class="multi-select-options">
+                            @foreach ($services as $service)
+                                @php
+                                    $selected = in_array((string) $service->id, array_map('strval', old('service_ids', [])), true);
+                                @endphp
+                                <label class="multi-select-option">
+                                    <input
+                                        type="checkbox"
+                                        class="service-choice"
+                                        value="{{ $service->id }}"
+                                        @checked($selected)
+                                    >
+                                    <span class="multi-select-option-text">
+                                        {{ $service->name }} ({{ $service->duration_minutes }} min) - {{ number_format((float) $service->price, 2) }}
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+                        <div class="multi-select-helper">You can choose multiple services.</div>
+                    </div>
+                    <select id="service_ids" name="service_ids[]" multiple required hidden>
+                        @foreach ($services as $service)
+                            <option value="{{ $service->id }}" @selected(in_array((string) $service->id, array_map('strval', old('service_ids', [])), true))>
+                                {{ $service->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
             <div class="field">
                 <label for="scheduled_start">Scheduled Start</label>
@@ -299,8 +406,66 @@
     const defaultStart = @json($defaultStart);
     const input = document.getElementById('scheduled_start');
     if (!input) return;
+    const serviceSelect = document.getElementById('service_ids');
+    const serviceMulti = document.getElementById('service-multi-select');
+    const serviceToggle = document.getElementById('service-multi-toggle');
+    const serviceSummary = document.getElementById('service-multi-summary');
+    const serviceChoices = Array.prototype.slice.call(document.querySelectorAll('.service-choice'));
 
     const slotIntervalMinutes = Math.max(1, Number(bookingRules.slot_interval_minutes || 30));
+
+    function syncServiceSummary() {
+        if (!serviceSelect || !serviceSummary) return;
+        const selectedLabels = Array.prototype.slice.call(serviceSelect.options)
+            .filter(function (option) { return option.selected; })
+            .map(function (option) { return option.text; });
+
+        if (selectedLabels.length === 0) {
+            serviceSummary.textContent = 'Select one or more services';
+            return;
+        }
+
+        if (selectedLabels.length === 1) {
+            serviceSummary.textContent = selectedLabels[0];
+            return;
+        }
+
+        serviceSummary.textContent = selectedLabels.length + ' services selected';
+    }
+
+    function syncServiceSelectFromChoices() {
+        if (!serviceSelect) return;
+        const chosenValues = serviceChoices
+            .filter(function (choice) { return choice.checked; })
+            .map(function (choice) { return String(choice.value); });
+
+        Array.prototype.slice.call(serviceSelect.options).forEach(function (option) {
+            option.selected = chosenValues.indexOf(String(option.value)) !== -1;
+        });
+
+        syncServiceSummary();
+    }
+
+    if (serviceMulti && serviceToggle && serviceSelect) {
+        serviceToggle.addEventListener('click', function () {
+            const willOpen = !serviceMulti.classList.contains('open');
+            serviceMulti.classList.toggle('open', willOpen);
+            serviceToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        });
+
+        serviceChoices.forEach(function (choice) {
+            choice.addEventListener('change', syncServiceSelectFromChoices);
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!serviceMulti.contains(event.target)) {
+                serviceMulti.classList.remove('open');
+                serviceToggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        syncServiceSummary();
+    }
 
     function refreshBounds() {
         const value = input.value || defaultStart || '';
