@@ -13,49 +13,28 @@
             color: #3d2b28;
         }
         .embed-shell {
-            max-width: 40rem;
+            max-width: 36rem;
             margin: 0 auto;
-            padding: 1.75rem clamp(1.25rem, 4vw, 2.5rem) 2.5rem;
+            padding: 2.5rem 1rem;
         }
         .card {
             background: #fff;
-            border-radius: 12px;
-            padding: clamp(1.25rem, 3vw, 2rem) clamp(1.25rem, 3vw, 2rem);
-            box-shadow: 0 1px 3px rgba(61, 43, 40, 0.08);
-        }
-        .brand {
-            text-align: center;
-            margin-bottom: 1.5rem;
-        }
-        .brand img {
-            display: block;
-            margin: 0 auto;
-            max-width: min(18rem, 100%);
-            height: auto;
-        }
-        .tagline {
-            font-family: system-ui, sans-serif;
-            font-size: 0.65rem;
-            letter-spacing: 0.08em;
-            color: #6b534d;
-            margin: 0.75rem 0 0;
-            line-height: 1.45;
-            max-width: 28rem;
-            margin-left: auto;
-            margin-right: auto;
+            border-radius: 18px;
+            padding: 1.65rem;
+            box-shadow: 0 8px 28px rgba(61, 43, 40, 0.08);
         }
         h1 {
-            font-size: 1.65rem;
+            font-size: 1.1rem;
             font-weight: 700;
             margin: 0 0 0.75rem;
             text-align: center;
         }
         .intro {
             font-family: system-ui, sans-serif;
-            font-size: 0.8rem;
+            font-size: 0.7rem;
             line-height: 1.55;
             color: #6b534d;
-            margin: 0 0 1.5rem;
+            margin: 0 0 1.25rem;
             text-align: center;
         }
         .errors {
@@ -69,7 +48,7 @@
         }
         form {
             display: grid;
-            gap: 1rem;
+            gap: 0.9rem;
         }
         @media (min-width: 36rem) {
             form.cols-2 {
@@ -80,41 +59,42 @@
         label {
             display: block;
             font-family: system-ui, sans-serif;
-            font-size: 0.65rem;
+            font-size: 0.62rem;
             font-weight: 600;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             color: #3d2b28;
-            margin-bottom: 0.35rem;
+            margin-bottom: 0.3rem;
         }
         .field { min-width: 0; }
         input, select, textarea {
             width: 100%;
             font-family: system-ui, sans-serif;
-            font-size: 0.95rem;
-            padding: 0.65rem 0.75rem;
+            font-size: 0.82rem;
+            padding: 0.6rem 0.7rem;
             border: 1px solid #d4cfcb;
             border-radius: 8px;
             background: #fff;
             color: #3d2b28;
         }
-        textarea { min-height: 5rem; resize: vertical; }
+        #service_ids { min-height: 7rem; }
+        textarea { min-height: 3.9rem; resize: vertical; }
         input:focus, select:focus, textarea:focus {
             outline: 2px solid rgba(163, 104, 104, 0.35);
             outline-offset: 1px;
         }
         button[type="submit"] {
             font-family: system-ui, sans-serif;
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 600;
             width: 100%;
             border: none;
             border-radius: 999px;
-            padding: 0.9rem 1.25rem;
+            padding: 0.85rem 1.25rem;
             background: #a36868;
             color: #fff;
             cursor: pointer;
-            margin-top: 0.25rem;
+            margin-top: 0.2rem;
         }
         button[type="submit"]:hover { background: #8f5a5a; }
         button[type="submit"]:disabled { opacity: 0.65; cursor: not-allowed; }
@@ -122,10 +102,10 @@
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            gap: 1rem;
-            margin-top: 1rem;
+            gap: 1.2rem;
+            margin-top: 0.9rem;
             font-family: system-ui, sans-serif;
-            font-size: 0.85rem;
+            font-size: 0.78rem;
         }
         .footer-links a {
             color: #6b534d;
@@ -137,11 +117,6 @@
 <body>
 <div class="embed-shell">
     <div class="card">
-        <header class="brand">
-            <img src="{{ asset('images/vina-logo.png') }}" alt="Vina">
-            <p class="tagline">A world of endless possibilities in luxury care &amp; beauty services.</p>
-        </header>
-
         <h1>Book Your Appointment</h1>
         <p class="intro">
             Salon hours: {{ $bookingRules->opening_time ?? '09:00' }} to {{ $bookingRules->closing_time ?? '22:00' }} (same day).
@@ -164,10 +139,6 @@
                 <label for="customer_phone">Customer Phone</label>
                 <input id="customer_phone" name="customer_phone" type="tel" placeholder="+971111111111" value="{{ old('customer_phone') }}" required>
             </div>
-            <div class="field span-2">
-                <label for="customer_email">Customer Email</label>
-                <input id="customer_email" name="customer_email" type="email" placeholder="Email" value="{{ old('customer_email') }}">
-            </div>
             <div class="field">
                 <label for="service_ids">Services</label>
                 <select id="service_ids" name="service_ids[]" multiple required size="6">
@@ -178,7 +149,7 @@
                     @endforeach
                 </select>
             </div>
-            <div class="field span-2">
+            <div class="field">
                 <label for="scheduled_start">Scheduled Start</label>
                 <input
                     id="scheduled_start"
