@@ -20,12 +20,12 @@ export default function FinancePayrollIndex({ periods }) {
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
 
                 <Link href={route('finance.index')} className="text-sm text-indigo-600 hover:underline">
-                    ← Finance overview
+                    {'<-'} Finance overview
                 </Link>
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">New payroll period</h3>
-                    <p className="mb-4 text-xs text-slate-500">Generate lines from approved clock-in/out attendance, then adjust and mark paid.</p>
+                    <p className="mb-4 text-xs text-slate-500">Generate salary lines from attendance and staff salary setup, then adjust bonuses, deductions, and net pay.</p>
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
@@ -62,6 +62,7 @@ export default function FinancePayrollIndex({ periods }) {
                                     <th className="px-5 py-3">Range</th>
                                     <th className="px-5 py-3">Status</th>
                                     <th className="px-5 py-3 text-right">Gross</th>
+                                    <th className="px-5 py-3 text-right">Net</th>
                                     <th className="px-5 py-3" />
                                 </tr>
                             </thead>
@@ -69,10 +70,11 @@ export default function FinancePayrollIndex({ periods }) {
                                 {periods.data.map((p) => (
                                     <tr key={p.id} className="border-t border-slate-100">
                                         <td className="px-5 py-3">
-                                            {p.period_start} → {p.period_end}
+                                            {p.period_start} to {p.period_end}
                                         </td>
                                         <td className="px-5 py-3 capitalize">{p.status}</td>
                                         <td className="px-5 py-3 text-right font-medium">{money(p.gross_total)}</td>
+                                        <td className="px-5 py-3 text-right font-medium">{money(p.net_total)}</td>
                                         <td className="px-5 py-3">
                                             <Link href={route('finance.payroll.show', p.id)} className="text-indigo-600 hover:underline">
                                                 Open

@@ -559,6 +559,7 @@ class ExpenseEntryController extends Controller
                 'marketing' => 'Marketing',
                 'maintenance' => 'Maintenance',
                 'professional_fees' => 'Professional fees',
+                'payroll_salary' => 'Payroll salary',
                 'transport' => 'Transport / courier',
                 'other_ops' => 'Other operational',
             ],

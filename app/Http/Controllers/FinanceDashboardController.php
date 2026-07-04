@@ -46,11 +46,9 @@ class FinanceDashboardController extends Controller
             ->sum('total_amount');
 
         $payrollPaid = (float) PayrollLine::query()
-            ->whereHas('payrollPeriod', function ($q) use ($dateFrom, $dateTo) {
-                $q->where('status', 'paid')
-                    ->whereBetween('period_end', [$dateFrom->toDateString(), $dateTo->toDateString()]);
-            })
-            ->sum('gross_amount');
+            ->whereNotNull('paid_at')
+            ->whereBetween('paid_at', [$dateFrom, $dateTo])
+            ->sum('net_amount');
 
         $accountsReceivable = TaxInvoice::query()
             ->where('status', TaxInvoice::STATUS_FINALIZED)

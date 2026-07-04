@@ -23,8 +23,8 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
         per_page: String(filters?.per_page || 10),
     });
 
-    const createForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', password: '', role_id: '' });
-    const editForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', is_active: true, role_id: '', password: '', password_confirmation: '' });
+    const createForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', monthly_salary: '', password: '', role_id: '' });
+    const editForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', monthly_salary: '', is_active: true, role_id: '', password: '', password_confirmation: '' });
 
     useEffect(() => {
         filterForm.setData({
@@ -84,6 +84,7 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
             phone: staff.phone || '',
             skills: (staff.skills || []).join(', '),
             hourly_rate: staff.hourly_rate != null ? String(staff.hourly_rate) : '',
+            monthly_salary: staff.monthly_salary != null ? String(staff.monthly_salary) : '',
             is_active: Boolean(staff.is_active),
             role_id: staff.user?.role_id ? String(staff.user.role_id) : '',
             password: '',
@@ -154,6 +155,7 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
                             createForm.transform((d) => ({
                                 ...d,
                                 hourly_rate: d.hourly_rate === '' ? null : d.hourly_rate,
+                                monthly_salary: d.monthly_salary === '' ? null : d.monthly_salary,
                             }));
                             createForm.post(route('staff.store'), {
                                 onSuccess: () => {
@@ -173,6 +175,7 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
                         <div><label className="ta-field-label">Role</label><select className="ta-input" value={createForm.data.role_id} onChange={(e) => createForm.setData('role_id', e.target.value)} required><option value="">Role</option>{safeRoles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select>{fieldError(createForm, 'role_id')}</div>
                         <div className="md:col-span-2"><label className="ta-field-label">Skills</label><input className="ta-input" placeholder="Comma separated skills" value={createForm.data.skills} onChange={(e) => createForm.setData('skills', e.target.value)} />{fieldError(createForm, 'skills')}</div>
                         <div><label className="ta-field-label">Hourly rate (payroll)</label><input className="ta-input" type="number" min="0" step="0.01" placeholder="Optional" value={createForm.data.hourly_rate} onChange={(e) => createForm.setData('hourly_rate', e.target.value)} />{fieldError(createForm, 'hourly_rate')}</div>
+                        <div><label className="ta-field-label">Monthly salary</label><input className="ta-input" type="number" min="0" step="0.01" placeholder="Optional fixed salary" value={createForm.data.monthly_salary} onChange={(e) => createForm.setData('monthly_salary', e.target.value)} />{fieldError(createForm, 'monthly_salary')}</div>
                         <div><label className="ta-field-label">Optional Password</label><input className="ta-input" placeholder="Optional password" value={createForm.data.password} onChange={(e) => createForm.setData('password', e.target.value)} />{fieldError(createForm, 'password')}</div>
                         <div className="md:col-span-2 xl:col-span-4">
                             <button className="ta-btn-primary" disabled={createForm.processing}>Add Staff</button>
@@ -354,9 +357,10 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
                             onSubmit={(e) => {
                                 e.preventDefault();
                                 editForm.transform((d) => ({
-                                    ...d,
-                                    hourly_rate: d.hourly_rate === '' ? null : d.hourly_rate,
-                                }));
+                                ...d,
+                                hourly_rate: d.hourly_rate === '' ? null : d.hourly_rate,
+                                monthly_salary: d.monthly_salary === '' ? null : d.monthly_salary,
+                            }));
                                 editForm.put(route('staff.update', editingId), {
                                     onSuccess: () => {
                                         setUiError('');
@@ -375,6 +379,7 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
                             <div><label className="ta-field-label">Phone</label><input className="ta-input" value={editForm.data.phone} onChange={(e) => editForm.setData('phone', e.target.value)} />{fieldError(editForm, 'phone')}</div>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label>{fieldError(editForm, 'is_active')}</div>
                             <div><label className="ta-field-label">Hourly rate</label><input className="ta-input" type="number" min="0" step="0.01" value={editForm.data.hourly_rate} onChange={(e) => editForm.setData('hourly_rate', e.target.value)} />{fieldError(editForm, 'hourly_rate')}</div>
+                            <div><label className="ta-field-label">Monthly salary</label><input className="ta-input" type="number" min="0" step="0.01" value={editForm.data.monthly_salary} onChange={(e) => editForm.setData('monthly_salary', e.target.value)} />{fieldError(editForm, 'monthly_salary')}</div>
                             <div className="md:col-span-2 xl:col-span-2"><label className="ta-field-label">Skills</label><input className="ta-input" value={editForm.data.skills} onChange={(e) => editForm.setData('skills', e.target.value)} placeholder="Comma separated skills" />{fieldError(editForm, 'skills')}</div>
                             <div><label className="ta-field-label">New Password</label><input className="ta-input" type="password" value={editForm.data.password} onChange={(e) => editForm.setData('password', e.target.value)} placeholder="Leave blank to keep current password" />{fieldError(editForm, 'password')}</div>
                             <div><label className="ta-field-label">Confirm Password</label><input className="ta-input" type="password" value={editForm.data.password_confirmation} onChange={(e) => editForm.setData('password_confirmation', e.target.value)} placeholder="Repeat new password" />{fieldError(editForm, 'password_confirmation')}</div>

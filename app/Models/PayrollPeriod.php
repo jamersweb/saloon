@@ -44,4 +44,9 @@ class PayrollPeriod extends Model
     {
         return (float) $this->lines()->sum('gross_amount');
     }
+
+    public function totalNet(): float
+    {
+        return (float) $this->lines()->sum('net_amount');
+    }
 }

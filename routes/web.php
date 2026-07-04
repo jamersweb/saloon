@@ -235,6 +235,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/payroll/{payroll_period}', [PayrollPeriodController::class, 'show'])->name('payroll.show');
             Route::post('/payroll/{payroll_period}/generate', [PayrollPeriodController::class, 'generate'])->name('payroll.generate');
             Route::put('/payroll/{payroll_period}/lines/{line}', [PayrollPeriodController::class, 'updateLine'])->name('payroll.lines.update');
+            Route::get('/payroll/{payroll_period}/lines/{line}/payslip', [PayrollPeriodController::class, 'payslipPdf'])->name('payroll.lines.payslip');
             Route::patch('/payroll/{payroll_period}/lock', [PayrollPeriodController::class, 'lock'])->name('payroll.lock');
             Route::patch('/payroll/{payroll_period}/mark-paid', [PayrollPeriodController::class, 'markPaid'])->name('payroll.mark-paid');
         });

@@ -76,6 +76,7 @@ class StaffProfileController extends Controller
                     'phone' => $staff->phone,
                     'skills' => $staff->skills ?? [],
                     'hourly_rate' => $staff->hourly_rate !== null ? (float) $staff->hourly_rate : null,
+                    'monthly_salary' => $staff->monthly_salary !== null ? (float) $staff->monthly_salary : null,
                     'is_active' => $staff->is_active,
                     'deleted_at' => $staff->deleted_at?->toIso8601String(),
                     'user' => [
@@ -104,6 +105,7 @@ class StaffProfileController extends Controller
             'phone' => ['nullable', 'string', 'max:30'],
             'skills' => ['nullable', 'string'],
             'hourly_rate' => ['nullable', 'numeric', 'min:0', 'max:99999'],
+            'monthly_salary' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'is_active' => ['nullable', 'boolean'],
             'role_id' => ['required', 'exists:roles,id'],
         ]);
@@ -122,6 +124,9 @@ class StaffProfileController extends Controller
             'skills' => $this->parseSkills($data['skills'] ?? ''),
             'hourly_rate' => isset($data['hourly_rate']) && $data['hourly_rate'] !== '' && $data['hourly_rate'] !== null
                 ? $data['hourly_rate']
+                : null,
+            'monthly_salary' => isset($data['monthly_salary']) && $data['monthly_salary'] !== '' && $data['monthly_salary'] !== null
+                ? $data['monthly_salary']
                 : null,
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
@@ -146,6 +151,7 @@ class StaffProfileController extends Controller
             'phone' => ['nullable', 'string', 'max:30'],
             'skills' => ['nullable', 'string'],
             'hourly_rate' => ['nullable', 'numeric', 'min:0', 'max:99999'],
+            'monthly_salary' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'is_active' => ['nullable', 'boolean'],
             'role_id' => ['required', 'exists:roles,id'],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
@@ -164,6 +170,9 @@ class StaffProfileController extends Controller
             'hourly_rate' => array_key_exists('hourly_rate', $data)
                 ? ($data['hourly_rate'] === '' || $data['hourly_rate'] === null ? null : $data['hourly_rate'])
                 : $staff->hourly_rate,
+            'monthly_salary' => array_key_exists('monthly_salary', $data)
+                ? ($data['monthly_salary'] === '' || $data['monthly_salary'] === null ? null : $data['monthly_salary'])
+                : $staff->monthly_salary,
             'is_active' => (bool) ($data['is_active'] ?? false),
         ]);
 

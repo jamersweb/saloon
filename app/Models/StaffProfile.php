@@ -26,6 +26,7 @@ class StaffProfile extends Model
         'phone',
         'skills',
         'hourly_rate',
+        'monthly_salary',
         'is_active',
     ];
 
@@ -34,6 +35,7 @@ class StaffProfile extends Model
         return [
             'skills' => 'array',
             'hourly_rate' => 'decimal:2',
+            'monthly_salary' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }
@@ -76,6 +78,11 @@ class StaffProfile extends Model
     public function pettyCashClosings(): HasMany
     {
         return $this->hasMany(PettyCashClosing::class);
+    }
+
+    public function payrollLines(): HasMany
+    {
+        return $this->hasMany(PayrollLine::class);
     }
 
     public function scopeAssignableToServices(Builder $query): Builder
