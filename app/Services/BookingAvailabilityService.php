@@ -92,7 +92,8 @@ class BookingAvailabilityService
             $normalizedEnd->addDay();
         }
 
-        if ($normalizedStart->lt($shiftStart) || $normalizedEnd->gt($shiftEnd)) {
+        // Staff leaving time should not block assigning late-running appointments or walk-ins.
+        if ($normalizedStart->lt($shiftStart)) {
             return 'Selected time is outside staff shift.';
         }
 
