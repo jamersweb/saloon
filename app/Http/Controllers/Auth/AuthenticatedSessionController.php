@@ -50,8 +50,10 @@ class AuthenticatedSessionController extends Controller
         $staffProfileId = $user?->staffProfile?->id;
 
         if ($staffProfileId) {
+            $today = Carbon::now(config('app.timezone'))->toDateString();
             $openLog = AttendanceLog::query()
                 ->where('staff_profile_id', $staffProfileId)
+                ->whereDate('attendance_date', $today)
                 ->whereNull('clock_out')
                 ->latest('attendance_date')
                 ->latest('id')

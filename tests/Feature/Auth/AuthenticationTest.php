@@ -138,6 +138,45 @@ class AuthenticationTest extends TestCase
         }
     }
 
+    public function test_logout_does_not_close_open_attendance_from_a_previous_day(): void
+    {
+        $staffRole = Role::create([
+            'name' => 'staff',
+            'label' => 'Staff',
+            'permissions' => [],
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $staffRole->id,
+        ]);
+
+        $profile = StaffProfile::create([
+            'user_id' => $user->id,
+            'employee_code' => 'EMP-LOG-03',
+            'is_active' => true,
+        ]);
+
+        $log = AttendanceLog::create([
+            'staff_profile_id' => $profile->id,
+            'attendance_date' => '2026-05-14',
+            'clock_in' => '09:00:00',
+            'clock_out' => null,
+            'late_minutes' => 0,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-05-15 18:30:00'));
+
+        try {
+            $response = $this->actingAs($user)->post('/logout');
+
+            $this->assertGuest();
+            $response->assertRedirect('/');
+            $this->assertNull($log->fresh()->clock_out);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_user_is_locked_out_for_one_hour_after_four_failed_login_attempts(): void
     {
         $user = User::factory()->create();
