@@ -43,11 +43,11 @@
     <table class="cards">
         <tr>
             <td class="card">
-                <div class="card-label">Services</div>
+                <div class="card-label">Sales Items</div>
                 <div class="card-value">{{ number_format((int) $totals['service_count']) }}</div>
             </td>
             <td class="card">
-                <div class="card-label">Service Qty</div>
+                <div class="card-label">Item Qty</div>
                 <div class="card-value">{{ rtrim(rtrim(number_format((float) $totals['service_quantity'], 2), '0'), '.') }}</div>
             </td>
             <td class="card">
@@ -79,7 +79,7 @@
                 <th class="date">Date</th>
                 <th class="customer">Customer</th>
                 <th class="invoice">Invoice No.</th>
-                <th class="service">Service</th>
+                <th class="service">Item</th>
                 <th class="qty">Qty</th>
                 <th class="money">Amount</th>
                 <th class="money">Subtotal</th>
@@ -110,7 +110,7 @@
                     <td class="report">{{ $row['service_report'] ?: '-' }}</td>
                 </tr>
             @empty
-                <tr><td colspan="11">No service reports found for the selected filters.</td></tr>
+                <tr><td colspan="11">No report rows found for the selected filters.</td></tr>
             @endforelse
         </tbody>
         @if(count($serviceReports) > 0)

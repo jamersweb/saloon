@@ -26,6 +26,7 @@ export default function FinanceExpensesIndex({
     purchaseOrders,
     staffProfiles,
     categories,
+    costCenters,
     expenseTypes,
     expenseSubcategories,
     paymentMethods,
@@ -39,6 +40,7 @@ export default function FinanceExpensesIndex({
 
     const typeOptions = Object.entries(expenseTypes);
     const categoryOptions = Object.entries(categories);
+    const costCenterOptions = Object.entries(costCenters);
     const paymentMethodOptions = Object.entries(paymentMethods);
     const approvalStatusOptions = Object.entries(approvalStatuses);
     const subcategoryLabels = useMemo(() => Object.assign({}, ...Object.values(expenseSubcategories)), [expenseSubcategories]);
@@ -47,7 +49,8 @@ export default function FinanceExpensesIndex({
     const defaultSubcategory = Object.keys(expenseSubcategories[defaultType] || {})[0] || '';
 
     const form = useForm({
-        category: 'staff_welfare',
+        category: 'hospitality',
+        cost_center: 'general_salon',
         expense_type: defaultType,
         expense_subcategory: defaultSubcategory,
         vendor_name: '',
@@ -158,7 +161,8 @@ export default function FinanceExpensesIndex({
     const startEdit = (row) => {
         setEditingExpense(row);
         form.setData({
-            category: row.category || 'staff_welfare',
+            category: row.category || 'hospitality',
+            cost_center: row.cost_center || 'general_salon',
             expense_type: row.expense_type || defaultType,
             expense_subcategory: row.expense_subcategory || defaultSubcategory,
             vendor_name: row.vendor_name || '',
@@ -180,7 +184,8 @@ export default function FinanceExpensesIndex({
     const resetExpenseForm = () => {
         setEditingExpense(null);
         form.setData({
-            category: 'staff_welfare',
+            category: 'hospitality',
+            cost_center: 'general_salon',
             expense_type: defaultType,
             expense_subcategory: defaultSubcategory,
             vendor_name: '',
@@ -584,20 +589,20 @@ export default function FinanceExpensesIndex({
                         <div className="flex flex-wrap gap-2 text-xs">
                             <button type="button" className="rounded-full bg-amber-50 px-3 py-1 text-amber-900" onClick={() => {
                                 form.setData('expense_type', 'staff_welfare');
-                                form.setData('category', 'staff_welfare');
+                                form.setData('category', 'hospitality');
                             }}>
                                 Staff welfare
                             </button>
                             <button type="button" className="rounded-full bg-slate-100 px-3 py-1 text-slate-700" onClick={() => {
                                 form.setData('expense_type', 'petty_cash');
-                                form.setData('category', 'petty_cash');
+                                form.setData('category', 'miscellaneous');
                                 form.setData('payment_method', 'cash');
                             }}>
                                 Petty cash
                             </button>
                             <button type="button" className="rounded-full bg-slate-100 px-3 py-1 text-slate-700" onClick={() => {
                                 form.setData('expense_type', 'staff_reimbursement');
-                                form.setData('category', 'reimbursements');
+                                form.setData('category', 'administration_finance');
                             }}>
                                 Reimbursement
                             </button>
@@ -650,6 +655,16 @@ export default function FinanceExpensesIndex({
                             <label className="ta-field-label">Accounting category</label>
                             <select className="ta-input" value={form.data.category} onChange={(e) => form.setData('category', e.target.value)}>
                                 {categoryOptions.map(([value, label]) => (
+                                    <option key={value} value={value}>
+                                        {label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Cost center</label>
+                            <select className="ta-input" value={form.data.cost_center} onChange={(e) => form.setData('cost_center', e.target.value)}>
+                                {costCenterOptions.map(([value, label]) => (
                                     <option key={value} value={value}>
                                         {label}
                                     </option>
@@ -761,6 +776,7 @@ export default function FinanceExpensesIndex({
                                         <td className="px-5 py-3">
                                             <div className="font-medium text-slate-800">{expenseTypes[row.expense_type] || row.expense_type}</div>
                                             <div className="text-xs text-slate-500">{categories[row.category] || row.category}</div>
+                                            <div className="text-xs text-slate-500">{costCenters[row.cost_center] || row.cost_center}</div>
                                         </td>
                                         <td className="px-5 py-3 text-slate-600">
                                             <div>{subcategoryLabels[row.expense_subcategory] || row.expense_subcategory || '-'}</div>

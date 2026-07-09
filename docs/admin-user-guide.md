@@ -88,10 +88,13 @@ Recommended defaults:
 ### Attendance
 1. Staff uses `Clock In` and `Clock Out`.
 2. Manager/owner can review logs and late minutes.
+3. Payroll uses only completed attendance records with both clock-in and clock-out.
+4. Staff with `monthly_salary` use fixed salary; otherwise payroll uses `hours_worked x hourly_rate`.
 
 ### Leave requests
 1. Staff submits request with date range and reason.
 2. Manager/owner approves or rejects.
+3. Approved leave marks the staff schedule as day off and blocks appointment assignment for those dates.
 
 ## 9. Inventory and Procurement
 ### Inventory

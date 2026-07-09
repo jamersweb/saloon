@@ -10,6 +10,8 @@ class TaxInvoiceItem extends Model
     protected $fillable = [
         'tax_invoice_id',
         'salon_service_id',
+        'revenue_category',
+        'cost_center',
         'staff_profile_id',
         'description',
         'quantity',

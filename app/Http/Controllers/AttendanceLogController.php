@@ -68,6 +68,22 @@ class AttendanceLogController extends Controller
                 ->first();
         }
 
+        $visibleStaffProfileIds = (clone $staffProfilesQuery)->pluck('id');
+        $todayLogsByStaffProfile = AttendanceLog::query()
+            ->whereIn('staff_profile_id', $visibleStaffProfileIds)
+            ->whereDate('attendance_date', $today)
+            ->latest('id')
+            ->get()
+            ->unique('staff_profile_id')
+            ->mapWithKeys(fn (AttendanceLog $log) => [
+                $log->staff_profile_id => [
+                    'id' => $log->id,
+                    'attendance_date' => $log->attendance_date?->toDateString(),
+                    'clock_in' => $log->clock_in,
+                    'clock_out' => $log->clock_out,
+                ],
+            ]);
+
         return Inertia::render('Attendance/Index', [
             'todayLog' => $todayLog ? [
                 'id' => $todayLog->id,
@@ -93,6 +109,7 @@ class AttendanceLogController extends Controller
                     'staff_name' => $log->staffProfile?->user?->name,
                 ]),
             'filters' => $filters,
+            'todayLogsByStaffProfile' => $todayLogsByStaffProfile,
             'staffProfiles' => $staffProfilesQuery->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'name' => $staff->user?->name,

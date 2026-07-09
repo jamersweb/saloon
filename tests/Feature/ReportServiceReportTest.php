@@ -77,6 +77,47 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(147.0, $rows[0]['total']);
     }
 
+    public function test_service_report_can_include_retail_product_invoice_lines(): void
+    {
+        [, $invoice] = $this->completedAppointmentWithInvoice('Aisha Khan', 'INV-2026-0007');
+
+        $invoice->items()->create([
+            'salon_service_id' => null,
+            'description' => 'Hair Serum (SER-01)',
+            'quantity' => 1,
+            'unit_price' => 80,
+            'discount_amount' => 0,
+            'line_subtotal' => 80,
+            'tax_rate_percent' => 5,
+            'line_tax' => 4,
+            'line_total' => 84,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = collect($method->invoke(
+            app(ReportController::class),
+            Carbon::parse('2026-05-21')->startOfDay(),
+            Carbon::parse('2026-05-21')->endOfDay(),
+            [
+                'customer_name' => 'Aisha',
+                'invoice_number' => '0007',
+            ],
+            true
+        ));
+
+        $productRow = $rows->firstWhere('service_name', 'Hair Serum (SER-01)');
+
+        $this->assertCount(2, $rows);
+        $this->assertNotNull($productRow);
+        $this->assertSame('INV-2026-0007', $productRow['invoice_number']);
+        $this->assertSame(1.0, $productRow['quantity']);
+        $this->assertSame(80.0, $productRow['subtotal']);
+        $this->assertSame(4.0, $productRow['tax']);
+        $this->assertSame(84.0, $productRow['total']);
+    }
+
     public function test_service_report_uses_visit_invoice_line_when_invoice_service_variant_was_changed(): void
     {
         [$firstAppointment, $invoice] = $this->completedAppointmentWithInvoice('Maryam Albooshi', 'RCT00033');

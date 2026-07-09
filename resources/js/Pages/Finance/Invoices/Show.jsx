@@ -25,6 +25,8 @@ const lineTotals = (row, vatRatePercent = 0) => {
 const blankItem = () => ({
     salon_service_id: '',
     staff_profile_id: '',
+    revenue_category: 'service_income',
+    cost_center: 'general_salon',
     description: '',
     quantity: '1',
     unit_price: '',
@@ -37,6 +39,8 @@ export default function FinanceInvoicesShow({
     services,
     staff_profiles = [],
     inventory_items = [],
+    revenue_categories = {},
+    cost_centers = {},
     appointments = [],
     vat_rate_percent,
     currency_code,
@@ -59,6 +63,8 @@ export default function FinanceInvoicesShow({
             ? invoice.items.map((r) => ({
                   salon_service_id: r.salon_service_id ? String(r.salon_service_id) : '',
                   staff_profile_id: r.staff_profile_id ? String(r.staff_profile_id) : '',
+                  revenue_category: r.revenue_category || 'service_income',
+                  cost_center: r.cost_center || 'general_salon',
                   description: r.description,
                   quantity: String(r.quantity),
                   unit_price: String(r.unit_price),
@@ -102,6 +108,8 @@ export default function FinanceInvoicesShow({
         { value: '', label: 'Unassigned' },
         ...staff_profiles.map((staff) => ({ value: String(staff.id), label: staff.name || `Staff #${staff.id}` })),
     ]), [staff_profiles]);
+    const revenueCategoryOptions = Object.entries(revenue_categories);
+    const costCenterOptions = Object.entries(cost_centers);
 
     const selectedLineName = (row) => {
         if (row.salon_service_id && serviceById[String(row.salon_service_id)]?.name) {
@@ -126,6 +134,7 @@ export default function FinanceInvoicesShow({
             next[idx] = {
                 ...next[idx],
                 salon_service_id: '',
+                revenue_category: 'service_income',
             };
             editForm.setData('items', next);
             return;
@@ -136,6 +145,7 @@ export default function FinanceInvoicesShow({
         next[idx] = {
             ...next[idx],
             salon_service_id: s ? String(s.id) : '',
+            revenue_category: s ? 'service_income' : 'retail_product_sales',
             description: s
                 ? s.name
                 : item
@@ -309,6 +319,8 @@ export default function FinanceInvoicesShow({
                                     items: data.items.map((row) => ({
                                         salon_service_id: row.salon_service_id || null,
                                         staff_profile_id: row.staff_profile_id || null,
+                                        revenue_category: row.revenue_category || null,
+                                        cost_center: row.cost_center || null,
                                         description: row.description,
                                         quantity: parseFloat(row.quantity) || 0,
                                         unit_price: parseFloat(row.unit_price) || 0,
@@ -409,6 +421,42 @@ export default function FinanceInvoicesShow({
                                                         placeholder="Search staff"
                                                     />
                                                 </div>
+                                                <div className="lg:col-span-2">
+                                                    <label className="ta-field-label">Revenue category</label>
+                                                    <select
+                                                        className="ta-input"
+                                                        value={row.revenue_category}
+                                                        onChange={(e) => {
+                                                            const next = [...editForm.data.items];
+                                                            next[idx] = { ...next[idx], revenue_category: e.target.value };
+                                                            editForm.setData('items', next);
+                                                        }}
+                                                    >
+                                                        {revenueCategoryOptions.map(([value, label]) => (
+                                                            <option key={value} value={value}>
+                                                                {label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="lg:col-span-2">
+                                                    <label className="ta-field-label">Cost center</label>
+                                                    <select
+                                                        className="ta-input"
+                                                        value={row.cost_center}
+                                                        onChange={(e) => {
+                                                            const next = [...editForm.data.items];
+                                                            next[idx] = { ...next[idx], cost_center: e.target.value };
+                                                            editForm.setData('items', next);
+                                                        }}
+                                                    >
+                                                        {costCenterOptions.map(([value, label]) => (
+                                                            <option key={value} value={value}>
+                                                                {label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                                 <div className="lg:col-span-1">
                                                     <label className="ta-field-label">Qty</label>
                                                     <input
@@ -503,6 +551,8 @@ export default function FinanceInvoicesShow({
                                     <thead className="text-left text-xs uppercase text-slate-500">
                                         <tr>
                                             <th className="py-2">Service / item</th>
+                                            <th className="py-2">Category</th>
+                                            <th className="py-2">Cost center</th>
                                             <th className="py-2">Staff</th>
                                             <th className="py-2 text-right">Qty</th>
                                             <th className="py-2 text-right">Price</th>
@@ -515,6 +565,8 @@ export default function FinanceInvoicesShow({
                                         {invoice.items.map((row) => (
                                             <tr key={row.id} className="border-t border-slate-100">
                                                 <td className="py-2">{row.description}</td>
+                                                <td className="py-2">{revenue_categories[row.revenue_category] || row.revenue_category}</td>
+                                                <td className="py-2">{cost_centers[row.cost_center] || row.cost_center}</td>
                                                 <td className="py-2">{row.staff_name || 'Unassigned'}</td>
                                                 <td className="py-2 text-right">{row.quantity}</td>
                                                 <td className="py-2 text-right">{money(row.unit_price, currency_code)}</td>

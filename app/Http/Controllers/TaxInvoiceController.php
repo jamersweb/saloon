@@ -21,6 +21,7 @@ use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoiceLineCalculator;
 use App\Services\TaxInvoicePaymentService;
 use App\Support\Audit;
+use App\Support\FinanceStructure;
 use App\Support\TaxReceiptPdfView;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -102,6 +103,8 @@ class TaxInvoiceController extends Controller
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
             'staff_profiles' => $this->staffProfileOptions(),
             'inventory_items' => InventoryItem::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku', 'selling_price']),
+            'revenue_categories' => FinanceStructure::revenueCategories(),
+            'cost_centers' => FinanceStructure::costCenters(),
             'appointments' => Appointment::query()
                 ->with(['customer:id,name', 'service:id,name'])
                 ->whereIn('status', [Appointment::STATUS_CONFIRMED, Appointment::STATUS_IN_PROGRESS, Appointment::STATUS_COMPLETED])
@@ -130,6 +133,8 @@ class TaxInvoiceController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.salon_service_id' => ['nullable', 'exists:salon_services,id'],
             'items.*.staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
+            'items.*.revenue_category' => ['nullable', Rule::in(array_keys(FinanceStructure::revenueCategories()))],
+            'items.*.cost_center' => ['nullable', Rule::in(array_keys(FinanceStructure::costCenters()))],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01', 'max:9999'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
@@ -160,6 +165,9 @@ class TaxInvoiceController extends Controller
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => $row['salon_service_id'] ?? null,
+                    'revenue_category' => $row['revenue_category']
+                        ?? FinanceStructure::inferRevenueCategory(isset($row['salon_service_id']) ? (int) $row['salon_service_id'] : null, $row['description'] ?? null),
+                    'cost_center' => $row['cost_center'] ?? FinanceStructure::DEFAULT_COST_CENTER,
                     'staff_profile_id' => $row['staff_profile_id'] ?? null,
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
@@ -237,6 +245,8 @@ class TaxInvoiceController extends Controller
                 'items' => $invoice->items->map(fn (TaxInvoiceItem $item) => [
                     'id' => $item->id,
                     'salon_service_id' => $item->salon_service_id,
+                    'revenue_category' => $item->revenue_category,
+                    'cost_center' => $item->cost_center,
                     'staff_profile_id' => $item->staff_profile_id,
                     'staff_name' => $item->staffProfile?->user?->name,
                     'description' => $item->description,
@@ -263,6 +273,8 @@ class TaxInvoiceController extends Controller
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
             'staff_profiles' => $this->staffProfileOptions(),
             'inventory_items' => InventoryItem::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku', 'selling_price']),
+            'revenue_categories' => FinanceStructure::revenueCategories(),
+            'cost_centers' => FinanceStructure::costCenters(),
             'vat_rate_percent' => (float) $settings->vat_rate_percent,
             'currency_code' => $settings->currency_code,
             'payment_methods' => InvoicePayment::methodLabels(),
@@ -293,6 +305,8 @@ class TaxInvoiceController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.salon_service_id' => ['nullable', 'exists:salon_services,id'],
             'items.*.staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
+            'items.*.revenue_category' => ['nullable', Rule::in(array_keys(FinanceStructure::revenueCategories()))],
+            'items.*.cost_center' => ['nullable', Rule::in(array_keys(FinanceStructure::costCenters()))],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'numeric', 'min:0.01', 'max:9999'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
@@ -320,6 +334,9 @@ class TaxInvoiceController extends Controller
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => $row['salon_service_id'] ?? null,
+                    'revenue_category' => $row['revenue_category']
+                        ?? FinanceStructure::inferRevenueCategory(isset($row['salon_service_id']) ? (int) $row['salon_service_id'] : null, $row['description'] ?? null),
+                    'cost_center' => $row['cost_center'] ?? FinanceStructure::DEFAULT_COST_CENTER,
                     'staff_profile_id' => $row['staff_profile_id'] ?? null,
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
@@ -540,6 +557,8 @@ class TaxInvoiceController extends Controller
             ->map(fn (Appointment $item) => [
                 'salon_service_id' => $item->service_id ? (string) $item->service_id : '',
                 'staff_profile_id' => $item->staff_profile_id ? (string) $item->staff_profile_id : '',
+                'revenue_category' => $item->customer_package_id ? 'package_sales' : 'service_income',
+                'cost_center' => FinanceStructure::inferCostCenterFromService($item->service),
                 'description' => $item->customer_package_id
                     ? $item->service->name.' (package session)'
                     : $item->service->name,

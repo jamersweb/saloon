@@ -4,7 +4,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 const money = (value, currency = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(value || 0));
 
-export default function FinanceDashboard({ filters, summary, accountsReceivable, accountsPayable, periodic }) {
+export default function FinanceDashboard({ filters, summary, accountsReceivable, accountsPayable, periodic, grouped }) {
     const { flash } = usePage().props;
 
     const applyFilter = (key, value) => {
@@ -166,6 +166,53 @@ export default function FinanceDashboard({ filters, summary, accountsReceivable,
                         </div>
                     </div>
                 </section>
+
+                <div className="grid gap-6 lg:grid-cols-3">
+                    <section className="ta-card p-5">
+                        <h3 className="mb-3 text-sm font-semibold text-slate-700">Revenue by category</h3>
+                        <ul className="space-y-2 text-sm">
+                            {grouped.revenue_by_category.map((row) => (
+                                <li key={row.key} className="flex justify-between gap-3 border-b border-slate-50 py-1">
+                                    <span className="text-slate-600">{row.label}</span>
+                                    <span className="font-medium">{money(row.total)}</span>
+                                </li>
+                            ))}
+                            {grouped.revenue_by_category.length === 0 && <li className="text-slate-500">No revenue rows yet.</li>}
+                        </ul>
+                    </section>
+
+                    <section className="ta-card p-5">
+                        <h3 className="mb-3 text-sm font-semibold text-slate-700">Expenses by category</h3>
+                        <ul className="space-y-2 text-sm">
+                            {grouped.expense_by_category.map((row) => (
+                                <li key={row.key} className="flex justify-between gap-3 border-b border-slate-50 py-1">
+                                    <span className="text-slate-600">{row.label}</span>
+                                    <span className="font-medium">{money(row.total)}</span>
+                                </li>
+                            ))}
+                            {grouped.expense_by_category.length === 0 && <li className="text-slate-500">No expense rows yet.</li>}
+                        </ul>
+                    </section>
+
+                    <section className="ta-card p-5">
+                        <h3 className="mb-3 text-sm font-semibold text-slate-700">P&amp;L by cost center</h3>
+                        <ul className="space-y-2 text-sm">
+                            {grouped.pnl_by_cost_center.map((row) => (
+                                <li key={row.key} className="border-b border-slate-50 py-1">
+                                    <div className="flex justify-between gap-3">
+                                        <span className="text-slate-600">{row.label}</span>
+                                        <span className={`font-medium ${row.net_total < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>{money(row.net_total)}</span>
+                                    </div>
+                                    <div className="mt-1 flex justify-between gap-3 text-xs text-slate-500">
+                                        <span>Revenue {money(row.revenue_total)}</span>
+                                        <span>Expenses {money(row.expense_total)}</span>
+                                    </div>
+                                </li>
+                            ))}
+                            {grouped.pnl_by_cost_center.length === 0 && <li className="text-slate-500">No cost-center activity yet.</li>}
+                        </ul>
+                    </section>
+                </div>
 
                 <div className="flex flex-wrap gap-3">
                     <Link href={route('finance.invoices.index')} className="ta-btn-primary">

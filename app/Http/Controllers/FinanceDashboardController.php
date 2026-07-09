@@ -7,6 +7,8 @@ use App\Models\InvoicePayment;
 use App\Models\PayrollLine;
 use App\Models\PurchaseOrder;
 use App\Models\TaxInvoice;
+use App\Models\TaxInvoiceItem;
+use App\Support\FinanceStructure;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -128,6 +130,72 @@ class FinanceDashboardController extends Controller
             ->values()
             ->all();
 
+        $revenueByCategory = TaxInvoiceItem::query()
+            ->whereHas('taxInvoice', function ($query) use ($dateFrom, $dateTo) {
+                $query->where('status', TaxInvoice::STATUS_FINALIZED)
+                    ->whereBetween('issued_at', [$dateFrom, $dateTo]);
+            })
+            ->get(['revenue_category', 'line_total'])
+            ->groupBy('revenue_category')
+            ->map(fn ($group, $key) => [
+                'key' => $key,
+                'label' => FinanceStructure::revenueCategories()[$key] ?? $key,
+                'total' => (float) $group->sum('line_total'),
+            ])
+            ->sortByDesc('total')
+            ->values()
+            ->all();
+
+        $expenseByCategory = ExpenseEntry::query()
+            ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->get(['category', 'total_amount'])
+            ->groupBy('category')
+            ->map(fn ($group, $key) => [
+                'key' => $key,
+                'label' => FinanceStructure::expenseCategories()[$key] ?? $key,
+                'total' => (float) $group->sum('total_amount'),
+            ])
+            ->sortByDesc('total')
+            ->values()
+            ->all();
+
+        $revenueByCostCenter = TaxInvoiceItem::query()
+            ->whereHas('taxInvoice', function ($query) use ($dateFrom, $dateTo) {
+                $query->where('status', TaxInvoice::STATUS_FINALIZED)
+                    ->whereBetween('issued_at', [$dateFrom, $dateTo]);
+            })
+            ->get(['cost_center', 'line_total'])
+            ->groupBy('cost_center')
+            ->map(fn ($group, $key) => [
+                'key' => $key,
+                'label' => FinanceStructure::costCenters()[$key] ?? $key,
+                'revenue_total' => (float) $group->sum('line_total'),
+            ]);
+
+        $expensesByCostCenter = ExpenseEntry::query()
+            ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->get(['cost_center', 'total_amount'])
+            ->groupBy('cost_center')
+            ->map(fn ($group, $key) => (float) $group->sum('total_amount'));
+
+        $pnlByCostCenter = collect(array_keys(FinanceStructure::costCenters()))
+            ->map(function (string $key) use ($revenueByCostCenter, $expensesByCostCenter) {
+                $revenue = (float) ($revenueByCostCenter->get($key)['revenue_total'] ?? 0);
+                $expenses = (float) ($expensesByCostCenter->get($key) ?? 0);
+
+                return [
+                    'key' => $key,
+                    'label' => FinanceStructure::costCenters()[$key] ?? $key,
+                    'revenue_total' => $revenue,
+                    'expense_total' => $expenses,
+                    'net_total' => $revenue - $expenses,
+                ];
+            })
+            ->filter(fn (array $row) => abs($row['revenue_total']) > 0.009 || abs($row['expense_total']) > 0.009)
+            ->sortByDesc('net_total')
+            ->values()
+            ->all();
+
         return Inertia::render('Finance/Dashboard', [
             'filters' => [
                 'date_from' => $dateFrom->toDateString(),
@@ -150,6 +218,11 @@ class FinanceDashboardController extends Controller
             'periodic' => [
                 'income_by_month' => $monthlyIncome,
                 'expenses_by_month' => $monthlyExpenses,
+            ],
+            'grouped' => [
+                'revenue_by_category' => $revenueByCategory,
+                'expense_by_category' => $expenseByCategory,
+                'pnl_by_cost_center' => $pnlByCostCenter,
             ],
         ]);
     }

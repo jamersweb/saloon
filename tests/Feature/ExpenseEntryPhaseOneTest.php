@@ -67,7 +67,7 @@ class ExpenseEntryPhaseOneTest extends TestCase
 
         $expense = ExpenseEntry::query()->latest()->first();
         $this->assertNotNull($expense);
-        $this->assertSame('staff_welfare', $expense->category);
+        $this->assertSame('hospitality', $expense->category);
         $this->assertSame('staff_welfare', $expense->expense_type);
         $this->assertSame('staff_drinks', $expense->expense_subcategory);
         $this->assertSame(ExpenseEntry::APPROVAL_PENDING, $expense->approval_status);

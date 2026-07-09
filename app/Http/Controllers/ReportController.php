@@ -182,7 +182,7 @@ class ReportController extends Controller
         $reportType = $data['report'] ?? 'summary';
 
         if ($reportType === 'service') {
-            $serviceReports = $this->collectServiceReportRows($dateFrom, $dateTo, $serviceReportFilters);
+            $serviceReports = $this->collectServiceReportRows($dateFrom, $dateTo, $serviceReportFilters, true);
             $servicePaymentTotals = $this->paymentTotalsForServiceRows($dateFrom, $dateTo, $serviceReports);
             $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
 
@@ -232,7 +232,7 @@ class ReportController extends Controller
      * @param  array{customer_name: string, invoice_number: string}  $filters
      * @return list<array<string, mixed>>
      */
-    private function collectServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters): array
+    private function collectServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters, bool $includeRetailProducts = false): array
     {
         $financeSetting = FinanceSetting::current();
         $vatRatePercent = (float) $financeSetting->vat_rate_percent;
@@ -250,7 +250,7 @@ class ReportController extends Controller
         $invoiceIds = $this->invoiceIdsForAppointments($appointments);
         $invoiceItems = $this->invoiceItemsForAppointments($appointments);
 
-        return $appointments
+        $rows = $appointments
             ->map(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $vatRatePercent): array {
                 $serviceName = $appointment->service?->name;
                 $item = $this->matchingInvoiceItemForAppointment(
@@ -285,6 +285,19 @@ class ReportController extends Controller
                     'service_report' => $appointment->notes,
                 ];
             })
+            ->values()
+            ->all();
+
+        if (! $includeRetailProducts) {
+            return $rows;
+        }
+
+        return collect($rows)
+            ->concat($this->retailProductReportRows($appointments))
+            ->sortBy([
+                ['date', 'asc'],
+                ['id', 'asc'],
+            ])
             ->values()
             ->all();
     }
@@ -328,6 +341,83 @@ class ReportController extends Controller
         }
 
         return $this->paymentTotalsForInvoices($invoiceIds);
+    }
+
+    /**
+     * @param  Collection<int, Appointment>  $appointments
+     * @return list<array<string, mixed>>
+     */
+    private function retailProductReportRows(Collection $appointments): array
+    {
+        if ($appointments->isEmpty()) {
+            return [];
+        }
+
+        $appointmentIds = $appointments->pluck('id')->all();
+        $visitIds = $appointments->pluck('visit_id')->filter()->unique()->values()->all();
+        $visitAppointmentIds = [];
+        $appointmentVisitMap = [];
+
+        if ($visitIds !== []) {
+            $appointmentVisitMap = Appointment::query()
+                ->whereIn('visit_id', $visitIds)
+                ->pluck('visit_id', 'id')
+                ->all();
+            $visitAppointmentIds = array_keys($appointmentVisitMap);
+        }
+
+        $reportAppointmentsById = $appointments->keyBy('id');
+        $reportAppointmentsByVisit = $appointments
+            ->filter(fn (Appointment $appointment) => $appointment->visit_id)
+            ->groupBy('visit_id')
+            ->map(fn (Collection $visitAppointments) => $visitAppointments
+                ->sortBy([
+                    ['scheduled_start', 'asc'],
+                    ['id', 'asc'],
+                ])
+                ->values());
+
+        return TaxInvoice::query()
+            ->with(['items', 'appointment'])
+            ->where('status', '!=', TaxInvoice::STATUS_VOID)
+            ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
+            ->orderByRaw('invoice_number IS NULL')
+            ->orderBy('invoice_number')
+            ->get()
+            ->flatMap(function (TaxInvoice $invoice) use ($reportAppointmentsById, $reportAppointmentsByVisit, $appointmentVisitMap): Collection {
+                $invoiceAppointment = $reportAppointmentsById->get($invoice->appointment_id);
+                $visitId = $appointmentVisitMap[$invoice->appointment_id] ?? $invoiceAppointment?->visit_id ?? $invoice->appointment?->visit_id;
+                $reportAppointment = $visitId
+                    ? optional($reportAppointmentsByVisit->get($visitId))->first()
+                    : $invoiceAppointment;
+
+                if (! $reportAppointment) {
+                    return collect();
+                }
+
+                return $invoice->items
+                    ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id === null)
+                    ->values()
+                    ->map(fn (TaxInvoiceItem $item, int $index): array => [
+                        'id' => sprintf('product-%d-%d', $invoice->id, $item->id ?: $index),
+                        'date' => optional($reportAppointment->scheduled_start)->format('Y-m-d H:i'),
+                        'customer_name' => $invoice->customer_display_name ?: $reportAppointment->customer?->name ?: $reportAppointment->customer_name,
+                        'customer_phone' => $reportAppointment->customer_phone,
+                        'invoice_number' => $invoice->invoice_number ?? '',
+                        'invoice_ids' => [$invoice->id],
+                        'service_name' => $item->description,
+                        'quantity' => round((float) $item->quantity, 2),
+                        'unit_price' => round((float) $item->unit_price, 2),
+                        'discount_amount' => round((float) $item->discount_amount, 2),
+                        'subtotal' => round((float) $item->line_subtotal, 2),
+                        'tax' => round((float) $item->line_tax, 2),
+                        'total' => round((float) $item->line_total, 2),
+                        'staff_name' => $reportAppointment->staffProfile?->user?->name,
+                        'service_report' => 'Retail product sale',
+                    ]);
+            })
+            ->values()
+            ->all();
     }
 
     /**

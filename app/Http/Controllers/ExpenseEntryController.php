@@ -9,6 +9,7 @@ use App\Models\PettyCashClosing;
 use App\Models\PettyCashEntry;
 use App\Models\PurchaseOrder;
 use App\Models\StaffProfile;
+use App\Support\FinanceStructure;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -70,6 +71,7 @@ class ExpenseEntryController extends Controller
             ->through(fn (ExpenseEntry $e) => [
                 'id' => $e->id,
                 'category' => $e->category,
+                'cost_center' => $e->cost_center,
                 'expense_type' => $e->expense_type,
                 'expense_subcategory' => $e->expense_subcategory,
                 'vendor_name' => $e->vendor_name,
@@ -119,6 +121,17 @@ class ExpenseEntryController extends Controller
             ->groupBy('category')
             ->map(fn ($group, $category) => [
                 'key' => $category,
+                'total' => (float) $group->sum('total_amount'),
+                'count' => $group->count(),
+            ])
+            ->sortByDesc('total')
+            ->values()
+            ->all();
+
+        $byCostCenter = $summaryRows
+            ->groupBy('cost_center')
+            ->map(fn ($group, $costCenter) => [
+                'key' => $costCenter,
                 'total' => (float) $group->sum('total_amount'),
                 'count' => $group->count(),
             ])
@@ -205,6 +218,7 @@ class ExpenseEntryController extends Controller
             'breakdown' => [
                 'byType' => $byType,
                 'byCategory' => $byCategory,
+                'byCostCenter' => $byCostCenter,
                 'daily' => $daily,
             ],
             'pettyCash' => $pettyCash,
@@ -212,6 +226,7 @@ class ExpenseEntryController extends Controller
             'purchaseOrders' => $purchaseOrders,
             'staffProfiles' => $staffProfiles,
             'categories' => self::categories(),
+            'costCenters' => self::costCenters(),
             'expenseTypes' => self::expenseTypes(),
             'expenseSubcategories' => self::expenseSubcategories(),
             'paymentMethods' => self::paymentMethods(),
@@ -523,20 +538,12 @@ class ExpenseEntryController extends Controller
 
     public static function categories(): array
     {
-        return [
-            'supplies' => 'Supplies',
-            'rent' => 'Rent',
-            'utilities' => 'Utilities',
-            'marketing' => 'Marketing',
-            'payroll' => 'Payroll & HR',
-            'staff_welfare' => 'Staff welfare',
-            'petty_cash' => 'Petty cash',
-            'transport' => 'Transport',
-            'reimbursements' => 'Reimbursements',
-            'professional_fees' => 'Professional fees',
-            'procurement' => 'Procurement / inventory',
-            'other' => 'Other',
-        ];
+        return FinanceStructure::expenseCategories();
+    }
+
+    public static function costCenters(): array
+    {
+        return FinanceStructure::costCenters();
     }
 
     public static function expenseTypes(): array
@@ -595,13 +602,7 @@ class ExpenseEntryController extends Controller
 
     public static function paymentMethods(): array
     {
-        return [
-            'cash' => 'Cash',
-            'bank_transfer' => 'Bank transfer',
-            'card' => 'Card',
-            'wallet' => 'Wallet',
-            'other' => 'Other',
-        ];
+        return FinanceStructure::paymentMethods();
     }
 
     public static function approvalStatuses(): array
@@ -615,7 +616,7 @@ class ExpenseEntryController extends Controller
 
     private function validatedExpense(Request $request): array
     {
-        $cats = array_keys(self::categories());
+        $costCenters = array_keys(self::costCenters());
         $types = array_keys(self::expenseTypes());
         $paymentMethods = array_keys(self::paymentMethods());
         $subcategories = collect(self::expenseSubcategories())
@@ -623,8 +624,9 @@ class ExpenseEntryController extends Controller
             ->values()
             ->all();
 
-        return $request->validate([
-            'category' => ['required', Rule::in($cats)],
+        $data = $request->validate([
+            'category' => ['required', 'string', 'max:64'],
+            'cost_center' => ['nullable', Rule::in($costCenters)],
             'expense_type' => ['required', Rule::in($types)],
             'expense_subcategory' => ['required', Rule::in($subcategories)],
             'vendor_name' => ['nullable', 'string', 'max:255'],
@@ -640,6 +642,18 @@ class ExpenseEntryController extends Controller
             'staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $data['category'] = FinanceStructure::normalizeExpenseCategory($data['category'] ?? null);
+        $data['payment_method'] = FinanceStructure::normalizePaymentMethod($data['payment_method'] ?? null);
+        $data['cost_center'] = $data['cost_center'] ?? FinanceStructure::DEFAULT_COST_CENTER;
+
+        if ($data['category'] === 'miscellaneous' && trim((string) ($data['notes'] ?? '')) === '') {
+            throw ValidationException::withMessages([
+                'notes' => 'Miscellaneous expenses require a written explanation.',
+            ]);
+        }
+
+        return $data;
     }
 
     private function storeReceiptImage(Request $request): ?string

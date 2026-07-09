@@ -6,6 +6,7 @@ use App\Models\Appointment;
 use App\Models\FinanceSetting;
 use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
+use App\Support\FinanceStructure;
 
 class TaxInvoiceDraftFromAppointmentService
 {
@@ -99,6 +100,8 @@ class TaxInvoiceDraftFromAppointmentService
             TaxInvoiceItem::query()->create([
                 'tax_invoice_id' => $invoice->id,
                 'salon_service_id' => $service->id,
+                'revenue_category' => $visitAppointment->customer_package_id ? 'package_sales' : 'service_income',
+                'cost_center' => FinanceStructure::inferCostCenterFromService($service),
                 'staff_profile_id' => $visitAppointment->staff_profile_id,
                 'description' => $visitAppointment->customer_package_id
                     ? $service->name.' (package session)'
@@ -130,6 +133,8 @@ class TaxInvoiceDraftFromAppointmentService
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => null,
+                    'revenue_category' => 'retail_product_sales',
+                    'cost_center' => FinanceStructure::DEFAULT_COST_CENTER,
                     'description' => $description,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,

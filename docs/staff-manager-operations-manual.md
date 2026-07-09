@@ -407,6 +407,61 @@ Steps:
 4. Lock period.
 5. Mark paid.
 
+### Attendance to salary flow
+Use this logic when explaining how salary is calculated:
+
+```mermaid
+flowchart TD
+    A["Staff clocks in"] --> B["System creates today's attendance log"]
+    B --> C["Late minutes calculated from scheduled start"]
+    C --> D["Staff clocks out"]
+    D --> E{"Both clock_in and clock_out exist?"}
+    E -- "No" --> F["Attendance is not counted in payroll hours"]
+    E -- "Yes" --> G["Worked hours = clock_out - clock_in"]
+    G --> H{"Monthly salary exists?"}
+    H -- "Yes" --> I["Pay basis = fixed salary"]
+    H -- "No" --> J["Pay basis = hourly"]
+    I --> K["Basic salary = monthly salary"]
+    J --> L["Basic salary = worked hours x hourly rate"]
+    K --> M["Add bonus amount"]
+    L --> M
+    M --> N["Subtract deduction amount"]
+    N --> O["Net salary cannot go below zero"]
+```
+
+Rules:
+- Only completed attendance with both `clock_in` and `clock_out` is counted in payroll.
+- Staff with `monthly_salary` are paid as fixed salary.
+- Staff without `monthly_salary` are paid by `hours_worked x hourly_rate`.
+- `late_minutes` is tracked for review, but it does not automatically deduct salary.
+- Managers can still add manual bonus or deduction in payroll before marking paid.
+
+### Leave to schedule blocking flow
+Use this logic when explaining why a staff member becomes unavailable:
+
+```mermaid
+flowchart TD
+    A["Staff submits leave request"] --> B["Leave status = pending"]
+    B --> C{"Manager approves?"}
+    C -- "No" --> D["Schedule stays unchanged"]
+    C -- "Yes" --> E["System updates each leave date"]
+    E --> F["is_day_off = true"]
+    E --> G["start_time = null"]
+    E --> H["end_time = null"]
+    F --> I["Staff becomes unavailable on schedule"]
+    G --> I
+    H --> I
+    I --> J["Booking availability checks schedule and leave"]
+    J --> K{"Approved leave exists on that date?"}
+    K -- "Yes" --> L["Appointment assignment is blocked"]
+    K -- "No" --> M["Booking can continue"]
+```
+
+Rules:
+- Approved leave marks the schedule day as off.
+- A staff member on approved leave cannot be assigned to appointments or walk-ins for that date.
+- If leave is later rejected or cancelled, the leave-specific day-off row is removed and the default schedule can be restored.
+
 ### Finance settings (what they do)
 - Tax and numbering behavior
 - Defaults used by invoices/payroll dashboards
@@ -485,4 +540,3 @@ Update this manual whenever:
 - New menu section is added
 - Any setting behavior changes
 - Status flow changes (appointments/PO/payroll/loyalty)
-

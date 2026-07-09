@@ -6,12 +6,14 @@ import { useMemo } from 'react';
 const blankItem = () => ({
     salon_service_id: '',
     staff_profile_id: '',
+    revenue_category: 'service_income',
+    cost_center: 'general_salon',
     description: '',
     quantity: '1',
     unit_price: '',
 });
 
-export default function FinanceInvoicesCreate({ customers, services, staff_profiles = [], inventory_items = [], appointments, vat_rate_percent, currency_code }) {
+export default function FinanceInvoicesCreate({ customers, services, staff_profiles = [], inventory_items = [], revenue_categories = {}, cost_centers = {}, appointments, vat_rate_percent, currency_code }) {
     const { flash } = usePage().props;
 
     const form = useForm({
@@ -42,6 +44,8 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
         { value: '', label: 'Unassigned' },
         ...staff_profiles.map((staff) => ({ value: String(staff.id), label: staff.name || `Staff #${staff.id}` })),
     ]), [staff_profiles]);
+    const revenueCategoryOptions = Object.entries(revenue_categories);
+    const costCenterOptions = Object.entries(cost_centers);
 
     const addRow = () => form.setData('items', [...form.data.items, blankItem()]);
 
@@ -56,6 +60,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
             next[idx] = {
                 ...next[idx],
                 salon_service_id: '',
+                revenue_category: 'service_income',
             };
             form.setData('items', next);
             return;
@@ -66,6 +71,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
         next[idx] = {
             ...next[idx],
             salon_service_id: s ? String(s.id) : '',
+            revenue_category: s ? 'service_income' : 'retail_product_sales',
             description: s
                 ? s.name
                 : item
@@ -138,6 +144,8 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                                 items: data.items.map((row) => ({
                                     salon_service_id: row.salon_service_id || null,
                                     staff_profile_id: row.staff_profile_id || null,
+                                    revenue_category: row.revenue_category || null,
+                                    cost_center: row.cost_center || null,
                                     description: row.description,
                                     quantity: parseFloat(row.quantity) || 0,
                                     unit_price: parseFloat(row.unit_price) || 0,
@@ -228,6 +236,42 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                                                 options={staffOptions}
                                                 placeholder="Search staff"
                                             />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="text-xs text-slate-500">Revenue category</label>
+                                            <select
+                                                className="ta-input mt-1"
+                                                value={row.revenue_category}
+                                                onChange={(e) => {
+                                                    const next = [...form.data.items];
+                                                    next[idx] = { ...next[idx], revenue_category: e.target.value };
+                                                    form.setData('items', next);
+                                                }}
+                                            >
+                                                {revenueCategoryOptions.map(([value, label]) => (
+                                                    <option key={value} value={value}>
+                                                        {label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="text-xs text-slate-500">Cost center</label>
+                                            <select
+                                                className="ta-input mt-1"
+                                                value={row.cost_center}
+                                                onChange={(e) => {
+                                                    const next = [...form.data.items];
+                                                    next[idx] = { ...next[idx], cost_center: e.target.value };
+                                                    form.setData('items', next);
+                                                }}
+                                            >
+                                                {costCenterOptions.map(([value, label]) => (
+                                                    <option key={value} value={value}>
+                                                        {label}
+                                                    </option>
+                                                ))}
+                                            </select>
                                         </div>
                                         <div className="md:col-span-1">
                                             <label className="text-xs text-slate-500">Qty</label>

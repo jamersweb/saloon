@@ -77,6 +77,8 @@ class AttendanceIndexTest extends TestCase
                 ->component('Attendance/Index')
                 ->where('filters.staff_profile_id', $profileTwo->id)
                 ->where('filters.per_page', 10)
+                ->where("todayLogsByStaffProfile.{$profileTwo->id}.clock_in", '09:15:00')
+                ->where("todayLogsByStaffProfile.{$profileTwo->id}.clock_out", '18:00:00')
                 ->where('logs.total', 1)
                 ->has('logs.data', 1)
                 ->where('logs.data.0.staff_name', 'Staff Two')

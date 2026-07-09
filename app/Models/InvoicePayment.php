@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\FinanceStructure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,7 +14,13 @@ class InvoicePayment extends Model
 
     public const METHOD_BANK_TRANSFER = 'bank_transfer';
 
+    public const METHOD_ONLINE_PAYMENT_LINK = 'online_payment_link';
+
+    public const METHOD_PACKAGE_CREDIT = 'package_credit';
+
     public const METHOD_GIFT_CARD = 'gift_card';
+
+    public const METHOD_SPLIT_PAYMENT = 'split_payment';
 
     public const METHOD_OTHER = 'other';
 
@@ -49,12 +56,6 @@ class InvoicePayment extends Model
      */
     public static function methodLabels(): array
     {
-        return [
-            self::METHOD_CASH => 'Cash',
-            self::METHOD_CARD => 'Card',
-            self::METHOD_BANK_TRANSFER => 'Bank transfer',
-            self::METHOD_GIFT_CARD => 'Gift card',
-            self::METHOD_OTHER => 'Other',
-        ];
+        return FinanceStructure::paymentMethods();
     }
 }

@@ -21,6 +21,7 @@ class ExpenseEntry extends Model
 
     protected $fillable = [
         'category',
+        'cost_center',
         'expense_type',
         'expense_subcategory',
         'vendor_name',
