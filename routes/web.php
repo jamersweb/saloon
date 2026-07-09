@@ -20,6 +20,7 @@ use App\Http\Controllers\PayrollPeriodController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicBookingController;
 use App\Http\Controllers\PurchaseOrderController;
+use App\Http\Controllers\RentalAgreementController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalonServiceController;
@@ -216,6 +217,7 @@ Route::middleware('auth')->group(function () {
             Route::post('/invoices', [TaxInvoiceController::class, 'store'])->name('invoices.store');
             Route::delete('/invoices/{invoice}', [TaxInvoiceController::class, 'destroy'])->name('invoices.destroy');
             Route::post('/invoices/{invoice}/void', [TaxInvoiceController::class, 'voidInvoice'])->name('invoices.void');
+            Route::post('/invoices/{invoice}/refund-adjustment', [TaxInvoiceController::class, 'refundAdjustment'])->name('invoices.refund-adjustment');
             Route::post('/invoices/{invoice}/email-receipt', [TaxInvoiceController::class, 'emailReceipt'])->name('invoices.email-receipt');
 
             Route::get('/expenses', [ExpenseEntryController::class, 'index'])->name('expenses.index');
@@ -238,6 +240,12 @@ Route::middleware('auth')->group(function () {
             Route::get('/payroll/{payroll_period}/lines/{line}/payslip', [PayrollPeriodController::class, 'payslipPdf'])->name('payroll.lines.payslip');
             Route::patch('/payroll/{payroll_period}/lock', [PayrollPeriodController::class, 'lock'])->name('payroll.lock');
             Route::patch('/payroll/{payroll_period}/mark-paid', [PayrollPeriodController::class, 'markPaid'])->name('payroll.mark-paid');
+
+            Route::get('/rentals', [RentalAgreementController::class, 'index'])->name('rentals.index');
+            Route::post('/rentals', [RentalAgreementController::class, 'store'])->name('rentals.store');
+            Route::put('/rentals/{rentalAgreement}', [RentalAgreementController::class, 'update'])->name('rentals.update');
+            Route::delete('/rentals/{rentalAgreement}', [RentalAgreementController::class, 'destroy'])->name('rentals.destroy');
+            Route::post('/rentals/{rentalAgreement}/settle', [RentalAgreementController::class, 'settle'])->name('rentals.settle');
         });
 
         Route::get('/roles', [RoleController::class, 'index'])->name('roles.index');

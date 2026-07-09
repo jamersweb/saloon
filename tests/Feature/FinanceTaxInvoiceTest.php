@@ -14,6 +14,7 @@ use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
 use App\Models\TaxInvoice;
+use App\Support\FinanceStructure;
 use App\Models\User;
 use App\Support\TaxReceiptPdfView;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -491,5 +492,114 @@ class FinanceTaxInvoiceTest extends TestCase
 
         $this->assertStringContainsString('Settlement Method', $html);
         $this->assertStringContainsString('Package / Membership: Gold Membership', $html);
+    }
+
+    public function test_owner_can_create_rental_income_invoice_line(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.store'), [
+                'customer_display_name' => 'Permanent Makeup Partner',
+                'items' => [
+                    [
+                        'salon_service_id' => null,
+                        'staff_profile_id' => null,
+                        'revenue_category' => 'line_rental_income',
+                        'cost_center' => 'permanent_makeup_rental',
+                        'description' => 'Permanent Makeup Line Rental',
+                        'quantity' => 1,
+                        'unit_price' => 1500,
+                        'discount_amount' => 0,
+                    ],
+                ],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->latest()->firstOrFail();
+        $line = $invoice->items()->firstOrFail();
+
+        $this->assertSame('line_rental_income', $line->revenue_category);
+        $this->assertSame('permanent_makeup_rental', $line->cost_center);
+    }
+
+    public function test_owner_can_record_refund_adjustment_as_linked_negative_invoice(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-REF-1',
+            'name' => 'Refund Customer',
+            'phone' => '5551116677',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Color Correction',
+            'category' => 'Hair',
+            'duration_minutes' => 120,
+            'buffer_minutes' => 0,
+            'price' => 500,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.store'), [
+                'customer_id' => $customer->id,
+                'customer_display_name' => $customer->name,
+                'items' => [
+                    [
+                        'salon_service_id' => $service->id,
+                        'description' => $service->name,
+                        'quantity' => 1,
+                        'unit_price' => 500,
+                        'discount_amount' => 0,
+                    ],
+                ],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->latest()->firstOrFail();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.finalize', $invoice))
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.refund-adjustment', $invoice->fresh()), [
+                'amount' => 105,
+                'reason' => 'Service quality correction',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $adjustment = TaxInvoice::query()
+            ->where('related_invoice_id', $invoice->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($adjustment);
+        $this->assertSame(TaxInvoice::STATUS_FINALIZED, $adjustment->status);
+        $this->assertSame('refund_adjustment', $adjustment->adjustment_type);
+        $this->assertSame('Service quality correction', $adjustment->adjustment_reason);
+        $this->assertLessThan(0, (float) $adjustment->total);
+        $this->assertSame(FinanceStructure::DEFAULT_REVENUE_CATEGORY, $adjustment->items()->first()?->revenue_category ?? FinanceStructure::DEFAULT_REVENUE_CATEGORY);
     }
 }

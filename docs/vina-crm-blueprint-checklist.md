@@ -31,11 +31,12 @@ Status key: `[x] Done`, `[-] Partial`, `[ ] Missing`
 ## 5. Package Management Requirements
 - [x] Package creation, assignment, session consumption, expiry, and remaining balances exist.
 - [x] Package session usage reduces remaining balance.
-- [-] Package sale posting into finance is still missing as a dedicated sale transaction.
+- [x] Package sale posting now creates a dedicated finance invoice at assignment time.
 
 ## 6. Chair Rental & Line Rental
-- [ ] Dedicated rental income workflows are not implemented.
-- [ ] Dedicated commission-from-rented-line workflow is not implemented.
+- [x] Dedicated rental agreement module now exists for chair and line rental.
+- [x] Rental settlements can post fixed rental income into finance.
+- [x] Commission-from-rented-line workflow now exists through rental settlements with gross sales plus commission percent.
 
 ## 7. Inventory Categories
 - [-] Inventory exists.
@@ -61,10 +62,10 @@ Status key: `[x] Done`, `[-] Partial`, `[ ] Missing`
 
 ## 10. Recording Rules
 - [-] One main category plus one cost center is now structurally supported, but not yet fully enforced across every legacy flow.
-- [ ] Chair rental and line rental revenue rules still need dedicated workflow support.
-- [-] Package sales versus package usage are operationally separated, but finance sale posting is incomplete.
+- [x] Chair rental and line rental revenue rules are now supported through a dedicated rental module.
+- [x] Package sales versus package usage are operationally separated and sale posting now exists in finance.
 - [x] Discounts are stored separately.
-- [ ] Refund/adjustment flow is still incomplete.
+- [x] Refund/adjustment flow now creates linked negative invoices instead of deleting history.
 - [-] Inventory purchases versus consumables are partially separated.
 - [ ] Marketing campaign cost linking in finance is still missing.
 - [x] Miscellaneous expenses now require explanation.
@@ -75,9 +76,9 @@ Status key: `[x] Done`, `[-] Partial`, `[ ] Missing`
 - [x] Expense by category is now added to finance dashboard.
 - [x] P&L by cost center is now added to finance dashboard.
 - [ ] Marketing spend by campaign is missing.
-- [ ] Rental income report is missing.
+- [-] Rental income now appears through revenue category reporting and a dedicated rental operations screen, but there is no separate analytics report view yet.
 - [ ] Client revenue report exists only partially through existing reports.
 
 ## 12. Request to CRM Support Team
 - [-] Core financial structure is now being implemented in the app.
-- [ ] Remaining work is package-sale posting, rental-income workflows, refunds/adjustments, and campaign-linked marketing accounting.
+- [ ] Remaining work is campaign-linked marketing accounting and any deeper rental analytics or automation.

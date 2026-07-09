@@ -224,6 +224,9 @@ export default function FinanceDashboard({ filters, summary, accountsReceivable,
                     <Link href={route('finance.payroll.index')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700">
                         Payroll
                     </Link>
+                    <Link href={route('finance.rentals.index')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700">
+                        Rentals
+                    </Link>
                     <Link href={route('finance.settings.edit')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700">
                         Finance settings
                     </Link>

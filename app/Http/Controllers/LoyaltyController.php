@@ -19,6 +19,7 @@ use App\Models\MembershipRegistration;
 use App\Models\SalonService;
 use App\Models\ServicePackage;
 use App\Services\GiftCardService;
+use App\Services\PackageSalePostingService;
 use App\Services\LoyaltyRedemptionRulesService;
 use App\Services\LoyaltyService;
 use App\Services\MembershipCardService;
@@ -375,7 +376,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Service package deleted.');
     }
 
-    public function assignPackage(Request $request, PackageBalanceService $packageBalanceService): RedirectResponse
+    public function assignPackage(Request $request, PackageBalanceService $packageBalanceService, PackageSalePostingService $packageSalePostingService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -389,10 +390,13 @@ class LoyaltyController extends Controller
         $package = ServicePackage::findOrFail((int) $data['service_package_id']);
 
         $customerPackage = $packageBalanceService->assignPackage($customer, $package, $request->user()?->id, $data['notes'] ?? null);
+        $saleInvoice = $packageSalePostingService->post($customer, $package, $request->user()?->id, $data['notes'] ?? null);
 
         Audit::log($request->user()?->id, 'package.assigned', 'CustomerPackage', $customerPackage->id);
 
-        return back()->with('status', 'Package assigned.');
+        return back()->with('status', $saleInvoice
+            ? 'Package assigned and sale posted to finance.'
+            : 'Package assigned.');
     }
 
     public function consumePackage(Request $request, CustomerPackage $customerPackage, PackageBalanceService $packageBalanceService): RedirectResponse

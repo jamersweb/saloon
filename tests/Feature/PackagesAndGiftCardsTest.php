@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Customer;
+use App\Models\FinanceSetting;
 use App\Models\CustomerMembershipCard;
 use App\Models\MembershipCardType;
 use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\ServicePackage;
+use App\Models\TaxInvoice;
 use App\Models\User;
 use App\Services\GiftCardService;
 use App\Services\PackageBalanceService;
@@ -82,11 +84,14 @@ class PackagesAndGiftCardsTest extends TestCase
 
         $package = ServicePackage::create([
             'name' => 'Spa Sessions',
+            'price' => 500,
             'usage_limit' => 4,
             'initial_value' => null,
             'validity_days' => 30,
             'is_active' => true,
         ]);
+
+        FinanceSetting::current();
 
         $this->actingAs($user)
             ->post(route('loyalty.packages.assign'), [
@@ -107,6 +112,16 @@ class PackagesAndGiftCardsTest extends TestCase
             'service_package_id' => $package->id,
             'status' => 'active',
         ]);
+
+        $saleInvoice = TaxInvoice::query()
+            ->where('customer_id', $customer->id)
+            ->where('status', TaxInvoice::STATUS_FINALIZED)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($saleInvoice);
+        $this->assertSame('Package Sale: Spa Sessions', $saleInvoice->items()->first()?->description);
+        $this->assertSame('package_sales', $saleInvoice->items()->first()?->revenue_category);
 
         $this->assertDatabaseHas('gift_cards', [
             'assigned_customer_id' => $customer->id,

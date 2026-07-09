@@ -16,6 +16,7 @@ use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
 use App\Services\AppointmentVisitService;
 use App\Services\GiftCardService;
+use App\Services\InvoiceAdjustmentService;
 use App\Services\TaxInvoiceDraftFromAppointmentService;
 use App\Services\TaxInvoiceFinalizeService;
 use App\Services\TaxInvoiceLineCalculator;
@@ -198,6 +199,7 @@ class TaxInvoiceController extends Controller
         $invoice = $this->refreshDraftIfMissingVisitItems($invoice, $request);
 
         $invoice->load(['items.salonService:id,name', 'items.staffProfile.user:id,name', 'customer.membershipCards.type:id,name', 'customer:id,name,phone,email', 'appointment.service:id,name', 'payments.createdBy:id,name']);
+        $invoice->load(['adjustments' => fn ($query) => $query->orderByDesc('issued_at')]);
 
         $settings = FinanceSetting::current();
 
@@ -238,6 +240,9 @@ class TaxInvoiceController extends Controller
                 'vat_amount' => (float) $invoice->vat_amount,
                 'total' => (float) $invoice->total,
                 'notes' => $invoice->notes,
+                'adjustment_type' => $invoice->adjustment_type,
+                'adjustment_reason' => $invoice->adjustment_reason,
+                'related_invoice_id' => $invoice->related_invoice_id,
                 'issued_at' => optional($invoice->issued_at)?->toIso8601String(),
                 'cashier_name' => $invoice->cashier_name,
                 'amount_paid' => $invoice->amountPaid(),
@@ -268,6 +273,13 @@ class TaxInvoiceController extends Controller
                     'created_by_name' => $p->createdBy?->name,
                 ]),
                 'settlement_label' => $this->resolveSettlementLabel($invoice),
+                'adjustments' => $invoice->adjustments->map(fn (TaxInvoice $adjustment) => [
+                    'id' => $adjustment->id,
+                    'invoice_number' => $adjustment->invoice_number,
+                    'total' => (float) $adjustment->total,
+                    'issued_at' => optional($adjustment->issued_at)?->toIso8601String(),
+                    'adjustment_reason' => $adjustment->adjustment_reason,
+                ])->values()->all(),
             ],
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
             'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
@@ -408,6 +420,30 @@ class TaxInvoiceController extends Controller
         Audit::log($request->user()->id, 'finance.invoice.voided', 'TaxInvoice', $invoice->id, []);
 
         return back()->with('status', 'Invoice voided.');
+    }
+
+    public function refundAdjustment(Request $request, TaxInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $adjustment = app(InvoiceAdjustmentService::class)->createRefundAdjustment(
+            $invoice,
+            (float) $data['amount'],
+            trim((string) $data['reason']),
+            $request->user()?->id,
+        );
+
+        Audit::log($request->user()->id, 'finance.invoice.refund_adjustment', 'TaxInvoice', $invoice->id, [
+            'adjustment_invoice_id' => $adjustment->id,
+            'amount' => (float) $data['amount'],
+        ]);
+
+        return back()->with('status', 'Refund / adjustment recorded as '.$adjustment->invoice_number.'.');
     }
 
     public function storePayment(Request $request, TaxInvoice $invoice): RedirectResponse

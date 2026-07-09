@@ -20,6 +20,9 @@ class TaxInvoice extends Model
         'customer_display_name',
         'status',
         'appointment_id',
+        'related_invoice_id',
+        'adjustment_type',
+        'adjustment_reason',
         'subtotal',
         'vat_amount',
         'total',
@@ -54,9 +57,19 @@ class TaxInvoice extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function relatedInvoice(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'related_invoice_id');
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(TaxInvoiceItem::class);
+    }
+
+    public function adjustments(): HasMany
+    {
+        return $this->hasMany(self::class, 'related_invoice_id');
     }
 
     public function payments(): HasMany

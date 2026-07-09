@@ -84,6 +84,10 @@ export default function FinanceInvoicesShow({
     const emailForm = useForm({
         recipient_email: invoice.customer_email || '',
     });
+    const adjustmentForm = useForm({
+        amount: invoice.total > 0 ? String(invoice.total) : '',
+        reason: '',
+    });
 
     const assignedGiftCards = gift_cards_for_payment || [];
     const singleAssignedGiftCard = assignedGiftCards.length === 1 ? assignedGiftCards[0] : null;
@@ -696,6 +700,70 @@ export default function FinanceInvoicesShow({
                                             </span>
                                             <span className="font-semibold text-emerald-700">{money(p.amount, currency_code)}</span>
                                             <span className="w-full text-xs text-slate-500">{new Date(p.paid_at).toLocaleString()}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+                        )}
+
+                        {can_manage_full_finance && invoice.status === 'finalized' && invoice.total > 0 && (
+                            <section className="ta-card p-5">
+                                <h3 className="mb-3 text-sm font-semibold text-slate-700">Refund / adjustment</h3>
+                                <p className="mb-3 text-xs text-slate-500">Creates a linked negative invoice so revenue history stays intact.</p>
+                                <form
+                                    onSubmit={(e) => {
+                                        e.preventDefault();
+                                        adjustmentForm.post(route('finance.invoices.refund-adjustment', invoice.id), {
+                                            preserveScroll: true,
+                                            onSuccess: () => router.reload(),
+                                        });
+                                    }}
+                                    className="grid gap-3 md:grid-cols-3"
+                                >
+                                    <div>
+                                        <label className="ta-field-label">Amount</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0.01"
+                                            className="ta-input"
+                                            value={adjustmentForm.data.amount}
+                                            onChange={(e) => adjustmentForm.setData('amount', e.target.value)}
+                                            required
+                                        />
+                                        {adjustmentForm.errors.amount && <p className="text-xs text-red-600">{adjustmentForm.errors.amount}</p>}
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="ta-field-label">Reason</label>
+                                        <input
+                                            className="ta-input"
+                                            value={adjustmentForm.data.reason}
+                                            onChange={(e) => adjustmentForm.setData('reason', e.target.value)}
+                                            placeholder="Refunded service, after-sale adjustment, pricing correction..."
+                                            required
+                                        />
+                                        {adjustmentForm.errors.reason && <p className="text-xs text-red-600">{adjustmentForm.errors.reason}</p>}
+                                    </div>
+                                    <button type="submit" className="ta-btn-primary md:col-span-3" disabled={adjustmentForm.processing}>
+                                        Record refund / adjustment
+                                    </button>
+                                </form>
+                            </section>
+                        )}
+
+                        {invoice.adjustments?.length > 0 && (
+                            <section className="ta-card p-5">
+                                <h3 className="mb-3 text-sm font-semibold text-slate-700">Adjustments</h3>
+                                <ul className="space-y-2 text-sm">
+                                    {invoice.adjustments.map((row) => (
+                                        <li key={row.id} className="border-b border-slate-100 py-2">
+                                            <div className="flex flex-wrap justify-between gap-3">
+                                                <Link href={route('finance.invoices.show', row.id)} className="text-indigo-600 hover:underline">
+                                                    {row.invoice_number}
+                                                </Link>
+                                                <span className="font-semibold text-rose-700">{money(row.total, currency_code)}</span>
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">{row.adjustment_reason}</div>
                                         </li>
                                     ))}
                                 </ul>
