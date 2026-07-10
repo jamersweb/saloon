@@ -11,7 +11,6 @@ const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 te
 const isSeedReferenceNote = (value) => /^SEED-APPT-\d{12}-\d+$/i.test(String(value || '').trim());
 const pad2 = (value) => String(value).padStart(2, '0');
 const SALON_TIME_ZONE = 'Asia/Dubai';
-const BOARD_STAFF_NAME_MATCHES = ['hengameh', 'dulce', 'jocelyn', 'majd', 'sahar', 'mona'];
 const COMPLETABLE_SERVICE_STATUSES = ['confirmed', 'in_progress'];
 const salonDateFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: SALON_TIME_ZONE,
@@ -1402,11 +1401,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
         return initials || (staff?.id ? `#${staff.id}` : '?');
     };
-    const boardStaffProfiles = useMemo(() => staffProfiles.filter((staff) => {
-        const name = String(staff?.name || '').toLowerCase();
-
-        return BOARD_STAFF_NAME_MATCHES.some((match) => name.includes(match));
-    }), [staffProfiles]);
+    const boardStaffProfiles = useMemo(() => staffProfiles.filter((staff) => staff?.id && String(staff?.name || '').trim() !== ''), [staffProfiles]);
     const boardStaffOptions = [{ value: '', label: 'Auto / Unassigned' }, ...boardStaffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
     const boardStaffList = boardStaffFilter === 'all'
         ? boardStaffProfiles

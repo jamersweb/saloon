@@ -14,12 +14,6 @@ class StaffProfile extends Model
     use HasFactory;
     use SoftDeletes;
 
-    private const EXCLUDED_SERVICE_STAFF_NAMES = [
-        'Analisa Rabanal Domenden',
-        'Jenifer Palisoc Jazmin',
-        'Jeniffer Palisoc Jazmin',
-    ];
-
     protected $fillable = [
         'user_id',
         'employee_code',
@@ -87,8 +81,8 @@ class StaffProfile extends Model
 
     public function scopeAssignableToServices(Builder $query): Builder
     {
-        return $query->whereDoesntHave('user', function (Builder $userQuery): void {
-            $userQuery->whereIn('name', self::EXCLUDED_SERVICE_STAFF_NAMES);
+        return $query->whereHas('user.role', function (Builder $roleQuery): void {
+            $roleQuery->whereIn('name', ['owner', 'manager', 'staff']);
         });
     }
 }

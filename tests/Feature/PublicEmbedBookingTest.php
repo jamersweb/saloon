@@ -161,11 +161,12 @@ class PublicEmbedBookingTest extends TestCase
         $this->assertSame(1, CommunicationLog::query()->where('context', 'public_booking_team_alert')->count());
     }
 
-    public function test_embed_booking_does_not_assign_removed_service_staff(): void
+    public function test_embed_booking_does_not_assign_non_assignable_roles(): void
     {
-        $staffRole = Role::create(['name' => 'staff', 'label' => 'Staff']);
+        $staffRole = Role::firstOrCreate(['name' => 'staff'], ['label' => 'Staff']);
+        $receptionRole = Role::firstOrCreate(['name' => 'reception'], ['label' => 'Reception']);
 
-        $removedUser = User::factory()->create(['role_id' => $staffRole->id, 'name' => 'Jenifer Palisoc Jazmin']);
+        $removedUser = User::factory()->create(['role_id' => $receptionRole->id, 'name' => 'Jenifer Palisoc Jazmin']);
         $removedStaff = StaffProfile::create([
             'user_id' => $removedUser->id,
             'employee_code' => 'VINA-08',
@@ -212,11 +213,12 @@ class PublicEmbedBookingTest extends TestCase
         $this->assertSame($activeStaff->id, $appointment->staff_profile_id);
     }
 
-    public function test_embed_booking_rejects_removed_service_staff_id(): void
+    public function test_embed_booking_rejects_non_assignable_staff_id(): void
     {
-        $staffRole = Role::create(['name' => 'staff', 'label' => 'Staff']);
+        $staffRole = Role::firstOrCreate(['name' => 'staff'], ['label' => 'Staff']);
+        $receptionRole = Role::firstOrCreate(['name' => 'reception'], ['label' => 'Reception']);
 
-        $removedUser = User::factory()->create(['role_id' => $staffRole->id, 'name' => 'Analisa Rabanal Domenden']);
+        $removedUser = User::factory()->create(['role_id' => $receptionRole->id, 'name' => 'Analisa Rabanal Domenden']);
         $removedStaff = StaffProfile::create([
             'user_id' => $removedUser->id,
             'employee_code' => 'VINA-07',

@@ -186,9 +186,10 @@ class AppointmentAvailabilityEndpointTest extends TestCase
             ->assertJsonPath('staff.0.available', true);
     }
 
-    public function test_staff_availability_endpoint_excludes_removed_service_staff(): void
+    public function test_staff_availability_endpoint_excludes_non_assignable_roles(): void
     {
-        $role = Role::create(['name' => 'manager', 'label' => 'Manager']);
+        $role = Role::firstOrCreate(['name' => 'manager'], ['label' => 'Manager']);
+        $receptionRole = Role::firstOrCreate(['name' => 'reception'], ['label' => 'Reception']);
         $user = User::factory()->create(['role_id' => $role->id]);
 
         BookingRule::create([
@@ -199,7 +200,7 @@ class AppointmentAvailabilityEndpointTest extends TestCase
             'max_advance_days' => 60,
         ]);
 
-        $removedUser = User::factory()->create(['role_id' => $role->id, 'name' => 'Analisa Rabanal Domenden']);
+        $removedUser = User::factory()->create(['role_id' => $receptionRole->id, 'name' => 'Analisa Rabanal Domenden']);
         StaffProfile::create(['user_id' => $removedUser->id, 'employee_code' => 'VINA-07', 'is_active' => true]);
 
         $activeUser = User::factory()->create(['role_id' => $role->id, 'name' => 'Majd Alabaza']);
