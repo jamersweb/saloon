@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\AttendanceLog;
+use App\Models\Campaign;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
+use App\Models\ExpenseEntry;
 use App\Models\FinanceSetting;
 use App\Models\InventoryItem;
 use App\Models\InvoicePayment;
+use App\Models\RentalSettlement;
 use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -50,6 +53,9 @@ class ReportController extends Controller
             'dailyRevenue' => $report['dailyRevenue'],
             'waitingTimeByStaff' => $report['waitingTimeByStaff'],
             'lateMinutesByStaff' => $report['lateMinutesByStaff'],
+            'clientRevenue' => $this->clientRevenueRows($dateFrom, $dateTo),
+            'rentalAnalytics' => $this->rentalAnalytics($dateFrom, $dateTo),
+            'marketingSpend' => $this->marketingSpendRows($dateFrom, $dateTo),
             'currencyCode' => $currencyCode,
         ]);
     }
@@ -59,7 +65,7 @@ class ReportController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager');
 
         $data = $request->validate([
-            'type' => ['required', Rule::in(['appointments', 'customers', 'inventory', 'loyalty'])],
+            'type' => ['required', Rule::in(['appointments', 'customers', 'inventory', 'loyalty', 'client_revenue', 'rentals', 'marketing_campaigns'])],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
         ]);
@@ -142,6 +148,41 @@ class ReportController extends Controller
                         optional($account->last_activity_at)->format('Y-m-d H:i'),
                     ])
                     ->all();
+                break;
+
+            case 'client_revenue':
+                $headers = ['Customer', 'Invoice Count', 'Revenue Total', 'Amount Paid', 'Outstanding Balance', 'Last Invoice Date'];
+                $rows = array_map(fn (array $row) => [
+                    $row['customer_name'],
+                    $row['invoice_count'],
+                    $row['revenue_total'],
+                    $row['amount_paid'],
+                    $row['outstanding_balance'],
+                    $row['last_invoice_date'],
+                ], $this->clientRevenueRows($dateFrom, $dateTo));
+                break;
+
+            case 'rentals':
+                $headers = ['Partner', 'Agreement Type', 'Cost Center', 'Settlements', 'Fixed Rent', 'Commission', 'Total Income'];
+                $rows = array_map(fn (array $row) => [
+                    $row['partner_name'],
+                    $row['agreement_type'],
+                    $row['cost_center_label'],
+                    $row['settlement_count'],
+                    $row['fixed_rent_total'],
+                    $row['commission_total'],
+                    $row['total_income'],
+                ], $this->rentalAnalytics($dateFrom, $dateTo)['partners']);
+                break;
+
+            case 'marketing_campaigns':
+                $headers = ['Campaign', 'Expense Count', 'Spend Total', 'Last Expense Date'];
+                $rows = array_map(fn (array $row) => [
+                    $row['campaign_name'],
+                    $row['expense_count'],
+                    $row['spend_total'],
+                    $row['last_expense_date'],
+                ], $this->marketingSpendRows($dateFrom, $dateTo));
                 break;
         }
 
@@ -863,6 +904,109 @@ class ReportController extends Controller
             'waitingTimeByStaff' => $waitingTimeByStaff,
             'lateMinutesByStaff' => $lateMinutesByStaff,
         ];
+    }
+
+    /**
+     * @return list<array{customer_name: string, invoice_count: int, revenue_total: float, amount_paid: float, outstanding_balance: float, last_invoice_date: string}>
+     */
+    private function clientRevenueRows(Carbon $dateFrom, Carbon $dateTo): array
+    {
+        return TaxInvoice::query()
+            ->where('status', TaxInvoice::STATUS_FINALIZED)
+            ->whereBetween('issued_at', [$dateFrom, $dateTo])
+            ->with('payments:id,tax_invoice_id,amount')
+            ->get()
+            ->groupBy(fn (TaxInvoice $invoice) => $invoice->customer_display_name ?: 'Walk-in / Unnamed')
+            ->map(function (Collection $group, string $customerName): array {
+                $latest = $group->sortByDesc('issued_at')->first();
+                $revenueTotal = (float) $group->sum('total');
+                $amountPaid = (float) $group->sum(fn (TaxInvoice $invoice) => $invoice->payments->sum('amount'));
+
+                return [
+                    'customer_name' => $customerName,
+                    'invoice_count' => $group->count(),
+                    'revenue_total' => round($revenueTotal, 2),
+                    'amount_paid' => round($amountPaid, 2),
+                    'outstanding_balance' => round($revenueTotal - $amountPaid, 2),
+                    'last_invoice_date' => optional($latest?->issued_at)->toDateString() ?: '',
+                ];
+            })
+            ->sortByDesc('revenue_total')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{
+     *   summary: array{settlement_count: int, fixed_rent_total: float, commission_total: float, total_income: float},
+     *   partners: list<array{partner_name: string, agreement_type: string, cost_center: string, cost_center_label: string, settlement_count: int, fixed_rent_total: float, commission_total: float, total_income: float}>
+     * }
+     */
+    private function rentalAnalytics(Carbon $dateFrom, Carbon $dateTo): array
+    {
+        $rows = RentalSettlement::query()
+            ->with('agreement:id,partner_name,agreement_type,cost_center')
+            ->whereBetween('settlement_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->get();
+
+        return [
+            'summary' => [
+                'settlement_count' => $rows->count(),
+                'fixed_rent_total' => round((float) $rows->sum('fixed_rent_amount'), 2),
+                'commission_total' => round((float) $rows->sum('commission_amount'), 2),
+                'total_income' => round((float) $rows->sum('total_amount'), 2),
+            ],
+            'partners' => $rows
+                ->groupBy(fn (RentalSettlement $settlement) => ($settlement->agreement?->partner_name ?: 'Unknown').'|'.($settlement->agreement?->agreement_type ?: 'unknown').'|'.($settlement->agreement?->cost_center ?: 'general_salon'))
+                ->map(function (Collection $group, string $key): array {
+                    [$partnerName, $agreementType, $costCenter] = array_pad(explode('|', $key), 3, '');
+
+                    return [
+                        'partner_name' => $partnerName,
+                        'agreement_type' => $agreementType,
+                        'cost_center' => $costCenter,
+                        'cost_center_label' => \App\Support\FinanceStructure::costCenters()[$costCenter] ?? $costCenter,
+                        'settlement_count' => $group->count(),
+                        'fixed_rent_total' => round((float) $group->sum('fixed_rent_amount'), 2),
+                        'commission_total' => round((float) $group->sum('commission_amount'), 2),
+                        'total_income' => round((float) $group->sum('total_amount'), 2),
+                    ];
+                })
+                ->sortByDesc('total_income')
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /**
+     * @return list<array{campaign_name: string, expense_count: int, spend_total: float, last_expense_date: string}>
+     */
+    private function marketingSpendRows(Carbon $dateFrom, Carbon $dateTo): array
+    {
+        return ExpenseEntry::query()
+            ->with('campaign:id,name')
+            ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNotNull('campaign_id')
+                    ->orWhere('category', 'marketing_branding')
+                    ->orWhere('expense_subcategory', 'marketing');
+            })
+            ->get()
+            ->groupBy(fn (ExpenseEntry $expense) => $expense->campaign?->name ?: 'Unlinked marketing spend')
+            ->map(function (Collection $group, string $campaignName): array {
+                $latest = $group->sortByDesc('expense_date')->first();
+
+                return [
+                    'campaign_name' => $campaignName,
+                    'expense_count' => $group->count(),
+                    'spend_total' => round((float) $group->sum('total_amount'), 2),
+                    'last_expense_date' => optional($latest?->expense_date)->toDateString() ?: '',
+                ];
+            })
+            ->sortByDesc('spend_total')
+            ->values()
+            ->all();
     }
 
     /**

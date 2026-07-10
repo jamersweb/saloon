@@ -95,6 +95,7 @@ class FinanceDashboardController extends Controller
 
         $accountsPayablePos = PurchaseOrder::query()
             ->whereIn('status', [PurchaseOrder::STATUS_APPROVED, PurchaseOrder::STATUS_RECEIVED])
+            ->whereDoesntHave('expenseEntries')
             ->with('supplier:id,name')
             ->orderByDesc('order_date')
             ->limit(30)

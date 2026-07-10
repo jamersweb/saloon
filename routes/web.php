@@ -261,6 +261,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/invoices/{invoice}', [TaxInvoiceController::class, 'update'])->name('invoices.update');
         Route::post('/invoices/{invoice}/finalize', [TaxInvoiceController::class, 'finalize'])->name('invoices.finalize');
         Route::post('/invoices/{invoice}/payments', [TaxInvoiceController::class, 'storePayment'])->name('invoices.payments.store');
+        Route::post('/invoices/{invoice}/payments/batch', [TaxInvoiceController::class, 'storeBatchPayment'])->name('invoices.payments.batch');
         Route::get('/invoices/{invoice}/pdf', [TaxInvoiceController::class, 'pdf'])->name('invoices.pdf');
     });
 });

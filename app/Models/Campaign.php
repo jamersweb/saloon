@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Campaign extends Model
 {
@@ -42,5 +43,9 @@ class Campaign extends Model
     {
         return $this->belongsTo(CustomerTag::class, 'customer_tag_id');
     }
-}
 
+    public function expenseEntries(): HasMany
+    {
+        return $this->hasMany(ExpenseEntry::class);
+    }
+}

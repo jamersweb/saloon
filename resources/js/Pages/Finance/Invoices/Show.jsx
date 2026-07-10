@@ -33,6 +33,14 @@ const blankItem = () => ({
     discount_amount: '0',
 });
 
+const blankSplitPayment = (paidAt) => ({
+    amount: '',
+    method: 'cash',
+    paid_at: paidAt,
+    reference_note: '',
+    gift_card_id: '',
+});
+
 export default function FinanceInvoicesShow({
     invoice,
     customers,
@@ -79,6 +87,12 @@ export default function FinanceInvoicesShow({
         paid_at: new Date().toISOString().slice(0, 16),
         reference_note: '',
         gift_card_id: '',
+    });
+    const splitForm = useForm({
+        payments: [
+            blankSplitPayment(new Date().toISOString().slice(0, 16)),
+            blankSplitPayment(new Date().toISOString().slice(0, 16)),
+        ],
     });
 
     const emailForm = useForm({
@@ -150,6 +164,7 @@ export default function FinanceInvoicesShow({
             ...next[idx],
             salon_service_id: s ? String(s.id) : '',
             revenue_category: s ? 'service_income' : 'retail_product_sales',
+            cost_center: s?.cost_center || 'general_salon',
             description: s
                 ? s.name
                 : item
@@ -197,6 +212,13 @@ export default function FinanceInvoicesShow({
             customer_id: ap.customer_id ? String(ap.customer_id) : '',
             customer_display_name: cust ? cust.name : editForm.data.customer_display_name,
         });
+    };
+
+    const splitTotal = splitForm.data.payments.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const addSplitRow = () => splitForm.setData('payments', [...splitForm.data.payments, blankSplitPayment(new Date().toISOString().slice(0, 16))]);
+    const removeSplitRow = (idx) => {
+        const next = splitForm.data.payments.filter((_, i) => i !== idx);
+        splitForm.setData('payments', next.length >= 2 ? next : [blankSplitPayment(new Date().toISOString().slice(0, 16)), blankSplitPayment(new Date().toISOString().slice(0, 16))]);
     };
 
     return (
@@ -684,6 +706,113 @@ export default function FinanceInvoicesShow({
                                     ) : null}
                                     <button type="submit" className="ta-btn-primary md:col-span-4" disabled={payForm.processing}>
                                         Add payment
+                                    </button>
+                                </form>
+                            </section>
+                        )}
+
+                        {invoice.status === 'finalized' && invoice.balance > 0.009 && (
+                            <section className="ta-card p-5">
+                                <div className="mb-4 flex items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-slate-700">Split payment</h3>
+                                        <p className="text-xs text-slate-500">Record multiple payment methods in one guided settlement.</p>
+                                    </div>
+                                    <button type="button" className="text-sm text-indigo-600 hover:underline" onClick={addSplitRow}>
+                                        + Add row
+                                    </button>
+                                </div>
+                                <form
+                                    onSubmit={(e) => {
+                                        e.preventDefault();
+                                        splitForm.transform((data) => ({
+                                            payments: data.payments.map((row) => ({
+                                                amount: parseFloat(row.amount) || 0,
+                                                method: row.method,
+                                                paid_at: row.paid_at,
+                                                reference_note: row.reference_note || null,
+                                                gift_card_id: row.method === 'gift_card' && row.gift_card_id ? row.gift_card_id : null,
+                                            })),
+                                        }));
+                                        splitForm.post(route('finance.invoices.payments.batch', invoice.id), {
+                                            preserveScroll: true,
+                                            onSuccess: () => router.reload(),
+                                        });
+                                    }}
+                                    className="space-y-4"
+                                >
+                                    <div className="space-y-3">
+                                        {splitForm.data.payments.map((row, idx) => (
+                                            <div key={`split-${idx}`} className="grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-5">
+                                                <div>
+                                                    <label className="ta-field-label">Amount</label>
+                                                    <input className="ta-input" type="number" min="0.01" step="0.01" value={row.amount} onChange={(e) => {
+                                                        const next = [...splitForm.data.payments];
+                                                        next[idx] = { ...next[idx], amount: e.target.value };
+                                                        splitForm.setData('payments', next);
+                                                    }} required />
+                                                </div>
+                                                <div>
+                                                    <label className="ta-field-label">Method</label>
+                                                    <select className="ta-input" value={row.method} onChange={(e) => {
+                                                        const method = e.target.value;
+                                                        const next = [...splitForm.data.payments];
+                                                        next[idx] = { ...next[idx], method, gift_card_id: method === 'gift_card' && singleAssignedGiftCard ? String(singleAssignedGiftCard.id) : '' };
+                                                        splitForm.setData('payments', next);
+                                                    }}>
+                                                        {Object.entries(payment_methods).filter(([key]) => key !== 'split_payment').map(([key, label]) => (
+                                                            <option key={key} value={key}>{label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="ta-field-label">Paid at</label>
+                                                    <input className="ta-input" type="datetime-local" value={row.paid_at} onChange={(e) => {
+                                                        const next = [...splitForm.data.payments];
+                                                        next[idx] = { ...next[idx], paid_at: e.target.value };
+                                                        splitForm.setData('payments', next);
+                                                    }} required />
+                                                </div>
+                                                <div>
+                                                    <label className="ta-field-label">Reference</label>
+                                                    <input className="ta-input" value={row.reference_note} onChange={(e) => {
+                                                        const next = [...splitForm.data.payments];
+                                                        next[idx] = { ...next[idx], reference_note: e.target.value };
+                                                        splitForm.setData('payments', next);
+                                                    }} />
+                                                </div>
+                                                <div className="flex items-end justify-between gap-3">
+                                                    <div className="w-full">
+                                                        {row.method === 'gift_card' ? (
+                                                            <>
+                                                                <label className="ta-field-label">Gift card</label>
+                                                                <select className="ta-input" value={row.gift_card_id} onChange={(e) => {
+                                                                    const next = [...splitForm.data.payments];
+                                                                    next[idx] = { ...next[idx], gift_card_id: e.target.value };
+                                                                    splitForm.setData('payments', next);
+                                                                }} required>
+                                                                    <option value="">Select gift card</option>
+                                                                    {assignedGiftCards.map((card) => (
+                                                                        <option key={card.id} value={card.id}>{card.code} ({money(card.remaining_value, currency_code)})</option>
+                                                                    ))}
+                                                                </select>
+                                                            </>
+                                                        ) : <div className="text-xs text-slate-500">Balance-aware validation runs when saved.</div>}
+                                                    </div>
+                                                    <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => removeSplitRow(idx)}>
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                                        <span>Split total: <strong>{money(splitTotal, currency_code)}</strong></span>
+                                        <span>Invoice balance: <strong>{money(invoice.balance, currency_code)}</strong></span>
+                                    </div>
+                                    {splitForm.errors.payments && <p className="text-xs text-red-600">{splitForm.errors.payments}</p>}
+                                    <button type="submit" className="ta-btn-primary" disabled={splitForm.processing}>
+                                        Record split payment
                                     </button>
                                 </form>
                             </section>

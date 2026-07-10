@@ -70,6 +70,7 @@ class InventoryController extends Controller
                     'item_name' => $transaction->item?->name,
                     'item_sku' => $transaction->item?->sku,
                     'type' => $transaction->type,
+                    'classification' => $transaction->classification,
                     'quantity' => $transaction->quantity,
                     'reference' => $transaction->reference,
                     'notes' => $transaction->notes,
@@ -99,6 +100,7 @@ class InventoryController extends Controller
                 ->orderBy('category')
                 ->pluck('category')
                 ->values(),
+            'transactionClassifications' => self::transactionClassifications(),
         ]);
     }
 
@@ -142,6 +144,7 @@ class InventoryController extends Controller
 
         $data = $request->validate([
             'type' => ['required', Rule::in(['in', 'out', 'adjustment'])],
+            'classification' => ['nullable', Rule::in(array_keys(self::transactionClassifications()))],
             'quantity' => ['required', 'integer'],
             'reference' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
@@ -173,6 +176,7 @@ class InventoryController extends Controller
             InventoryTransaction::create([
                 'inventory_item_id' => $item->id,
                 'type' => $data['type'],
+                'classification' => $data['classification'] ?? self::defaultTransactionClassification($data['type']),
                 'quantity' => $delta,
                 'reference' => $data['reference'] ?? null,
                 'notes' => $data['notes'] ?? null,
@@ -240,5 +244,25 @@ class InventoryController extends Controller
             'reorder_level' => ['required', 'integer', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
         ]);
+    }
+
+    public static function transactionClassifications(): array
+    {
+        return [
+            'inventory_purchase' => 'Inventory purchase / procurement',
+            'service_consumables' => 'Service consumables usage',
+            'service_products' => 'Service products usage',
+            'retail_products' => 'Retail stock movement',
+            'manual_adjustment' => 'Manual adjustment',
+        ];
+    }
+
+    private static function defaultTransactionClassification(string $type): string
+    {
+        return match ($type) {
+            'out' => 'service_consumables',
+            'in' => 'inventory_purchase',
+            default => 'manual_adjustment',
+        };
     }
 }

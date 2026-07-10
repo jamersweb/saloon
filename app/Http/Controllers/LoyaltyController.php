@@ -19,6 +19,7 @@ use App\Models\MembershipRegistration;
 use App\Models\SalonService;
 use App\Models\ServicePackage;
 use App\Services\GiftCardService;
+use App\Services\GiftCardSalePostingService;
 use App\Services\PackageSalePostingService;
 use App\Services\LoyaltyRedemptionRulesService;
 use App\Services\LoyaltyService;
@@ -422,7 +423,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Package usage recorded.');
     }
 
-    public function issueGiftCard(Request $request, GiftCardService $giftCardService): RedirectResponse
+    public function issueGiftCard(Request $request, GiftCardService $giftCardService, GiftCardSalePostingService $giftCardSalePostingService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
@@ -453,6 +454,15 @@ class LoyaltyController extends Controller
                 $data['notes'] ?? null,
                 $data['nfc_uid'] ?? null,
             );
+
+        if (! $request->boolean('random_voucher')) {
+            $giftCardSalePostingService->post(
+                $giftCard,
+                $customer,
+                $request->user()?->id,
+                $data['notes'] ?? null
+            );
+        }
 
         Audit::log($request->user()?->id, 'gift_card.issued', 'GiftCard', $giftCard->id);
 
@@ -910,7 +920,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card updated.');
     }
 
-    public function refillMembershipCard(Request $request, CustomerMembershipCard $card, GiftCardService $giftCardService): RedirectResponse
+    public function refillMembershipCard(Request $request, CustomerMembershipCard $card, GiftCardService $giftCardService, GiftCardSalePostingService $giftCardSalePostingService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -926,6 +936,18 @@ class LoyaltyController extends Controller
             $request->user()?->id,
             $data['notes'] ?? null,
         );
+
+        $giftCard = $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
+        if ($giftCard) {
+            $giftCardSalePostingService->post(
+                $giftCard,
+                $card->customer,
+                $request->user()?->id,
+                $data['notes'] ?? null,
+                (float) $data['amount'],
+                'Gift Card Top-up: '.$card->card_number
+            );
+        }
 
         Audit::log($request->user()?->id, 'gift_card.refilled_from_membership', 'GiftCardTransaction', $transaction->id, [
             'membership_card_id' => $card->id,

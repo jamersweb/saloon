@@ -255,6 +255,7 @@ class CrmAutomationController extends Controller
                 ]),
             'campaigns' => Campaign::query()
                 ->with(['template:id,name', 'tag:id,name'])
+                ->withSum('expenseEntries as spend_total', 'total_amount')
                 ->latest()
                 ->limit(120)
                 ->get()
@@ -270,6 +271,7 @@ class CrmAutomationController extends Controller
                     'status' => $campaign->status,
                     'sent_count' => $campaign->sent_count,
                     'failed_count' => $campaign->failed_count,
+                    'spend_total' => round((float) ($campaign->spend_total ?? 0), 2),
                     'last_run_at' => $campaign->last_run_at,
                 ]),
         ]);

@@ -101,7 +101,16 @@ class TaxInvoiceController extends Controller
 
         return Inertia::render('Finance/Invoices/Create', [
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
-            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
+            'services' => SalonService::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'price', 'category'])
+                ->map(fn (SalonService $service) => [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'price' => $service->price,
+                    'cost_center' => FinanceStructure::inferCostCenterFromService($service),
+                ]),
             'staff_profiles' => $this->staffProfileOptions(),
             'inventory_items' => InventoryItem::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku', 'selling_price']),
             'revenue_categories' => FinanceStructure::revenueCategories(),
@@ -168,7 +177,12 @@ class TaxInvoiceController extends Controller
                     'salon_service_id' => $row['salon_service_id'] ?? null,
                     'revenue_category' => $row['revenue_category']
                         ?? FinanceStructure::inferRevenueCategory(isset($row['salon_service_id']) ? (int) $row['salon_service_id'] : null, $row['description'] ?? null),
-                    'cost_center' => $row['cost_center'] ?? FinanceStructure::DEFAULT_COST_CENTER,
+                    'cost_center' => FinanceStructure::resolveInvoiceCostCenter(
+                        $row['cost_center'] ?? null,
+                        isset($row['salon_service_id']) ? SalonService::query()->find($row['salon_service_id']) : null,
+                        $row['revenue_category'] ?? null,
+                        $row['description'] ?? null,
+                    ),
                     'staff_profile_id' => $row['staff_profile_id'] ?? null,
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
@@ -282,7 +296,16 @@ class TaxInvoiceController extends Controller
                 ])->values()->all(),
             ],
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
-            'services' => SalonService::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'price']),
+            'services' => SalonService::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'price', 'category'])
+                ->map(fn (SalonService $service) => [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'price' => $service->price,
+                    'cost_center' => FinanceStructure::inferCostCenterFromService($service),
+                ]),
             'staff_profiles' => $this->staffProfileOptions(),
             'inventory_items' => InventoryItem::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku', 'selling_price']),
             'revenue_categories' => FinanceStructure::revenueCategories(),
@@ -348,7 +371,12 @@ class TaxInvoiceController extends Controller
                     'salon_service_id' => $row['salon_service_id'] ?? null,
                     'revenue_category' => $row['revenue_category']
                         ?? FinanceStructure::inferRevenueCategory(isset($row['salon_service_id']) ? (int) $row['salon_service_id'] : null, $row['description'] ?? null),
-                    'cost_center' => $row['cost_center'] ?? FinanceStructure::DEFAULT_COST_CENTER,
+                    'cost_center' => FinanceStructure::resolveInvoiceCostCenter(
+                        $row['cost_center'] ?? null,
+                        isset($row['salon_service_id']) ? SalonService::query()->find($row['salon_service_id']) : null,
+                        $row['revenue_category'] ?? null,
+                        $row['description'] ?? null,
+                    ),
                     'staff_profile_id' => $row['staff_profile_id'] ?? null,
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
@@ -496,6 +524,42 @@ class TaxInvoiceController extends Controller
         ]);
 
         return back()->with('status', 'Payment recorded.');
+    }
+
+    public function storeBatchPayment(Request $request, TaxInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'reception');
+        $this->authorizeInvoiceAccess($request, $invoice);
+
+        $data = $request->validate([
+            'payments' => ['required', 'array', 'min:2'],
+            'payments.*.amount' => ['required', 'numeric', 'min:0.01'],
+            'payments.*.method' => ['required', Rule::in(array_diff(array_keys(InvoicePayment::methodLabels()), [InvoicePayment::METHOD_SPLIT_PAYMENT]))],
+            'payments.*.paid_at' => ['required', 'date'],
+            'payments.*.reference_note' => ['nullable', 'string', 'max:255'],
+            'payments.*.gift_card_id' => ['nullable', 'exists:gift_cards,id'],
+        ]);
+
+        $rows = collect($data['payments'])
+            ->map(fn (array $row) => [
+                'amount' => (float) $row['amount'],
+                'method' => $row['method'],
+                'paid_at' => $row['paid_at'],
+                'reference_note' => $row['reference_note'] ?? null,
+                'gift_card_id' => isset($row['gift_card_id']) && $row['gift_card_id'] !== '' ? (int) $row['gift_card_id'] : null,
+            ])
+            ->filter(fn (array $row) => $row['amount'] > 0)
+            ->values()
+            ->all();
+
+        app(TaxInvoicePaymentService::class)->recordBatch($invoice, $rows, $request->user());
+
+        Audit::log($request->user()->id, 'finance.invoice.split_payment', 'TaxInvoice', $invoice->id, [
+            'rows' => count($rows),
+            'amount' => round(array_sum(array_map(fn (array $row) => (float) $row['amount'], $rows)), 2),
+        ]);
+
+        return back()->with('status', 'Split payment recorded.');
     }
 
     public function pdf(Request $request, TaxInvoice $invoice): Response

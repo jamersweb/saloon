@@ -72,6 +72,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
             ...next[idx],
             salon_service_id: s ? String(s.id) : '',
             revenue_category: s ? 'service_income' : 'retail_product_sales',
+            cost_center: s?.cost_center || 'general_salon',
             description: s
                 ? s.name
                 : item

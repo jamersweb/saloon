@@ -132,4 +132,38 @@ class TaxInvoicePaymentService
             'gift_card_id' => $voucher->id,
         ], $user);
     }
+
+    /**
+     * @param  list<array{amount: float|string, method: string, paid_at: \DateTimeInterface|string, reference_note?: ?string, gift_card_id?: ?int}>  $rows
+     * @return list<InvoicePayment>
+     */
+    public function recordBatch(TaxInvoice $invoice, array $rows, User $user): array
+    {
+        if ($invoice->status !== TaxInvoice::STATUS_FINALIZED) {
+            throw ValidationException::withMessages([
+                'payments' => 'Payments are only allowed on finalized invoices.',
+            ]);
+        }
+
+        $invoice->refresh();
+        $startingBalance = $invoice->balanceDue();
+        $sum = round(array_sum(array_map(fn (array $row) => (float) $row['amount'], $rows)), 2);
+
+        if ($sum > $startingBalance + 0.009) {
+            throw ValidationException::withMessages([
+                'payments' => 'Split payments exceed the remaining balance due.',
+            ]);
+        }
+
+        $created = [];
+
+        DB::transaction(function () use ($invoice, $rows, $user, &$created): void {
+            foreach ($rows as $row) {
+                $invoice->refresh();
+                $created[] = $this->record($invoice, $row, $user);
+            }
+        });
+
+        return $created;
+    }
 }

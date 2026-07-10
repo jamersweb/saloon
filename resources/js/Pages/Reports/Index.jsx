@@ -66,7 +66,7 @@ function RevenueTrendChart({ data, currencyCode }) {
     );
 }
 
-export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, currencyCode = 'AED' }) {
+export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, clientRevenue = [], rentalAnalytics = { summary: {}, partners: [] }, marketingSpend = [], currencyCode = 'AED' }) {
     const { auth } = usePage().props;
     const canExport = Boolean(auth?.permissions?.can_export_reports);
     const [filterForm, setFilterForm] = useState({
@@ -153,6 +153,9 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                         <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('customers')}>Customers CSV</button>
                         <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('inventory')}>Inventory CSV</button>
                         <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('loyalty')}>Loyalty CSV</button>
+                        <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('client_revenue')}>Client Revenue CSV</button>
+                        <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('marketing_campaigns')}>Campaign Spend CSV</button>
+                        <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('rentals')}>Rental CSV</button>
                         <button className="w-full rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-700 disabled:opacity-50" disabled={!canExport} onClick={() => exportPdf('summary')}>Summary PDF</button>
                         <button className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 disabled:opacity-50" disabled={!canExport} onClick={() => exportPdf('service')}>Service Report PDF</button>
                     </div>
@@ -236,6 +239,46 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </section>
+
+                <section className="grid gap-6 lg:grid-cols-2">
+                    <div className="ta-card overflow-hidden">
+                        <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Client Revenue</h3></div>
+                        <div className="overflow-x-auto p-5">
+                            <table className="min-w-full text-sm">
+                                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Client</th><th className="px-4 py-2">Invoices</th><th className="px-4 py-2">Revenue</th><th className="px-4 py-2">Paid</th><th className="px-4 py-2">Outstanding</th><th className="px-4 py-2">Last Invoice</th></tr></thead>
+                                <tbody>{clientRevenue.map((row) => <tr key={row.customer_name} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{row.customer_name}</td><td className="px-4 py-2 text-slate-600">{row.invoice_count}</td><td className="px-4 py-2 font-semibold text-slate-700">{toMoney(row.revenue_total, currencyCode)}</td><td className="px-4 py-2 text-emerald-700">{toMoney(row.amount_paid, currencyCode)}</td><td className="px-4 py-2 text-amber-700">{toMoney(row.outstanding_balance, currencyCode)}</td><td className="px-4 py-2 text-slate-600">{row.last_invoice_date || '-'}</td></tr>)}</tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div className="ta-card overflow-hidden">
+                        <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Rental Analytics</h3></div>
+                        <div className="space-y-4 p-5">
+                            <div className="grid gap-3 md:grid-cols-4">
+                                <div className="rounded-xl border border-slate-200 p-3"><p className="text-xs uppercase text-slate-500">Settlements</p><p className="mt-1 text-lg font-semibold text-slate-800">{rentalAnalytics.summary?.settlement_count || 0}</p></div>
+                                <div className="rounded-xl border border-slate-200 p-3"><p className="text-xs uppercase text-slate-500">Fixed Rent</p><p className="mt-1 text-lg font-semibold text-slate-800">{toMoney(rentalAnalytics.summary?.fixed_rent_total || 0, currencyCode)}</p></div>
+                                <div className="rounded-xl border border-slate-200 p-3"><p className="text-xs uppercase text-slate-500">Commission</p><p className="mt-1 text-lg font-semibold text-slate-800">{toMoney(rentalAnalytics.summary?.commission_total || 0, currencyCode)}</p></div>
+                                <div className="rounded-xl border border-slate-200 p-3"><p className="text-xs uppercase text-slate-500">Total Income</p><p className="mt-1 text-lg font-semibold text-slate-800">{toMoney(rentalAnalytics.summary?.total_income || 0, currencyCode)}</p></div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-sm">
+                                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Partner</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Cost Center</th><th className="px-4 py-2">Settlements</th><th className="px-4 py-2">Fixed Rent</th><th className="px-4 py-2">Commission</th><th className="px-4 py-2">Total</th></tr></thead>
+                                    <tbody>{(rentalAnalytics.partners || []).map((row) => <tr key={`${row.partner_name}-${row.cost_center}`} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{row.partner_name}</td><td className="px-4 py-2 text-slate-600">{row.agreement_type}</td><td className="px-4 py-2 text-slate-600">{row.cost_center_label}</td><td className="px-4 py-2 text-slate-600">{row.settlement_count}</td><td className="px-4 py-2 text-slate-600">{toMoney(row.fixed_rent_total, currencyCode)}</td><td className="px-4 py-2 text-slate-600">{toMoney(row.commission_total, currencyCode)}</td><td className="px-4 py-2 font-semibold text-slate-700">{toMoney(row.total_income, currencyCode)}</td></tr>)}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Marketing Spend by Campaign</h3></div>
+                    <div className="overflow-x-auto p-5">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Campaign</th><th className="px-4 py-2">Expenses</th><th className="px-4 py-2">Spend</th><th className="px-4 py-2">Last Expense</th></tr></thead>
+                            <tbody>{marketingSpend.map((row) => <tr key={row.campaign_name} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{row.campaign_name}</td><td className="px-4 py-2 text-slate-600">{row.expense_count}</td><td className="px-4 py-2 font-semibold text-slate-700">{toMoney(row.spend_total, currencyCode)}</td><td className="px-4 py-2 text-slate-600">{row.last_expense_date || '-'}</td></tr>)}</tbody>
+                        </table>
                     </div>
                 </section>
             </div>

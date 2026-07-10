@@ -36,6 +36,7 @@ class ExpenseEntry extends Model
         'receipt_image_path',
         'paid_at',
         'purchase_order_id',
+        'campaign_id',
         'staff_profile_id',
         'approved_by',
         'approved_at',
@@ -62,6 +63,11 @@ class ExpenseEntry extends Model
     public function purchaseOrder(): BelongsTo
     {
         return $this->belongsTo(PurchaseOrder::class);
+    }
+
+    public function campaign(): BelongsTo
+    {
+        return $this->belongsTo(Campaign::class);
     }
 
     public function staffProfile(): BelongsTo

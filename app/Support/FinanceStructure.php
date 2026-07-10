@@ -111,6 +111,18 @@ class FinanceStructure
         ];
     }
 
+    public static function normalizeCostCenter(?string $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return array_key_exists($value, self::costCenters()) ? $value : null;
+    }
+
+    public static function isFallbackCostCenter(?string $value): bool
+    {
+        return self::normalizeCostCenter($value) === self::DEFAULT_COST_CENTER;
+    }
+
     public static function normalizeExpenseCategory(?string $value): string
     {
         $value = trim((string) $value);
@@ -134,6 +146,45 @@ class FinanceStructure
         return match ($value) {
             'wallet' => 'other',
             default => array_key_exists($value, self::paymentMethods()) ? $value : 'other',
+        };
+    }
+
+    public static function defaultExpenseCostCenter(?string $category, ?string $subcategory = null): string
+    {
+        $category = trim((string) $category);
+        $subcategory = trim((string) $subcategory);
+
+        return match (true) {
+            $category === 'marketing_branding', $subcategory === 'marketing' => 'marketing_branding',
+            $category === 'administration_finance', $category === 'software_it', $category === 'training_development' => 'management_administration',
+            default => self::DEFAULT_COST_CENTER,
+        };
+    }
+
+    public static function resolveInvoiceCostCenter(
+        ?string $providedCostCenter,
+        ?SalonService $service,
+        ?string $revenueCategory = null,
+        ?string $description = null,
+    ): string {
+        $normalizedProvided = self::normalizeCostCenter($providedCostCenter);
+        $serviceDerived = self::inferCostCenterFromService($service);
+        $description = strtolower(trim((string) $description));
+
+        if ($normalizedProvided && $normalizedProvided !== self::DEFAULT_COST_CENTER) {
+            return $normalizedProvided;
+        }
+
+        if ($service && $serviceDerived !== self::DEFAULT_COST_CENTER) {
+            return $serviceDerived;
+        }
+
+        return match ($revenueCategory) {
+            'line_rental_income', 'commission_income' => 'permanent_makeup_rental',
+            'chair_rental_income' => $normalizedProvided ?: self::DEFAULT_COST_CENTER,
+            default => ($description !== '' && str_contains($description, 'marketing'))
+                ? 'marketing_branding'
+                : ($normalizedProvided ?: self::DEFAULT_COST_CENTER),
         };
     }
 

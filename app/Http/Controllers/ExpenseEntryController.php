@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Barryvdh\DomPDF\Facade\Pdf;
+use App\Models\Campaign;
 use App\Models\ExpenseEntry;
 use App\Models\FinanceSetting;
 use App\Models\PettyCashClosing;
@@ -33,6 +34,7 @@ class ExpenseEntryController extends Controller
             'expense_type' => (string) $request->input('expense_type', ''),
             'approval_status' => (string) $request->input('approval_status', 'all'),
             'payment_status' => (string) $request->input('payment_status', 'all'),
+            'campaign_id' => (string) $request->input('campaign_id', ''),
             'staff_profile_id' => (string) $request->input('staff_profile_id', ''),
             'search' => trim((string) $request->input('search', '')),
         ];
@@ -46,12 +48,13 @@ class ExpenseEntryController extends Controller
         }
 
         $baseQuery = ExpenseEntry::query()
-            ->with(['purchaseOrder:id,po_number', 'createdBy:id,name', 'staffProfile.user:id,name', 'approvedBy:id,name'])
+            ->with(['purchaseOrder:id,po_number', 'campaign:id,name', 'createdBy:id,name', 'staffProfile.user:id,name', 'approvedBy:id,name'])
             ->when($filters['date_from'] !== '', fn ($query) => $query->whereDate('expense_date', '>=', $filters['date_from']))
             ->when($filters['date_to'] !== '', fn ($query) => $query->whereDate('expense_date', '<=', $filters['date_to']))
             ->when($filters['expense_type'] !== '', fn ($query) => $query->where('expense_type', $filters['expense_type']))
             ->when($filters['approval_status'] !== 'all', fn ($query) => $query->where('approval_status', $filters['approval_status']))
             ->when($filters['payment_status'] !== 'all', fn ($query) => $query->where('payment_status', $filters['payment_status']))
+            ->when($filters['campaign_id'] !== '', fn ($query) => $query->where('campaign_id', $filters['campaign_id']))
             ->when($filters['staff_profile_id'] !== '', fn ($query) => $query->where('staff_profile_id', $filters['staff_profile_id']))
             ->when($filters['search'] !== '', function ($query) use ($filters): void {
                 $needle = '%'.$filters['search'].'%';
@@ -60,7 +63,8 @@ class ExpenseEntryController extends Controller
                         ->where('vendor_name', 'like', $needle)
                         ->orWhere('notes', 'like', $needle)
                         ->orWhere('receipt_number', 'like', $needle)
-                        ->orWhere('expense_subcategory', 'like', $needle);
+                        ->orWhere('expense_subcategory', 'like', $needle)
+                        ->orWhereHas('campaign', fn ($campaignQuery) => $campaignQuery->where('name', 'like', $needle));
                 });
             });
 
@@ -87,6 +91,7 @@ class ExpenseEntryController extends Controller
                 'paid_at' => optional($e->paid_at)?->toIso8601String(),
                 'approved_at' => optional($e->approved_at)?->toIso8601String(),
                 'purchase_order' => $e->purchaseOrder ? ['id' => $e->purchaseOrder->id, 'po_number' => $e->purchaseOrder->po_number] : null,
+                'campaign' => $e->campaign ? ['id' => $e->campaign->id, 'name' => $e->campaign->name] : null,
                 'staff_profile' => $e->staffProfile ? [
                     'id' => $e->staffProfile->id,
                     'name' => $e->staffProfile->user?->name ?? $e->staffProfile->employee_code,
@@ -96,7 +101,7 @@ class ExpenseEntryController extends Controller
                 'approved_by_name' => $e->approvedBy?->name,
             ]);
 
-        $summaryRows = (clone $baseQuery)->get(['expense_type', 'category', 'approval_status', 'payment_status', 'total_amount', 'expense_date']);
+        $summaryRows = (clone $baseQuery)->get(['expense_type', 'category', 'cost_center', 'campaign_id', 'approval_status', 'payment_status', 'total_amount', 'expense_date']);
 
         $summary = [
             'period_total' => (float) $summaryRows->sum('total_amount'),
@@ -172,6 +177,15 @@ class ExpenseEntryController extends Controller
                 'label' => ($staff->user?->name ?? 'Staff').' | '.$staff->employee_code,
             ]);
 
+        $campaigns = Campaign::query()
+            ->latest()
+            ->limit(120)
+            ->get(['id', 'name'])
+            ->map(fn (Campaign $campaign) => [
+                'id' => $campaign->id,
+                'label' => $campaign->name,
+            ]);
+
         $pettyCashEntries = PettyCashEntry::query()
             ->with(['staffProfile.user:id,name', 'expenseEntry:id,expense_subcategory'])
             ->latest('transaction_date')
@@ -224,6 +238,7 @@ class ExpenseEntryController extends Controller
             'pettyCash' => $pettyCash,
             'expenses' => $expenses,
             'purchaseOrders' => $purchaseOrders,
+            'campaigns' => $campaigns,
             'staffProfiles' => $staffProfiles,
             'categories' => self::categories(),
             'costCenters' => self::costCenters(),
@@ -639,13 +654,15 @@ class ExpenseEntryController extends Controller
             'receipt_image' => ['nullable', 'image', 'max:5120'],
             'paid_at' => ['nullable', 'date'],
             'purchase_order_id' => ['nullable', 'exists:purchase_orders,id'],
+            'campaign_id' => ['nullable', 'exists:campaigns,id'],
             'staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $data['category'] = FinanceStructure::normalizeExpenseCategory($data['category'] ?? null);
         $data['payment_method'] = FinanceStructure::normalizePaymentMethod($data['payment_method'] ?? null);
-        $data['cost_center'] = $data['cost_center'] ?? FinanceStructure::DEFAULT_COST_CENTER;
+        $data['cost_center'] = FinanceStructure::normalizeCostCenter($data['cost_center'] ?? null)
+            ?? FinanceStructure::defaultExpenseCostCenter($data['category'] ?? null, $data['expense_subcategory'] ?? null);
 
         if ($data['category'] === 'miscellaneous' && trim((string) ($data['notes'] ?? '')) === '') {
             throw ValidationException::withMessages([

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function InventoryIndex({ items, recentTransactions, openAlerts, filters, categories = [] }) {
+export default function InventoryIndex({ items, recentTransactions, openAlerts, filters, categories = [], transactionClassifications = {} }) {
     const { flash, auth, app_currency_code: currencyCode = 'AED' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_inventory);
     const [editingId, setEditingId] = useState(null);
@@ -25,7 +25,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
 
     const createForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
     const editForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
-    const adjustForm = useForm({ type: 'in', quantity: 1, reference: '', notes: '' });
+    const adjustForm = useForm({ type: 'in', classification: 'inventory_purchase', quantity: 1, reference: '', notes: '' });
 
     const startEdit = (item) => {
         setAdjustingId(null);
@@ -49,7 +49,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
         setEditingId(null);
         editForm.clearErrors();
         setAdjustingId(item.id);
-        adjustForm.setData({ type: 'in', quantity: 1, reference: '', notes: '' });
+        adjustForm.setData({ type: 'in', classification: 'inventory_purchase', quantity: 1, reference: '', notes: '' });
         adjustForm.clearErrors();
     };
 
@@ -278,8 +278,9 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
                         <form onSubmit={(e) => { e.preventDefault(); adjustForm.post(route('inventory.adjust', adjustingId), { onSuccess: () => closeAdjustModal() }); }} className="space-y-4">
                             <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                                 <div className="min-w-0"><label className="ta-field-label">Type</label><select className="ta-input w-full min-w-0" value={adjustForm.data.type} onChange={(e) => adjustForm.setData('type', e.target.value)}><option value="in">Stock In (+)</option><option value="out">Stock Out (-)</option><option value="adjustment">Adjustment (+/-)</option></select>{fieldError(adjustForm, 'type')}</div>
+                                <div className="min-w-0"><label className="ta-field-label">Classification</label><select className="ta-input w-full min-w-0" value={adjustForm.data.classification} onChange={(e) => adjustForm.setData('classification', e.target.value)}>{Object.entries(transactionClassifications).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{fieldError(adjustForm, 'classification')}</div>
                                 <div className="min-w-0"><label className="ta-field-label">Quantity</label><input className="ta-input w-full min-w-0" type="number" placeholder="Quantity" value={adjustForm.data.quantity} onChange={(e) => adjustForm.setData('quantity', e.target.value)} required />{fieldError(adjustForm, 'quantity')}</div>
-                                <div className="min-w-0 sm:col-span-2 lg:col-span-2"><label className="ta-field-label">Reference</label><input className="ta-input w-full min-w-0" placeholder="Reference" value={adjustForm.data.reference} onChange={(e) => adjustForm.setData('reference', e.target.value)} />{fieldError(adjustForm, 'reference')}</div>
+                                <div className="min-w-0 sm:col-span-2 lg:col-span-1"><label className="ta-field-label">Reference</label><input className="ta-input w-full min-w-0" placeholder="Reference" value={adjustForm.data.reference} onChange={(e) => adjustForm.setData('reference', e.target.value)} />{fieldError(adjustForm, 'reference')}</div>
                                 <div className="min-w-0 sm:col-span-2 lg:col-span-4"><label className="ta-field-label">Notes</label><input className="ta-input w-full min-w-0" placeholder="Notes" value={adjustForm.data.notes} onChange={(e) => adjustForm.setData('notes', e.target.value)} />{fieldError(adjustForm, 'notes')}</div>
                             </div>
                             <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
@@ -313,13 +314,14 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
                     <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Recent Stock Transactions</h3></div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">Qty</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3">By</th></tr></thead>
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">Classification</th><th className="px-5 py-3">Qty</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3">By</th></tr></thead>
                             <tbody>
                                 {recentTransactions.map((tx) => (
                                     <tr key={tx.id} className="border-t border-slate-100">
                                         <td className="px-5 py-3 text-slate-600">{new Date(tx.created_at).toLocaleString()}</td>
                                         <td className="px-5 py-3 text-slate-700">{tx.item_name} ({tx.item_sku})</td>
                                         <td className="px-5 py-3 text-slate-600">{tx.type}</td>
+                                        <td className="px-5 py-3 text-slate-600">{transactionClassifications[tx.classification] || tx.classification || '-'}</td>
                                         <td className={`px-5 py-3 font-semibold ${tx.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{tx.quantity > 0 ? `+${tx.quantity}` : tx.quantity}</td>
                                         <td className="px-5 py-3 text-slate-600">{tx.reference || '-'}</td>
                                         <td className="px-5 py-3 text-slate-600">{tx.performed_by || '-'}</td>
@@ -333,4 +335,3 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
         </AuthenticatedLayout>
     );
 }
-

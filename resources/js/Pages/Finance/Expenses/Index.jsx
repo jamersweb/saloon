@@ -24,6 +24,7 @@ export default function FinanceExpensesIndex({
     pettyCash,
     expenses,
     purchaseOrders,
+    campaigns,
     staffProfiles,
     categories,
     costCenters,
@@ -64,6 +65,7 @@ export default function FinanceExpensesIndex({
         receipt_image: null,
         remove_receipt_image: false,
         purchase_order_id: '',
+        campaign_id: '',
         staff_profile_id: '',
         notes: '',
     });
@@ -176,6 +178,7 @@ export default function FinanceExpensesIndex({
             receipt_image: null,
             remove_receipt_image: false,
             purchase_order_id: row.purchase_order?.id ? String(row.purchase_order.id) : '',
+            campaign_id: row.campaign?.id ? String(row.campaign.id) : '',
             staff_profile_id: row.staff_profile?.id ? String(row.staff_profile.id) : '',
             notes: row.notes || '',
         });
@@ -199,6 +202,7 @@ export default function FinanceExpensesIndex({
             receipt_image: null,
             remove_receipt_image: false,
             purchase_order_id: '',
+            campaign_id: '',
             staff_profile_id: '',
             notes: '',
         });
@@ -621,6 +625,7 @@ export default function FinanceExpensesIndex({
                                 amount_subtotal: parseFloat(d.amount_subtotal),
                                 vat_amount: parseFloat(d.vat_amount),
                                 purchase_order_id: d.purchase_order_id || null,
+                                campaign_id: d.campaign_id || null,
                                 staff_profile_id: d.staff_profile_id || null,
                                 _method: editingExpense ? 'put' : undefined,
                             }));
@@ -730,6 +735,17 @@ export default function FinanceExpensesIndex({
                                 ))}
                             </select>
                         </div>
+                        <div>
+                            <label className="ta-field-label">Campaign (optional)</label>
+                            <select className="ta-input" value={form.data.campaign_id} onChange={(e) => form.setData('campaign_id', e.target.value)}>
+                                <option value="">None</option>
+                                {campaigns.map((campaign) => (
+                                    <option key={campaign.id} value={campaign.id}>
+                                        {campaign.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Receipt image</label>
                             <input type="file" accept="image/*" className="ta-input" onChange={(e) => form.setData('receipt_image', e.target.files?.[0] || null)} />
@@ -781,6 +797,7 @@ export default function FinanceExpensesIndex({
                                         <td className="px-5 py-3 text-slate-600">
                                             <div>{subcategoryLabels[row.expense_subcategory] || row.expense_subcategory || '-'}</div>
                                             <div className="text-xs text-slate-500">{row.vendor_name || 'No vendor'}</div>
+                                            {row.campaign?.name && <div className="text-xs text-indigo-600">Campaign: {row.campaign.name}</div>}
                                             {row.notes && <div className="mt-1 text-xs text-slate-500">{row.notes}</div>}
                                         </td>
                                         <td className="px-5 py-3 text-slate-600">{row.staff_profile?.name || '-'}</td>

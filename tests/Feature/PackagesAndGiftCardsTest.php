@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\FinanceSetting;
 use App\Models\CustomerMembershipCard;
+use App\Models\GiftCard;
 use App\Models\MembershipCardType;
 use App\Models\Role;
 use App\Models\SalonService;
@@ -116,12 +117,23 @@ class PackagesAndGiftCardsTest extends TestCase
         $saleInvoice = TaxInvoice::query()
             ->where('customer_id', $customer->id)
             ->where('status', TaxInvoice::STATUS_FINALIZED)
+            ->whereHas('items', fn ($query) => $query->where('revenue_category', 'package_sales'))
             ->latest('id')
             ->first();
 
         $this->assertNotNull($saleInvoice);
         $this->assertSame('Package Sale: Spa Sessions', $saleInvoice->items()->first()?->description);
         $this->assertSame('package_sales', $saleInvoice->items()->first()?->revenue_category);
+
+        $giftCard = GiftCard::query()
+            ->where('assigned_customer_id', $customer->id)
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertDatabaseHas('tax_invoice_items', [
+            'revenue_category' => 'gift_card_sales',
+            'description' => 'Gift Card Sale: '.$giftCard->code,
+        ]);
 
         $this->assertDatabaseHas('gift_cards', [
             'assigned_customer_id' => $customer->id,

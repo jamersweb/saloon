@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
+use App\Models\ExpenseEntry;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Supplier;
@@ -71,7 +72,7 @@ class PurchaseOrderController extends Controller
             'items.*.unit_cost' => ['required', 'numeric', 'min:0'],
         ]);
 
-        DB::transaction(function () use ($request, $data): void {
+        $purchaseOrderId = DB::transaction(function () use ($request, $data): int {
             $po = PurchaseOrder::create([
                 'po_number' => 'PO-'.now()->format('Ymd-His').'-'.random_int(100, 999),
                 'supplier_id' => $data['supplier_id'],
@@ -99,11 +100,12 @@ class PurchaseOrderController extends Controller
             $po->update(['total_cost' => $total]);
 
             Audit::log($request->user()?->id, 'purchase_order.created', 'PurchaseOrder', $po->id, ['total_cost' => $total]);
+            return $po->id;
         });
 
         return back()
             ->with('status', 'Draft purchase order saved. It appears in the list below.')
-            ->with('created_purchase_order_id', $po->id);
+            ->with('created_purchase_order_id', $purchaseOrderId);
     }
 
     public function update(Request $request, PurchaseOrder $purchaseOrder): RedirectResponse
@@ -215,6 +217,9 @@ class PurchaseOrderController extends Controller
                 InventoryTransaction::create([
                     'inventory_item_id' => $item->id,
                     'type' => 'in',
+                    'classification' => 'inventory_purchase',
+                    'source_type' => 'purchase_order',
+                    'source_id' => $purchaseOrder->id,
                     'quantity' => $row->quantity_ordered,
                     'reference' => $purchaseOrder->po_number,
                     'notes' => 'Stock received from purchase order',
@@ -229,6 +234,28 @@ class PurchaseOrderController extends Controller
                 'received_by' => $request->user()?->id,
                 'received_at' => now(),
             ]);
+
+            ExpenseEntry::query()->updateOrCreate(
+                ['purchase_order_id' => $purchaseOrder->id],
+                [
+                    'category' => 'inventory_purchase',
+                    'cost_center' => 'general_salon',
+                    'expense_type' => 'inventory_related',
+                    'expense_subcategory' => 'retail_stock',
+                    'vendor_name' => $purchaseOrder->supplier?->name,
+                    'expense_date' => now()->toDateString(),
+                    'amount_subtotal' => (float) $purchaseOrder->total_cost,
+                    'vat_amount' => 0,
+                    'total_amount' => (float) $purchaseOrder->total_cost,
+                    'payment_status' => ExpenseEntry::STATUS_UNPAID,
+                    'payment_method' => 'bank_transfer',
+                    'approval_status' => ExpenseEntry::APPROVAL_APPROVED,
+                    'approved_by' => $request->user()?->id,
+                    'approved_at' => now(),
+                    'notes' => 'Auto-created from purchase order receipt '.$purchaseOrder->po_number,
+                    'created_by' => $request->user()?->id,
+                ]
+            );
 
             Audit::log($request->user()?->id, 'purchase_order.received', 'PurchaseOrder', $purchaseOrder->id);
         });
