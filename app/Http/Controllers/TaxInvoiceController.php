@@ -30,6 +30,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -151,7 +152,9 @@ class TaxInvoiceController extends Controller
             'items.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
         ]);
 
-        $invoice = DB::transaction(function () use ($data, $request, $vatRate) {
+        $items = $this->normalizeInvoiceItems($data['items']);
+
+        $invoice = DB::transaction(function () use ($data, $items, $request, $vatRate) {
             $invoice = TaxInvoice::query()->create([
                 'customer_id' => $data['customer_id'] ?? null,
                 'customer_display_name' => $data['customer_display_name'],
@@ -165,7 +168,7 @@ class TaxInvoiceController extends Controller
                 'total' => 0,
             ]);
 
-            foreach ($data['items'] as $row) {
+            foreach ($items as $row) {
                 $computed = TaxInvoiceLineCalculator::compute(
                     (float) $row['quantity'],
                     (float) $row['unit_price'],
@@ -175,14 +178,8 @@ class TaxInvoiceController extends Controller
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => $row['salon_service_id'] ?? null,
-                    'revenue_category' => $row['revenue_category']
-                        ?? FinanceStructure::inferRevenueCategory(isset($row['salon_service_id']) ? (int) $row['salon_service_id'] : null, $row['description'] ?? null),
-                    'cost_center' => FinanceStructure::resolveInvoiceCostCenter(
-                        $row['cost_center'] ?? null,
-                        isset($row['salon_service_id']) ? SalonService::query()->find($row['salon_service_id']) : null,
-                        $row['revenue_category'] ?? null,
-                        $row['description'] ?? null,
-                    ),
+                    'revenue_category' => $row['revenue_category'],
+                    'cost_center' => $row['cost_center'],
                     'staff_profile_id' => $row['staff_profile_id'] ?? null,
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
@@ -348,7 +345,9 @@ class TaxInvoiceController extends Controller
             'items.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
         ]);
 
-        DB::transaction(function () use ($invoice, $data, $vatRate) {
+        $items = $this->normalizeInvoiceItems($data['items']);
+
+        DB::transaction(function () use ($invoice, $data, $items, $vatRate) {
             $invoice->update([
                 'customer_id' => $data['customer_id'] ?? null,
                 'customer_display_name' => $data['customer_display_name'],
@@ -359,7 +358,7 @@ class TaxInvoiceController extends Controller
 
             $invoice->items()->delete();
 
-            foreach ($data['items'] as $row) {
+            foreach ($items as $row) {
                 $computed = TaxInvoiceLineCalculator::compute(
                     (float) $row['quantity'],
                     (float) $row['unit_price'],
@@ -369,14 +368,8 @@ class TaxInvoiceController extends Controller
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => $row['salon_service_id'] ?? null,
-                    'revenue_category' => $row['revenue_category']
-                        ?? FinanceStructure::inferRevenueCategory(isset($row['salon_service_id']) ? (int) $row['salon_service_id'] : null, $row['description'] ?? null),
-                    'cost_center' => FinanceStructure::resolveInvoiceCostCenter(
-                        $row['cost_center'] ?? null,
-                        isset($row['salon_service_id']) ? SalonService::query()->find($row['salon_service_id']) : null,
-                        $row['revenue_category'] ?? null,
-                        $row['description'] ?? null,
-                    ),
+                    'revenue_category' => $row['revenue_category'],
+                    'cost_center' => $row['cost_center'],
                     'staff_profile_id' => $row['staff_profile_id'] ?? null,
                     'description' => $row['description'],
                     'quantity' => $row['quantity'],
@@ -823,5 +816,56 @@ class TaxInvoiceController extends Controller
             ?? $invoice->customer?->membershipCards?->first()?->type?->name;
 
         return $membershipName ? "Package / {$membershipName}" : 'Package / Membership';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeInvoiceItems(array $rows): array
+    {
+        $serviceIds = collect($rows)
+            ->pluck('salon_service_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $services = SalonService::query()
+            ->whereIn('id', $serviceIds)
+            ->get()
+            ->keyBy('id');
+
+        return collect($rows)
+            ->map(function (array $row, int $index) use ($services): array {
+                $serviceId = isset($row['salon_service_id']) && $row['salon_service_id'] !== ''
+                    ? (int) $row['salon_service_id']
+                    : null;
+                $service = $serviceId ? $services->get($serviceId) : null;
+                $revenueCategory = FinanceStructure::resolveRevenueCategory(
+                    $row['revenue_category'] ?? null,
+                    $serviceId,
+                    $row['description'] ?? null,
+                );
+                $costCenter = FinanceStructure::resolveInvoiceCostCenter(
+                    $row['cost_center'] ?? null,
+                    $service,
+                    $revenueCategory,
+                    $row['description'] ?? null,
+                );
+
+                if (FinanceStructure::requiresExplicitInvoiceCostCenter($row['cost_center'] ?? null, $service, $costCenter)) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.cost_center" => 'Select a cost center for manual invoice lines that are not tied to a service.',
+                    ]);
+                }
+
+                $row['revenue_category'] = $revenueCategory;
+                $row['cost_center'] = $costCenter;
+
+                return $row;
+            })
+            ->all();
     }
 }

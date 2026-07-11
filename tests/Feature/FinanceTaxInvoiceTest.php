@@ -532,6 +532,39 @@ class FinanceTaxInvoiceTest extends TestCase
         $this->assertSame('permanent_makeup_rental', $line->cost_center);
     }
 
+    public function test_owner_must_select_cost_center_for_manual_non_service_invoice_line(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.store'), [
+                'customer_display_name' => 'Retail Product Customer',
+                'items' => [
+                    [
+                        'salon_service_id' => null,
+                        'staff_profile_id' => null,
+                        'revenue_category' => 'retail_product_sales',
+                        'description' => 'Retail Shampoo',
+                        'quantity' => 1,
+                        'unit_price' => 120,
+                        'discount_amount' => 0,
+                    ],
+                ],
+            ])
+            ->assertSessionHasErrors(['items.0.cost_center']);
+
+        $this->assertDatabaseCount('tax_invoices', 0);
+    }
+
     public function test_owner_can_record_refund_adjustment_as_linked_negative_invoice(): void
     {
         $ownerRole = Role::create([

@@ -9,6 +9,7 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Supplier;
 use App\Support\Audit;
+use App\Support\InventoryFinance;
 use App\Support\InventoryAlerts;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -202,7 +203,7 @@ class PurchaseOrderController extends Controller
         }
 
         DB::transaction(function () use ($request, $purchaseOrder): void {
-            $purchaseOrder->loadMissing('items');
+            $purchaseOrder->loadMissing(['supplier', 'items.item']);
 
             foreach ($purchaseOrder->items as $row) {
                 $item = InventoryItem::findOrFail($row->inventory_item_id);
@@ -235,27 +236,20 @@ class PurchaseOrderController extends Controller
                 'received_at' => now(),
             ]);
 
-            ExpenseEntry::query()->updateOrCreate(
-                ['purchase_order_id' => $purchaseOrder->id],
-                [
-                    'category' => 'inventory_purchase',
-                    'cost_center' => 'general_salon',
-                    'expense_type' => 'inventory_related',
-                    'expense_subcategory' => 'retail_stock',
+            foreach (InventoryFinance::groupedPurchaseOrderExpenseRows($purchaseOrder->items, $purchaseOrder) as $expenseRow) {
+                ExpenseEntry::query()->create([
+                    'purchase_order_id' => $purchaseOrder->id,
                     'vendor_name' => $purchaseOrder->supplier?->name,
                     'expense_date' => now()->toDateString(),
-                    'amount_subtotal' => (float) $purchaseOrder->total_cost,
-                    'vat_amount' => 0,
-                    'total_amount' => (float) $purchaseOrder->total_cost,
                     'payment_status' => ExpenseEntry::STATUS_UNPAID,
                     'payment_method' => 'bank_transfer',
                     'approval_status' => ExpenseEntry::APPROVAL_APPROVED,
                     'approved_by' => $request->user()?->id,
                     'approved_at' => now(),
-                    'notes' => 'Auto-created from purchase order receipt '.$purchaseOrder->po_number,
                     'created_by' => $request->user()?->id,
-                ]
-            );
+                    ...$expenseRow,
+                ]);
+            }
 
             Audit::log($request->user()?->id, 'purchase_order.received', 'PurchaseOrder', $purchaseOrder->id);
         });

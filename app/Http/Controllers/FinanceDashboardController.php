@@ -197,6 +197,17 @@ class FinanceDashboardController extends Controller
             ->values()
             ->all();
 
+        $invoiceDefaultCostCenterRows = TaxInvoiceItem::query()
+            ->where('cost_center', FinanceStructure::DEFAULT_COST_CENTER)
+            ->whereHas('taxInvoice', function ($query) {
+                $query->where('status', TaxInvoice::STATUS_FINALIZED);
+            })
+            ->get(['line_total']);
+
+        $expenseDefaultCostCenterRows = ExpenseEntry::query()
+            ->where('cost_center', FinanceStructure::DEFAULT_COST_CENTER)
+            ->get(['total_amount']);
+
         return Inertia::render('Finance/Dashboard', [
             'filters' => [
                 'date_from' => $dateFrom->toDateString(),
@@ -224,6 +235,16 @@ class FinanceDashboardController extends Controller
                 'revenue_by_category' => $revenueByCategory,
                 'expense_by_category' => $expenseByCategory,
                 'pnl_by_cost_center' => $pnlByCostCenter,
+            ],
+            'data_quality' => [
+                'default_cost_center_invoice_lines' => [
+                    'count' => $invoiceDefaultCostCenterRows->count(),
+                    'total' => (float) $invoiceDefaultCostCenterRows->sum('line_total'),
+                ],
+                'default_cost_center_expenses' => [
+                    'count' => $expenseDefaultCostCenterRows->count(),
+                    'total' => (float) $expenseDefaultCostCenterRows->sum('total_amount'),
+                ],
             ],
         ]);
     }

@@ -4,7 +4,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 const money = (value, currency = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(value || 0));
 
-export default function FinanceDashboard({ filters, summary, accountsReceivable, accountsPayable, periodic, grouped }) {
+export default function FinanceDashboard({ filters, summary, accountsReceivable, accountsPayable, periodic, grouped, data_quality = {} }) {
     const { flash } = usePage().props;
 
     const applyFilter = (key, value) => {
@@ -70,6 +70,23 @@ export default function FinanceDashboard({ filters, summary, accountsReceivable,
                         <p className="mt-1 text-xs text-slate-500">Payments collected − expenses paid − payroll paid (approximate).</p>
                     </div>
                 </div>
+
+                <section className="ta-card p-5">
+                    <h3 className="text-sm font-semibold text-slate-700">Data quality watch</h3>
+                    <p className="mt-1 text-xs text-slate-500">All unresolved rows still using the default cost center so they can be reviewed and backfilled.</p>
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <p className="text-xs uppercase tracking-wide text-amber-800">Finalized invoice lines on default cost center</p>
+                            <p className="mt-1 text-2xl font-semibold text-amber-900">{data_quality.default_cost_center_invoice_lines?.count || 0}</p>
+                            <p className="mt-1 text-xs text-amber-800">Total value: {money(data_quality.default_cost_center_invoice_lines?.total || 0)}</p>
+                        </div>
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <p className="text-xs uppercase tracking-wide text-amber-800">Expense rows on default cost center</p>
+                            <p className="mt-1 text-2xl font-semibold text-amber-900">{data_quality.default_cost_center_expenses?.count || 0}</p>
+                            <p className="mt-1 text-xs text-amber-800">Total value: {money(data_quality.default_cost_center_expenses?.total || 0)}</p>
+                        </div>
+                    </div>
+                </section>
 
                 <div className="grid gap-6 lg:grid-cols-2">
                     <section className="ta-card p-5">

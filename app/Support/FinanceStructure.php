@@ -188,6 +188,30 @@ class FinanceStructure
         };
     }
 
+    public static function resolveRevenueCategory(
+        ?string $providedRevenueCategory,
+        ?int $salonServiceId = null,
+        ?string $description = null,
+    ): string {
+        $providedRevenueCategory = trim((string) $providedRevenueCategory);
+
+        if ($providedRevenueCategory !== '' && array_key_exists($providedRevenueCategory, self::revenueCategories())) {
+            return $providedRevenueCategory;
+        }
+
+        return self::inferRevenueCategory($salonServiceId, $description);
+    }
+
+    public static function requiresExplicitInvoiceCostCenter(
+        ?string $providedCostCenter,
+        ?SalonService $service,
+        string $resolvedCostCenter,
+    ): bool {
+        return self::normalizeCostCenter($providedCostCenter) === null
+            && $service === null
+            && $resolvedCostCenter === self::DEFAULT_COST_CENTER;
+    }
+
     public static function inferRevenueCategory(?int $salonServiceId, ?string $description = null): string
     {
         $description = strtolower(trim((string) $description));

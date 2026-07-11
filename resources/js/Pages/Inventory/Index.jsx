@@ -6,11 +6,12 @@ import { useEffect, useRef, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function InventoryIndex({ items, recentTransactions, openAlerts, filters, categories = [], transactionClassifications = {} }) {
+export default function InventoryIndex({ items, itemRows = {}, recentTransactions, openAlerts, filters, categories = [], transactionClassifications = {} }) {
     const { flash, auth, app_currency_code: currencyCode = 'AED' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_inventory);
     const [editingId, setEditingId] = useState(null);
     const [adjustingId, setAdjustingId] = useState(null);
+    const [adjustingItem, setAdjustingItem] = useState(null);
     const [deactivateItemId, setDeactivateItemId] = useState(null);
     const [deactivateBusy, setDeactivateBusy] = useState(false);
     const importFileRef = useRef(null);
@@ -28,6 +29,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
     const adjustForm = useForm({ type: 'in', classification: 'inventory_purchase', quantity: 1, reference: '', notes: '' });
 
     const startEdit = (item) => {
+        setAdjustingItem(null);
         setAdjustingId(null);
         adjustForm.clearErrors();
         setEditingId(item.id);
@@ -48,8 +50,15 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
     const startAdjust = (item) => {
         setEditingId(null);
         editForm.clearErrors();
+        setAdjustingItem(item);
         setAdjustingId(item.id);
-        adjustForm.setData({ type: 'in', classification: 'inventory_purchase', quantity: 1, reference: '', notes: '' });
+        adjustForm.setData({
+            type: 'in',
+            classification: itemRows?.[item.id]?.transaction_default_in_classification || 'inventory_purchase',
+            quantity: 1,
+            reference: '',
+            notes: '',
+        });
         adjustForm.clearErrors();
     };
 
@@ -60,6 +69,7 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
 
     const closeAdjustModal = () => {
         setAdjustingId(null);
+        setAdjustingItem(null);
         adjustForm.clearErrors();
     };
 
@@ -277,7 +287,19 @@ export default function InventoryIndex({ items, recentTransactions, openAlerts, 
                         <h3 className="mb-4 text-base font-semibold text-slate-800">Adjust stock</h3>
                         <form onSubmit={(e) => { e.preventDefault(); adjustForm.post(route('inventory.adjust', adjustingId), { onSuccess: () => closeAdjustModal() }); }} className="space-y-4">
                             <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                <div className="min-w-0"><label className="ta-field-label">Type</label><select className="ta-input w-full min-w-0" value={adjustForm.data.type} onChange={(e) => adjustForm.setData('type', e.target.value)}><option value="in">Stock In (+)</option><option value="out">Stock Out (-)</option><option value="adjustment">Adjustment (+/-)</option></select>{fieldError(adjustForm, 'type')}</div>
+                                <div className="min-w-0"><label className="ta-field-label">Type</label><select className="ta-input w-full min-w-0" value={adjustForm.data.type} onChange={(e) => {
+                                    const type = e.target.value;
+                                    const nextClassification = type === 'in'
+                                        ? (adjustingItem ? (itemRows?.[adjustingItem.id]?.transaction_default_in_classification || 'inventory_purchase') : 'inventory_purchase')
+                                        : type === 'out'
+                                            ? (adjustingItem ? (itemRows?.[adjustingItem.id]?.transaction_default_out_classification || 'service_consumables') : 'service_consumables')
+                                            : 'manual_adjustment';
+                                    adjustForm.setData({
+                                        ...adjustForm.data,
+                                        type,
+                                        classification: nextClassification,
+                                    });
+                                }}><option value="in">Stock In (+)</option><option value="out">Stock Out (-)</option><option value="adjustment">Adjustment (+/-)</option></select>{fieldError(adjustForm, 'type')}</div>
                                 <div className="min-w-0"><label className="ta-field-label">Classification</label><select className="ta-input w-full min-w-0" value={adjustForm.data.classification} onChange={(e) => adjustForm.setData('classification', e.target.value)}>{Object.entries(transactionClassifications).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{fieldError(adjustForm, 'classification')}</div>
                                 <div className="min-w-0"><label className="ta-field-label">Quantity</label><input className="ta-input w-full min-w-0" type="number" placeholder="Quantity" value={adjustForm.data.quantity} onChange={(e) => adjustForm.setData('quantity', e.target.value)} required />{fieldError(adjustForm, 'quantity')}</div>
                                 <div className="min-w-0 sm:col-span-2 lg:col-span-1"><label className="ta-field-label">Reference</label><input className="ta-input w-full min-w-0" placeholder="Reference" value={adjustForm.data.reference} onChange={(e) => adjustForm.setData('reference', e.target.value)} />{fieldError(adjustForm, 'reference')}</div>

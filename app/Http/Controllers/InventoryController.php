@@ -6,6 +6,7 @@ use App\Models\InventoryItem;
 use App\Models\InventoryTransaction;
 use App\Models\LowStockAlert;
 use App\Support\Audit;
+use App\Support\InventoryFinance;
 use App\Support\InventoryAlerts;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,6 +61,15 @@ class InventoryController extends Controller
             'items' => $itemsQuery
                 ->paginate($filters['per_page'])
                 ->withQueryString(),
+            'itemRows' => (clone $itemsQuery)
+                ->limit(500)
+                ->get()
+                ->map(fn (InventoryItem $item) => [
+                    'id' => $item->id,
+                    'transaction_default_in_classification' => InventoryFinance::inferTransactionClassification($item, 'in'),
+                    'transaction_default_out_classification' => InventoryFinance::inferTransactionClassification($item, 'out'),
+                ])
+                ->keyBy('id'),
             'recentTransactions' => InventoryTransaction::query()
                 ->with(['item:id,name,sku', 'performedBy:id,name'])
                 ->latest()
@@ -176,7 +186,7 @@ class InventoryController extends Controller
             InventoryTransaction::create([
                 'inventory_item_id' => $item->id,
                 'type' => $data['type'],
-                'classification' => $data['classification'] ?? self::defaultTransactionClassification($data['type']),
+                'classification' => $data['classification'] ?? InventoryFinance::inferTransactionClassification($item, $data['type']),
                 'quantity' => $delta,
                 'reference' => $data['reference'] ?? null,
                 'notes' => $data['notes'] ?? null,
