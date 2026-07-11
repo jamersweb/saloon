@@ -1114,7 +1114,41 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const createSelectedCustomer = customers.find((c) => String(c.id) === String(createSelectedCustomerId)) || null;
     const editSelectedCustomer = customers.find((c) => String(c.id) === String(editSelectedCustomerId)) || null;
     const customerOptions = customers.map((c) => ({ value: String(c.id), label: `${c.name}${c.phone ? ` - ${c.phone}` : ''}` }));
-    const staffOptions = [{ value: '', label: 'Auto / Unassigned' }, ...staffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
+    const normalizedStaffProfiles = useMemo(() => {
+        const byName = new Map();
+
+        staffProfiles
+            .filter((staff) => staff?.id && String(staff?.name || '').trim() !== '')
+            .forEach((staff) => {
+                const key = String(staff.name || '').trim().toLowerCase();
+                const existing = byName.get(key);
+
+                if (!existing) {
+                    byName.set(key, staff);
+                    return;
+                }
+
+                const existingIsStaff = existing?.role_name === 'staff';
+                const nextIsStaff = staff?.role_name === 'staff';
+
+                if (nextIsStaff && !existingIsStaff) {
+                    byName.set(key, staff);
+                    return;
+                }
+
+                if (nextIsStaff === existingIsStaff) {
+                    const existingCode = String(existing?.employee_code || '');
+                    const nextCode = String(staff?.employee_code || '');
+
+                    if (nextCode > existingCode) {
+                        byName.set(key, staff);
+                    }
+                }
+            });
+
+        return Array.from(byName.values());
+    }, [staffProfiles]);
+    const staffOptions = [{ value: '', label: 'Auto / Unassigned' }, ...normalizedStaffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
     const serviceOptions = services.map((service) => ({
         value: String(service.id),
         label: `${service.name} - ${formatMoney(service.price, currencyCode)}`,
@@ -1157,7 +1191,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         const durationMinutes = Math.max(1, Number(serviceLineMapValue(createForm.data.service_durations, lineIndex, sid, service.duration_minutes || 0)));
         const extraMinutes = Math.max(0, Number(serviceLineMapValue(createForm.data.service_extra_minutes, lineIndex, sid, 0)));
         const staffId = String(serviceLineMapValue(createForm.data.staff_assignments, lineIndex, sid, createSelectedServices.length === 1 ? createForm.data.staff_profile_id : '') || '');
-        const staff = staffProfiles.find((item) => String(item.id) === staffId);
+        const staff = normalizedStaffProfiles.find((item) => String(item.id) === staffId);
         const packageCovered = Boolean(createSelectedPackage && (createForm.data.package_service_ids || []).map(String).includes(sid));
 
         return {
@@ -1201,7 +1235,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const editEndForAvailability = editForm.data.scheduled_end || calculateSuggestedEndWithServiceMeta(editStartForAvailability, editSelectedServices, editForm.data);
 
     const buildStaffAvailabilityMap = () => {
-        return Object.fromEntries(staffProfiles.map((staff) => {
+        return Object.fromEntries(normalizedStaffProfiles.map((staff) => {
             return [String(staff.id), {
                 busy: false,
                 label: 'Available',
@@ -1354,7 +1388,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const selectedAdditionalServiceLines = (completeForm.data.additional_services || [])
         .map((row) => {
             const service = services.find((item) => String(item.id) === String(row.service_id));
-            const staff = staffProfiles.find((item) => String(item.id) === String(row.staff_profile_id));
+            const staff = normalizedStaffProfiles.find((item) => String(item.id) === String(row.staff_profile_id));
             const quantity = Math.max(1, Number(row.quantity || 1));
             const unitPrice = Number(service?.price || 0);
             const lineTotal = quantity * unitPrice;
@@ -1401,40 +1435,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
         return initials || (staff?.id ? `#${staff.id}` : '?');
     };
-    const boardStaffProfiles = useMemo(() => {
-        const byName = new Map();
-
-        staffProfiles
-            .filter((staff) => staff?.id && String(staff?.name || '').trim() !== '')
-            .forEach((staff) => {
-                const key = String(staff.name || '').trim().toLowerCase();
-                const existing = byName.get(key);
-
-                if (!existing) {
-                    byName.set(key, staff);
-                    return;
-                }
-
-                const existingIsStaff = existing?.role_name === 'staff';
-                const nextIsStaff = staff?.role_name === 'staff';
-
-                if (nextIsStaff && !existingIsStaff) {
-                    byName.set(key, staff);
-                    return;
-                }
-
-                if (nextIsStaff === existingIsStaff) {
-                    const existingCode = String(existing?.employee_code || '');
-                    const nextCode = String(staff?.employee_code || '');
-
-                    if (nextCode > existingCode) {
-                        byName.set(key, staff);
-                    }
-                }
-            });
-
-        return Array.from(byName.values());
-    }, [staffProfiles]);
+    const boardStaffProfiles = normalizedStaffProfiles;
     const boardStaffOptions = [{ value: '', label: 'Auto / Unassigned' }, ...boardStaffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
     const boardStaffList = boardStaffFilter === 'all'
         ? boardStaffProfiles
@@ -1906,7 +1907,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                 : createForm.data.staff_profile_id,
                                                         });
                                                     }}
-                                                    options={[{ value: '', label: 'Use default / auto' }, ...staffProfiles.map((s) => {
+                                                    options={[{ value: '', label: 'Use default / auto' }, ...normalizedStaffProfiles.map((s) => {
                                                         const availability = createStaffAvailability[String(s.id)] || createFallbackStaffAvailability[String(s.id)];
                                                         return { value: String(s.id), label: `${s.name}${availability ? ` (${availability.label})` : ''}` };
                                                     })]}
@@ -2388,7 +2389,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                 label="Staff"
                                                 value={row.staff_profile_id}
                                                 onChange={(id) => updateAdditionalServiceRow(index, 'staff_profile_id', id)}
-                                                options={[{ value: '', label: 'Same staff' }, ...staffProfiles.map((staff) => ({ value: String(staff.id), label: staff.name }))]}
+                                                options={[{ value: '', label: 'Same staff' }, ...normalizedStaffProfiles.map((staff) => ({ value: String(staff.id), label: staff.name }))]}
                                                 placeholder="Search staff"
                                             />
                                             {fieldError(completeForm, `additional_services.${index}.staff_profile_id`)}
@@ -2670,7 +2671,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                                 : editForm.data.staff_profile_id,
                                                         });
                                                     }}
-                                                    options={[{ value: '', label: 'Use default / auto' }, ...staffProfiles.map((s) => {
+                                                    options={[{ value: '', label: 'Use default / auto' }, ...normalizedStaffProfiles.map((s) => {
                                                         const availability = editStaffAvailability[String(s.id)] || editFallbackStaffAvailability[String(s.id)];
                                                         return { value: String(s.id), label: `${s.name}${availability ? ` (${availability.label})` : ''}` };
                                                     })]}
