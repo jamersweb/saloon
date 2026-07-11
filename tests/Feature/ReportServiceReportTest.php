@@ -67,7 +67,7 @@ class ReportServiceReportTest extends TestCase
         ]);
 
         $this->assertCount(1, $rows);
-        $this->assertSame($appointment->id, $rows[0]['id']);
+        $this->assertSame($appointment->id, $rows[0]['appointment_id']);
         $this->assertSame('INV-2026-0007', $rows[0]['invoice_number']);
         $this->assertSame(2.0, $rows[0]['quantity']);
         $this->assertSame(75.0, $rows[0]['unit_price']);
@@ -195,13 +195,91 @@ class ReportServiceReportTest extends TestCase
         $rows = collect($method->invoke(app(ReportController::class), Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(), [
             'customer_name' => 'Maryam',
             'invoice_number' => 'RCT00033',
-        ]))->keyBy('id');
+        ]))->keyBy('appointment_id');
 
         $this->assertSame(175.0, $rows[$firstAppointment->id]['unit_price']);
         $this->assertSame(175.0, $rows[$firstAppointment->id]['subtotal']);
         $this->assertSame(8.75, $rows[$firstAppointment->id]['tax']);
         $this->assertSame(183.75, $rows[$firstAppointment->id]['total']);
         $this->assertSame(425.0, $rows[$secondAppointment->id]['subtotal']);
+    }
+
+    public function test_service_report_includes_all_service_invoice_lines_for_a_single_completed_appointment(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Tima', 'RCT00125');
+
+        $removalService = SalonService::create([
+            'name' => 'Hair Extension removal',
+            'category' => 'Hair',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 0,
+            'is_active' => true,
+        ]);
+        $colorService = SalonService::create([
+            'name' => 'Hair Extension coloring Large',
+            'category' => 'Hair',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 747.50,
+            'is_active' => true,
+        ]);
+
+        $invoice->items()->create([
+            'salon_service_id' => $removalService->id,
+            'description' => 'Hair Extension removal',
+            'quantity' => 248,
+            'unit_price' => 0,
+            'discount_amount' => 0,
+            'line_subtotal' => 0,
+            'tax_rate_percent' => 5,
+            'line_tax' => 0,
+            'line_total' => 0,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Hair Styling',
+            'quantity' => 234,
+            'unit_price' => 6,
+            'discount_amount' => 0,
+            'line_subtotal' => 1404,
+            'tax_rate_percent' => 5,
+            'line_tax' => 70.2,
+            'line_total' => 1474.2,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $colorService->id,
+            'description' => 'Hair Extension coloring Large',
+            'quantity' => 1,
+            'unit_price' => 747.5,
+            'discount_amount' => 0,
+            'line_subtotal' => 747.5,
+            'tax_rate_percent' => 5,
+            'line_tax' => 37.38,
+            'line_total' => 784.88,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = collect($method->invoke(
+            app(ReportController::class),
+            Carbon::parse('2026-05-21')->startOfDay(),
+            Carbon::parse('2026-05-21')->endOfDay(),
+            [
+                'customer_name' => 'Tima',
+                'invoice_number' => 'RCT00125',
+            ]
+        ));
+
+        $this->assertCount(3, $rows);
+        $this->assertEqualsCanonicalizing(
+            ['Hair Extension removal', 'Hair Styling', 'Hair Extension coloring Large'],
+            $rows->pluck('service_name')->all()
+        );
+        $this->assertSame(0.0, $rows->firstWhere('service_name', 'Hair Extension removal')['total']);
+        $this->assertSame(1474.2, $rows->firstWhere('service_name', 'Hair Styling')['total']);
+        $this->assertSame(784.88, $rows->firstWhere('service_name', 'Hair Extension coloring Large')['total']);
     }
 
     public function test_appointments_csv_export_includes_invoice_number_and_service_report(): void
@@ -321,6 +399,59 @@ class ReportServiceReportTest extends TestCase
 
         $this->assertSame(125.0, $totals['cash_total_payment']);
         $this->assertSame(75.0, $totals['card_total_payment']);
+    }
+
+    public function test_summary_report_uses_service_invoice_line_totals_for_daily_revenue_and_top_services(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Revenue Client', 'INV-SUM-1');
+
+        $extraService = SalonService::create([
+            'name' => 'Added Service',
+            'category' => 'Hair',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 80,
+            'is_active' => true,
+        ]);
+
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Hair Styling',
+            'quantity' => 2,
+            'unit_price' => 75,
+            'discount_amount' => 10,
+            'line_subtotal' => 140,
+            'tax_rate_percent' => 5,
+            'line_tax' => 7,
+            'line_total' => 147,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $extraService->id,
+            'description' => 'Added Service',
+            'quantity' => 1,
+            'unit_price' => 80,
+            'discount_amount' => 0,
+            'line_subtotal' => 80,
+            'tax_rate_percent' => 5,
+            'line_tax' => 4,
+            'line_total' => 84,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectReportData');
+        $method->setAccessible(true);
+
+        $report = $method->invoke(
+            app(ReportController::class),
+            Carbon::parse('2026-05-21')->startOfDay(),
+            Carbon::parse('2026-05-21')->endOfDay()
+        );
+
+        $this->assertSame(231.0, $report['overview']['completed_revenue']);
+        $this->assertSame(231.0, $report['dailyRevenue'][0]['revenue']);
+        $this->assertSame('Hair Styling', $report['servicePerformance'][0]['service_name']);
+        $this->assertSame(147.0, $report['servicePerformance'][0]['revenue']);
+        $this->assertSame('Added Service', $report['servicePerformance'][1]['service_name']);
+        $this->assertSame(84.0, $report['servicePerformance'][1]['revenue']);
     }
 
     /**

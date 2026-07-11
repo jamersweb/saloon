@@ -292,39 +292,26 @@ class ReportController extends Controller
         $invoiceItems = $this->invoiceItemsForAppointments($appointments);
 
         $rows = $appointments
-            ->map(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $vatRatePercent): array {
-                $serviceName = $appointment->service?->name;
-                $item = $this->matchingInvoiceItemForAppointment(
-                    $appointment,
-                    $invoiceItems[$appointment->id] ?? collect()
+            ->flatMap(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $vatRatePercent): Collection {
+                $serviceItems = ($invoiceItems[$appointment->id] ?? collect())
+                    ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id !== null)
+                    ->values();
+
+                if ($serviceItems->isEmpty()) {
+                    return collect([
+                        $this->fallbackServiceReportRow($appointment, $invoiceLabels, $invoiceIds, $vatRatePercent),
+                    ]);
+                }
+
+                return $serviceItems->map(
+                    fn (TaxInvoiceItem $item, int $index): array => $this->serviceReportRowFromInvoiceItem(
+                        $appointment,
+                        $item,
+                        $invoiceLabels[$appointment->id] ?? '',
+                        $invoiceIds[$appointment->id] ?? [],
+                        $index
+                    )
                 );
-
-                $quantity = max(1.0, (float) ($item?->quantity ?? $appointment->service_quantity ?? 1));
-                $unitPrice = $item
-                    ? (float) $item->unit_price
-                    : ($appointment->customer_package_id ? 0.0 : (float) ($appointment->service?->price ?? 0));
-                $discountAmount = $item ? (float) $item->discount_amount : 0.0;
-                $subtotal = $item ? (float) $item->line_subtotal : max(0.0, ($quantity * $unitPrice) - $discountAmount);
-                $tax = $item ? (float) $item->line_tax : round($subtotal * ($vatRatePercent / 100), 2);
-                $total = $item ? (float) $item->line_total : round($subtotal + $tax, 2);
-
-                return [
-                    'id' => $appointment->id,
-                    'date' => optional($appointment->scheduled_start)->format('Y-m-d H:i'),
-                    'customer_name' => $appointment->customer?->name ?: $appointment->customer_name,
-                    'customer_phone' => $appointment->customer_phone,
-                    'invoice_number' => $invoiceLabels[$appointment->id] ?? '',
-                    'invoice_ids' => $invoiceIds[$appointment->id] ?? [],
-                    'service_name' => $serviceName,
-                    'quantity' => $quantity,
-                    'unit_price' => round($unitPrice, 2),
-                    'discount_amount' => round($discountAmount, 2),
-                    'subtotal' => round($subtotal, 2),
-                    'tax' => round($tax, 2),
-                    'total' => round($total, 2),
-                    'staff_name' => $appointment->staffProfile?->user?->name,
-                    'service_report' => $appointment->notes,
-                ];
             })
             ->values()
             ->all();
@@ -485,7 +472,7 @@ class ReportController extends Controller
         }
 
         $invoices = TaxInvoice::query()
-            ->with('items')
+            ->with('items.staffProfile.user:id,name')
             ->where('status', '!=', TaxInvoice::STATUS_VOID)
             ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
             ->orderByRaw('invoice_number IS NULL')
@@ -541,9 +528,15 @@ class ReportController extends Controller
             ])
             ->values();
 
-        $remainingItems = $invoiceItems->values();
+        $remainingItems = $invoiceItems
+            ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id !== null)
+            ->values();
         $pendingAppointments = $appointments;
         $assignments = [];
+
+        foreach ($appointments as $appointment) {
+            $assignments[$appointment->id] = collect();
+        }
 
         $assignBy = function (callable $matches) use (&$pendingAppointments, &$remainingItems, &$assignments): void {
             $stillPending = collect();
@@ -561,7 +554,7 @@ class ReportController extends Controller
                 }
 
                 if ($matchedItem) {
-                    $assignments[$appointment->id] = collect([$matchedItem]);
+                    $assignments[$appointment->id] = $assignments[$appointment->id]->push($matchedItem);
                     $remainingItems->forget($matchedKey);
                 } else {
                     $stillPending->push($appointment);
@@ -582,20 +575,22 @@ class ReportController extends Controller
                 && mb_strtolower(trim((string) $item->description)) === $serviceName;
         });
 
-        if ($pendingAppointments->isNotEmpty()) {
-            $fallbackItems = $remainingItems
-                ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id !== null)
-                ->values();
+        if ($remainingItems->isNotEmpty()) {
+            foreach ($remainingItems->values() as $item) {
+                $targetAppointment = null;
 
-            if ($fallbackItems->isEmpty()) {
-                $fallbackItems = $remainingItems->values();
-            }
+                if ($item->staff_profile_id) {
+                    $targetAppointment = $appointments->first(
+                        fn (Appointment $appointment) => (int) $appointment->staff_profile_id === (int) $item->staff_profile_id
+                    );
+                }
 
-            foreach ($pendingAppointments->values() as $index => $appointment) {
-                $item = $fallbackItems->get($index);
+                if (! $targetAppointment) {
+                    $targetAppointment = $pendingAppointments->first() ?? $appointments->first();
+                }
 
-                if ($item) {
-                    $assignments[$appointment->id] = collect([$item]);
+                if ($targetAppointment) {
+                    $assignments[$targetAppointment->id] = $assignments[$targetAppointment->id]->push($item);
                 }
             }
         }
@@ -605,6 +600,68 @@ class ReportController extends Controller
         }
 
         return $assignments;
+    }
+
+    /**
+     * @param  array<int, string>  $invoiceLabels
+     * @param  array<int, list<int>>  $invoiceIds
+     * @return array<string, mixed>
+     */
+    private function fallbackServiceReportRow(Appointment $appointment, array $invoiceLabels, array $invoiceIds, float $vatRatePercent): array
+    {
+        $quantity = max(1.0, (float) ($appointment->service_quantity ?? 1));
+        $unitPrice = $appointment->customer_package_id
+            ? 0.0
+            : (float) ($appointment->service_unit_price ?? $appointment->service?->price ?? 0);
+        $discountAmount = (float) ($appointment->customer_package_id ? 0.0 : ($appointment->service_discount_amount ?? 0));
+        $subtotal = max(0.0, ($quantity * $unitPrice) - $discountAmount);
+        $tax = round($subtotal * ($vatRatePercent / 100), 2);
+        $total = round($subtotal + $tax, 2);
+
+        return [
+            'id' => $appointment->id,
+            'appointment_id' => $appointment->id,
+            'date' => optional($appointment->scheduled_start)->format('Y-m-d H:i'),
+            'customer_name' => $appointment->customer?->name ?: $appointment->customer_name,
+            'customer_phone' => $appointment->customer_phone,
+            'invoice_number' => $invoiceLabels[$appointment->id] ?? '',
+            'invoice_ids' => $invoiceIds[$appointment->id] ?? [],
+            'service_name' => $appointment->service?->name,
+            'quantity' => $quantity,
+            'unit_price' => round($unitPrice, 2),
+            'discount_amount' => round($discountAmount, 2),
+            'subtotal' => round($subtotal, 2),
+            'tax' => round($tax, 2),
+            'total' => round($total, 2),
+            'staff_name' => $appointment->staffProfile?->user?->name,
+            'service_report' => $appointment->notes,
+        ];
+    }
+
+    /**
+     * @param  list<int>  $invoiceIds
+     * @return array<string, mixed>
+     */
+    private function serviceReportRowFromInvoiceItem(Appointment $appointment, TaxInvoiceItem $item, string $invoiceNumber, array $invoiceIds, int $index = 0): array
+    {
+        return [
+            'id' => sprintf('%d-%d-%d', $appointment->id, $item->tax_invoice_id, $item->id ?: $index),
+            'appointment_id' => $appointment->id,
+            'date' => optional($appointment->scheduled_start)->format('Y-m-d H:i'),
+            'customer_name' => $appointment->customer?->name ?: $appointment->customer_name,
+            'customer_phone' => $appointment->customer_phone,
+            'invoice_number' => $invoiceNumber,
+            'invoice_ids' => $invoiceIds,
+            'service_name' => $item->description ?: $appointment->service?->name,
+            'quantity' => round((float) $item->quantity, 2),
+            'unit_price' => round((float) $item->unit_price, 2),
+            'discount_amount' => round((float) $item->discount_amount, 2),
+            'subtotal' => round((float) $item->line_subtotal, 2),
+            'tax' => round((float) $item->line_tax, 2),
+            'total' => round((float) $item->line_total, 2),
+            'staff_name' => $item->staffProfile?->user?->name ?: $appointment->staffProfile?->user?->name,
+            'service_report' => $appointment->notes,
+        ];
     }
 
     /**
@@ -810,15 +867,17 @@ class ReportController extends Controller
             ->pluck('total', 'status')
             ->toArray();
 
-        $servicePerformance = Appointment::query()
-            ->join('salon_services', 'appointments.service_id', '=', 'salon_services.id')
-            ->whereBetween('appointments.scheduled_start', [$dateFrom, $dateTo])
-            ->selectRaw('salon_services.name as service_name, COUNT(*) as total, SUM(CASE WHEN appointments.status = ? THEN salon_services.price * appointments.service_quantity ELSE 0 END) as revenue', [Appointment::STATUS_COMPLETED])
-            ->groupBy('salon_services.name')
-            ->orderByDesc('total')
-            ->limit(8)
-            ->get()
-            ->toArray();
+        $servicePerformance = collect($serviceReportRows)
+            ->groupBy(fn (array $row) => (string) ($row['service_name'] ?? 'Unknown service'))
+            ->map(fn (Collection $group, string $serviceName): array => [
+                'service_name' => $serviceName,
+                'total' => $group->count(),
+                'revenue' => round((float) $group->sum(fn (array $row) => (float) ($row['total'] ?? 0)), 2),
+            ])
+            ->sortByDesc('revenue')
+            ->take(8)
+            ->values()
+            ->all();
 
         $staffPerformance = Appointment::query()
             ->join('staff_profiles', 'appointments.staff_profile_id', '=', 'staff_profiles.id')
@@ -831,15 +890,16 @@ class ReportController extends Controller
             ->get()
             ->toArray();
 
-        $dailyRevenue = Appointment::query()
-            ->join('salon_services', 'appointments.service_id', '=', 'salon_services.id')
-            ->where('appointments.status', Appointment::STATUS_COMPLETED)
-            ->whereBetween('appointments.scheduled_start', [$dateFrom, $dateTo])
-            ->selectRaw('DATE(appointments.scheduled_start) as date, SUM(salon_services.price * appointments.service_quantity) as revenue')
-            ->groupByRaw('DATE(appointments.scheduled_start)')
-            ->orderBy('date')
-            ->get()
-            ->toArray();
+        $dailyRevenue = collect($serviceReportRows)
+            ->groupBy(fn (array $row) => substr((string) ($row['date'] ?? ''), 0, 10))
+            ->map(fn (Collection $group, string $date): array => [
+                'date' => $date,
+                'revenue' => round((float) $group->sum(fn (array $row) => (float) ($row['total'] ?? 0)), 2),
+            ])
+            ->filter(fn (array $row) => $row['date'] !== '')
+            ->sortBy('date')
+            ->values()
+            ->all();
 
         $waitingTimeByStaff = Appointment::query()
             ->join('staff_profiles', 'appointments.staff_profile_id', '=', 'staff_profiles.id')

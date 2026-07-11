@@ -297,9 +297,9 @@ export default function FinanceExpensesIndex({
                         </div>
                     </div>
 
-                    <div className="grid gap-5 xl:grid-cols-12">
+                    <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-12">
                         <form
-                            className="space-y-4 rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm xl:col-span-4"
+                            className="min-w-0 space-y-4 rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm 2xl:col-span-4"
                             onSubmit={(e) => {
                                 e.preventDefault();
                                 pettyCashIssueForm.post(route('finance.expenses.petty-cash.issue'), {
@@ -342,8 +342,8 @@ export default function FinanceExpensesIndex({
                             </button>
                         </form>
 
-                        <div className="grid gap-5 xl:col-span-4">
-                            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="min-w-0 grid gap-5 2xl:col-span-4">
+                            <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                                 <div className="mb-3">
                                     <span className="inline-flex rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-700">Live balance</span>
                                     <h4 className="text-base font-semibold text-slate-800">2. Balances by custodian</h4>
@@ -360,13 +360,13 @@ export default function FinanceExpensesIndex({
                                 </div>
                             </div>
 
-                            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div className="min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                                 <div className="mb-3">
                                     <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">Review</span>
                                     <h4 className="text-base font-semibold text-slate-800">3. Recent movements</h4>
                                     <p className="mt-1 text-xs text-slate-500">Quick review of the latest issues, deductions, and adjustments before sign-off.</p>
                                 </div>
-                                <div className="overflow-hidden rounded-2xl border border-slate-100">
+                                <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-100">
                                     <div className="overflow-x-auto">
                                         <table className="min-w-full text-sm">
                                             <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
@@ -406,7 +406,7 @@ export default function FinanceExpensesIndex({
                         </div>
 
                         <form
-                            className="space-y-4 rounded-3xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-5 shadow-sm xl:col-span-4"
+                            className="min-w-0 space-y-4 rounded-3xl border border-rose-200 bg-gradient-to-br from-rose-50 to-white p-5 shadow-sm xl:col-span-2 2xl:col-span-4"
                             onSubmit={(e) => {
                                 e.preventDefault();
                                 setCloseConfirmOpen(true);

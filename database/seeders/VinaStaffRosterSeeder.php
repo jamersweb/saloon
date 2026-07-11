@@ -26,7 +26,7 @@ class VinaStaffRosterSeeder extends Seeder
         }
 
         $rows = [
-            ['Mona Bassagh', 'mona.bassagh@vina.local', 'VINA-01', 'manager', 'Manager / Eyelash technician'],
+            ['Mona Bassagh', 'mona.bassagh.staff@vina.local', 'VINA-01', 'manager', 'Manager / Eyelash technician'],
             ['Sahar Shams', 'sahar.shams@vina.local', 'VINA-02', 'staff', 'Makeup artist / Hair stylist'],
             ['Majd Alabaza', 'majd.alabaza@vina.local', 'VINA-03', 'staff', 'Hair dresser'],
             ['Hengameh Dortaj', 'hengameh.dortaj@vina.local', 'VINA-04', 'staff', 'Nail technician'],
