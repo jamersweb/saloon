@@ -1401,7 +1401,40 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
 
         return initials || (staff?.id ? `#${staff.id}` : '?');
     };
-    const boardStaffProfiles = useMemo(() => staffProfiles.filter((staff) => staff?.id && String(staff?.name || '').trim() !== ''), [staffProfiles]);
+    const boardStaffProfiles = useMemo(() => {
+        const byName = new Map();
+
+        staffProfiles
+            .filter((staff) => staff?.id && String(staff?.name || '').trim() !== '')
+            .forEach((staff) => {
+                const key = String(staff.name || '').trim().toLowerCase();
+                const existing = byName.get(key);
+
+                if (!existing) {
+                    byName.set(key, staff);
+                    return;
+                }
+
+                const existingIsStaff = existing?.role_name === 'staff';
+                const nextIsStaff = staff?.role_name === 'staff';
+
+                if (nextIsStaff && !existingIsStaff) {
+                    byName.set(key, staff);
+                    return;
+                }
+
+                if (nextIsStaff === existingIsStaff) {
+                    const existingCode = String(existing?.employee_code || '');
+                    const nextCode = String(staff?.employee_code || '');
+
+                    if (nextCode > existingCode) {
+                        byName.set(key, staff);
+                    }
+                }
+            });
+
+        return Array.from(byName.values());
+    }, [staffProfiles]);
     const boardStaffOptions = [{ value: '', label: 'Auto / Unassigned' }, ...boardStaffProfiles.map((s) => ({ value: String(s.id), label: s.name }))];
     const boardStaffList = boardStaffFilter === 'all'
         ? boardStaffProfiles

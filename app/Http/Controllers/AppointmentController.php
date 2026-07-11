@@ -222,9 +222,12 @@ class AppointmentController extends Controller
                 ->each(fn (Customer $customer) => app(GiftCardService::class)->backfillGiftCardsForCustomer((int) $customer->id, $request->user()?->id))
                 ->load('giftCards')
                 ->map(fn (Customer $customer) => $this->serializeCustomerForAppointments($customer)),
-            'staffProfiles' => StaffProfile::query()->with('user:id,name')->where('is_active', true)->assignableToServices()->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
+            'staffProfiles' => StaffProfile::query()->with('user.role:id,name')->where('is_active', true)->assignableToServices()->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
                 'name' => $staff->user?->name,
+                'email' => $staff->user?->email,
+                'employee_code' => $staff->employee_code,
+                'role_name' => $staff->user?->role?->name,
             ]),
             'inventoryItems' => InventoryItem::query()
                 ->where('is_active', true)
