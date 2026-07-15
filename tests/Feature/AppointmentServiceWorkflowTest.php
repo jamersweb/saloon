@@ -1414,6 +1414,60 @@ class AppointmentServiceWorkflowTest extends TestCase
             );
     }
 
+    public function test_appointment_index_includes_active_reception_profiles_in_board_staff_list(): void
+    {
+        $manager = $this->createManagerUser();
+        $receptionRole = Role::firstOrCreate([
+            'name' => 'reception',
+        ], [
+            'label' => 'Reception',
+            'permissions' => Permissions::defaultsForRole('reception'),
+        ]);
+
+        BookingRule::create([
+            'opening_time' => '09:00',
+            'closing_time' => '22:00',
+            'slot_interval_minutes' => 30,
+            'min_advance_minutes' => 0,
+            'max_advance_days' => 60,
+        ]);
+
+        $dulceUser = User::factory()->create([
+            'role_id' => $receptionRole->id,
+            'name' => 'Dulce Aguilar',
+            'email' => 'dulce.aguilar@vina.local',
+        ]);
+        $dulce = StaffProfile::create([
+            'user_id' => $dulceUser->id,
+            'employee_code' => 'VINA-05',
+            'phone' => '0544550498',
+            'skills' => ['Nail technician, Threading, Waxing, Hair'],
+            'is_active' => true,
+        ]);
+
+        $jeniferUser = User::factory()->create([
+            'role_id' => $receptionRole->id,
+            'name' => 'Jenifer Palisoc Jazmin',
+        ]);
+        StaffProfile::create([
+            'user_id' => $jeniferUser->id,
+            'employee_code' => 'VINA-08',
+            'is_active' => false,
+        ]);
+
+        $this->actingAs($manager)
+            ->get(route('appointments.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Appointments/Index')
+                ->has('staffProfiles', 1)
+                ->where('staffProfiles.0.id', $dulce->id)
+                ->where('staffProfiles.0.name', 'Dulce Aguilar')
+                ->where('staffProfiles.0.employee_code', 'VINA-05')
+                ->where('staffProfiles.0.role_name', 'reception')
+            );
+    }
+
     public function test_starting_a_future_booking_uses_the_actual_service_time(): void
     {
         $actualStart = Carbon::parse('2026-05-15 12:20:29');

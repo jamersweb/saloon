@@ -82,7 +82,7 @@ class StaffProfile extends Model
     public function scopeAssignableToServices(Builder $query): Builder
     {
         return $query->whereHas('user.role', function (Builder $roleQuery): void {
-            $roleQuery->whereIn('name', ['owner', 'manager', 'staff']);
+            $roleQuery->whereIn('name', ['owner', 'manager', 'staff', 'reception']);
         });
     }
 }

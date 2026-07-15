@@ -186,7 +186,7 @@ class AppointmentAvailabilityEndpointTest extends TestCase
             ->assertJsonPath('staff.0.available', true);
     }
 
-    public function test_staff_availability_endpoint_excludes_non_assignable_roles(): void
+    public function test_staff_availability_endpoint_includes_active_reception_profiles(): void
     {
         $role = Role::firstOrCreate(['name' => 'manager'], ['label' => 'Manager']);
         $receptionRole = Role::firstOrCreate(['name' => 'reception'], ['label' => 'Reception']);
@@ -200,11 +200,23 @@ class AppointmentAvailabilityEndpointTest extends TestCase
             'max_advance_days' => 60,
         ]);
 
-        $removedUser = User::factory()->create(['role_id' => $receptionRole->id, 'name' => 'Analisa Rabanal Domenden']);
-        StaffProfile::create(['user_id' => $removedUser->id, 'employee_code' => 'VINA-07', 'is_active' => true]);
+        $inactiveReceptionUser = User::factory()->create(['role_id' => $receptionRole->id, 'name' => 'Analisa Rabanal Domenden']);
+        StaffProfile::create(['user_id' => $inactiveReceptionUser->id, 'employee_code' => 'VINA-07', 'is_active' => false]);
 
         $activeUser = User::factory()->create(['role_id' => $role->id, 'name' => 'Majd Alabaza']);
         $activeStaff = StaffProfile::create(['user_id' => $activeUser->id, 'employee_code' => 'VINA-03', 'is_active' => true]);
+        $receptionUser = User::factory()->create(['role_id' => $receptionRole->id, 'name' => 'Dulce Aguilar']);
+        $receptionStaff = StaffProfile::create(['user_id' => $receptionUser->id, 'employee_code' => 'VINA-05', 'is_active' => true]);
+
+        foreach ([$activeStaff, $receptionStaff] as $staff) {
+            StaffSchedule::create([
+                'staff_profile_id' => $staff->id,
+                'schedule_date' => '2026-06-08',
+                'start_time' => '10:00',
+                'end_time' => '22:00',
+                'is_day_off' => false,
+            ]);
+        }
 
         $response = $this->actingAs($user)->get(route('appointments.staff-availability', [
             'scheduled_start' => '2026-06-08 17:00:00',
@@ -212,8 +224,10 @@ class AppointmentAvailabilityEndpointTest extends TestCase
         ]));
 
         $response->assertOk()
-            ->assertJsonCount(1, 'staff')
+            ->assertJsonCount(2, 'staff')
             ->assertJsonPath('staff.0.id', $activeStaff->id)
-            ->assertJsonPath('staff.0.name', 'Majd Alabaza');
+            ->assertJsonPath('staff.0.name', 'Majd Alabaza')
+            ->assertJsonPath('staff.1.id', $receptionStaff->id)
+            ->assertJsonPath('staff.1.name', 'Dulce Aguilar');
     }
 }

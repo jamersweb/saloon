@@ -30,7 +30,7 @@ class VinaStaffRosterSeeder extends Seeder
             ['Sahar Shams', 'sahar.shams@vina.local', 'VINA-02', 'staff', 'Makeup artist / Hair stylist'],
             ['Majd Alabaza', 'majd.alabaza@vina.local', 'VINA-03', 'staff', 'Hair dresser'],
             ['Hengameh Dortaj', 'hengameh.dortaj@vina.local', 'VINA-04', 'staff', 'Nail technician'],
-            ['Dulce Aguilar', 'dulce.aguilar@vina.local', 'VINA-05', 'staff', 'Nail technician'],
+            ['Dulce Aguilar', 'dulce.aguilar@vina.local', 'VINA-05', 'reception', 'Nail technician, Threading, Waxing, Hair', '0544550498'],
             ['Jocelyn Caburnay Caquista', 'jocelyn.caquista@vina.local', 'VINA-06', 'staff', 'Nail technician'],
         ];
 
@@ -60,7 +60,7 @@ class VinaStaffRosterSeeder extends Seeder
                 ['user_id' => $user->id],
                 [
                     'employee_code' => $row[2],
-                    'phone' => null,
+                    'phone' => $row[5] ?? null,
                     'skills' => [$row[4]],
                     'is_active' => ! in_array($row, $inactiveRows, true),
                 ],
