@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\CustomerMembershipCard;
 use App\Models\GiftCard;
 use App\Models\GiftCardTransaction;
+use App\Models\TaxInvoice;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -322,17 +323,34 @@ class GiftCardService
         return trim(chunk_split($padded, 4, ' '));
     }
 
-    public function consume(GiftCard $giftCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null, ?int $appointmentId = null): GiftCardTransaction
+    public function consume(GiftCard $giftCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null, ?int $appointmentId = null, ?int $taxInvoiceId = null): GiftCardTransaction
     {
         if ($amount <= 0) {
             throw ValidationException::withMessages(['amount' => 'Amount must be greater than zero.']);
         }
 
-        return DB::transaction(function () use ($giftCard, $amount, $reason, $createdBy, $notes, $appointmentId) {
+        return DB::transaction(function () use ($giftCard, $amount, $reason, $createdBy, $notes, $appointmentId, $taxInvoiceId) {
             $giftCard->refresh();
 
             if ((float) $giftCard->remaining_value < $amount) {
                 throw ValidationException::withMessages(['amount' => 'Gift card balance is insufficient.']);
+            }
+
+            $invoiceAppointmentId = null;
+            if ($taxInvoiceId !== null) {
+                $invoice = TaxInvoice::query()->find($taxInvoiceId);
+                if ($invoice === null || $invoice->customer_id === null) {
+                    throw ValidationException::withMessages([
+                        'tax_invoice_id' => 'Select a valid invoice with a customer.',
+                    ]);
+                }
+                if ($giftCard->assigned_customer_id !== null
+                    && (int) $giftCard->assigned_customer_id !== (int) $invoice->customer_id) {
+                    throw ValidationException::withMessages([
+                        'tax_invoice_id' => 'The gift card is assigned to a different customer than this invoice.',
+                    ]);
+                }
+                $invoiceAppointmentId = $invoice->appointment_id ? (int) $invoice->appointment_id : null;
             }
 
             if ($appointmentId !== null) {
@@ -350,6 +368,7 @@ class GiftCardService
                 }
             }
 
+            $linkedAppointmentId = $appointmentId ?? $invoiceAppointmentId;
             $nextBalance = round((float) $giftCard->remaining_value - $amount, 2);
             $giftCard->update([
                 'remaining_value' => $nextBalance,
@@ -358,7 +377,8 @@ class GiftCardService
 
             return GiftCardTransaction::create([
                 'gift_card_id' => $giftCard->id,
-                'appointment_id' => $appointmentId,
+                'appointment_id' => $linkedAppointmentId,
+                'tax_invoice_id' => $taxInvoiceId,
                 'amount_change' => -$amount,
                 'balance_after' => $nextBalance,
                 'reason' => $reason,

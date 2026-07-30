@@ -159,6 +159,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/loyalty/cards/nfc-lookup', [LoyaltyController::class, 'lookupCardByNfc'])->name('loyalty.cards.nfc-lookup');
         Route::post('/loyalty/cards/nfc-bind', [LoyaltyController::class, 'bindCardNfc'])->name('loyalty.cards.nfc-bind');
         Route::put('/loyalty/cards/{card}', [LoyaltyController::class, 'updateMembershipCard'])->name('loyalty.cards.update');
+        Route::patch('/loyalty/cards/{card}/deactivate', [LoyaltyController::class, 'deactivateMembershipCard'])->name('loyalty.cards.deactivate');
         Route::post('/loyalty/cards/{card}/refill', [LoyaltyController::class, 'refillMembershipCard'])->name('loyalty.cards.refill');
         Route::delete('/loyalty/cards/{card}', [LoyaltyController::class, 'destroyMembershipCard'])->name('loyalty.cards.destroy');
         Route::post('/loyalty/packages', [LoyaltyController::class, 'storePackage'])->name('loyalty.packages.store');
@@ -170,6 +171,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/loyalty/gift-cards/assign', [LoyaltyController::class, 'assignGiftCard'])->name('loyalty.gift-cards.assign');
         Route::post('/loyalty/gift-cards/nfc-lookup', [LoyaltyController::class, 'lookupGiftCardByNfc'])->name('loyalty.gift-cards.nfc-lookup');
         Route::post('/loyalty/gift-cards/nfc-bind', [LoyaltyController::class, 'bindGiftCardNfc'])->name('loyalty.gift-cards.nfc-bind');
+        Route::put('/loyalty/gift-cards/{giftCard}', [LoyaltyController::class, 'updateGiftCard'])->name('loyalty.gift-cards.update');
+        Route::patch('/loyalty/gift-cards/{giftCard}/deactivate', [LoyaltyController::class, 'deactivateGiftCard'])->name('loyalty.gift-cards.deactivate');
         Route::post('/loyalty/gift-cards/{giftCard}/consume', [LoyaltyController::class, 'consumeGiftCard'])->name('loyalty.gift-cards.consume');
         Route::post('/loyalty/ledger', [LoyaltyController::class, 'storeLedger'])->name('loyalty.ledger.store');
         Route::post('/loyalty/rewards', [LoyaltyController::class, 'storeReward'])->name('loyalty.rewards.store');

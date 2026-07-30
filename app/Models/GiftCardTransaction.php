@@ -13,6 +13,7 @@ class GiftCardTransaction extends Model
     protected $fillable = [
         'gift_card_id',
         'appointment_id',
+        'tax_invoice_id',
         'amount_change',
         'balance_after',
         'reason',
@@ -36,5 +37,10 @@ class GiftCardTransaction extends Model
     public function appointment(): BelongsTo
     {
         return $this->belongsTo(Appointment::class);
+    }
+
+    public function taxInvoice(): BelongsTo
+    {
+        return $this->belongsTo(TaxInvoice::class);
     }
 }

@@ -18,6 +18,7 @@ use App\Models\MembershipCardType;
 use App\Models\MembershipRegistration;
 use App\Models\SalonService;
 use App\Models\ServicePackage;
+use App\Models\TaxInvoice;
 use App\Services\GiftCardService;
 use App\Services\GiftCardSalePostingService;
 use App\Services\PackageSalePostingService;
@@ -294,7 +295,7 @@ class LoyaltyController extends Controller
                     'expires_at' => $package->expires_at,
                 ]),
             'giftCards' => GiftCard::query()
-                ->with('customer:id,name')
+                ->with('customer:id,name,phone,email')
                 ->latest()
                 ->limit(200)
                 ->get()
@@ -304,13 +305,16 @@ class LoyaltyController extends Controller
                     'nfc_uid' => $giftCard->nfc_uid,
                     'assigned_customer_id' => $giftCard->assigned_customer_id,
                     'customer_name' => $giftCard->customer?->name,
+                    'customer_phone' => $giftCard->customer?->phone,
+                    'customer_email' => $giftCard->customer?->email,
                     'initial_value' => $giftCard->initial_value,
                     'remaining_value' => $giftCard->remaining_value,
                     'status' => $giftCard->status,
                     'expires_at' => $giftCard->expires_at,
+                    'notes' => $giftCard->notes,
                 ]),
             'recentGiftTransactions' => GiftCardTransaction::query()
-                ->with('giftCard:id,code')
+                ->with(['giftCard:id,code', 'taxInvoice:id,invoice_number'])
                 ->latest()
                 ->limit(80)
                 ->get()
@@ -320,7 +324,27 @@ class LoyaltyController extends Controller
                     'amount_change' => $transaction->amount_change,
                     'balance_after' => $transaction->balance_after,
                     'reason' => $transaction->reason,
+                    'invoice_id' => $transaction->tax_invoice_id,
+                    'invoice_label' => $transaction->taxInvoice?->invoice_number
+                        ? 'Invoice '.$transaction->taxInvoice->invoice_number
+                        : ($transaction->tax_invoice_id ? 'Invoice #'.$transaction->tax_invoice_id : null),
                     'created_at' => $transaction->created_at,
+                ]),
+            'invoicesForGiftCards' => TaxInvoice::query()
+                ->with(['customer:id,name,phone', 'appointment.service:id,name'])
+                ->whereNotNull('customer_id')
+                ->where('status', '!=', TaxInvoice::STATUS_VOID)
+                ->latest('issued_at')
+                ->latest('id')
+                ->limit(500)
+                ->get()
+                ->map(fn (TaxInvoice $invoice) => [
+                    'id' => $invoice->id,
+                    'customer_id' => $invoice->customer_id,
+                    'label' => ($invoice->invoice_number ?: 'Draft invoice #'.$invoice->id)
+                        .' - '.($invoice->customer?->name ?? 'Customer')
+                        .' - AED '.number_format((float) $invoice->total, 2)
+                        .' ('.$invoice->status.')',
                 ]),
         ]);
     }
@@ -491,6 +515,53 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Gift card assigned to customer.');
     }
 
+    public function updateGiftCard(Request $request, GiftCard $giftCard): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $this->prepareNfcUidField($request, 'nfc_uid');
+
+        $data = $request->validate([
+            'assigned_customer_id' => ['nullable', 'exists:customers,id'],
+            'nfc_uid' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('gift_cards', 'nfc_uid')->ignore($giftCard->id),
+                Rule::unique('customer_membership_cards', 'nfc_uid'),
+            ],
+            'expires_at' => ['nullable', 'date'],
+            'status' => ['required', Rule::in(['active', 'redeemed', 'expired', 'inactive'])],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $giftCard->update([
+            'assigned_customer_id' => $data['assigned_customer_id'] ?? null,
+            'nfc_uid' => $data['nfc_uid'] ?? null,
+            'expires_at' => $data['expires_at'] ?? null,
+            'status' => $data['status'],
+            'notes' => $data['notes'] ?? null,
+        ]);
+
+        Audit::log($request->user()?->id, 'gift_card.updated', 'GiftCard', $giftCard->id, [
+            'assigned_customer_id' => $giftCard->assigned_customer_id,
+            'status' => $giftCard->status,
+        ]);
+
+        return back()->with('status', 'Gift card updated.');
+    }
+
+    public function deactivateGiftCard(Request $request, GiftCard $giftCard): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $giftCard->update(['status' => 'inactive']);
+
+        Audit::log($request->user()?->id, 'gift_card.deactivated', 'GiftCard', $giftCard->id);
+
+        return back()->with('status', 'Gift card deactivated.');
+    }
+
     public function consumeGiftCard(Request $request, GiftCard $giftCard, GiftCardService $giftCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
@@ -498,15 +569,20 @@ class LoyaltyController extends Controller
         if (! $request->filled('appointment_id')) {
             $request->merge(['appointment_id' => null]);
         }
+        if (! $request->filled('tax_invoice_id')) {
+            $request->merge(['tax_invoice_id' => null]);
+        }
 
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'reason' => ['required', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
             'appointment_id' => ['nullable', 'integer', 'exists:appointments,id'],
+            'tax_invoice_id' => ['nullable', 'integer', 'exists:tax_invoices,id'],
         ]);
 
         $appointmentId = isset($data['appointment_id']) ? (int) $data['appointment_id'] : null;
+        $taxInvoiceId = isset($data['tax_invoice_id']) ? (int) $data['tax_invoice_id'] : null;
 
         $transaction = $giftCardService->consume(
             $giftCard,
@@ -515,6 +591,7 @@ class LoyaltyController extends Controller
             $request->user()?->id,
             $data['notes'] ?? null,
             $appointmentId,
+            $taxInvoiceId,
         );
 
         Audit::log($request->user()?->id, 'gift_card.consumed', 'GiftCardTransaction', $transaction->id);
@@ -896,7 +973,6 @@ class LoyaltyController extends Controller
                 'string',
                 'max:255',
                 Rule::unique('customer_membership_cards', 'nfc_uid')->ignore($card->id),
-                Rule::unique('gift_cards', 'nfc_uid'),
             ],
             'status' => ['required', Rule::in(['pending', 'active', 'inactive', 'expired'])],
             'notes' => ['nullable', 'string'],
@@ -955,6 +1031,20 @@ class LoyaltyController extends Controller
         ]);
 
         return back()->with('status', 'Gift card refilled.');
+    }
+
+    public function deactivateMembershipCard(Request $request, CustomerMembershipCard $card, GiftCardService $giftCardService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $card->update(['status' => 'inactive']);
+        $giftCardService->ensureGiftCardFromMembershipCard($card->fresh(['customer', 'type']), $request->user()?->id);
+
+        Audit::log($request->user()?->id, 'loyalty.card_deactivated', 'CustomerMembershipCard', $card->id, [
+            'customer_id' => $card->customer_id,
+        ]);
+
+        return back()->with('status', 'Membership card deactivated.');
     }
 
     public function destroyMembershipCard(Request $request, CustomerMembershipCard $card): RedirectResponse

@@ -75,6 +75,7 @@ class TaxInvoicePaymentService
                     $user->id,
                     'Checkout payment',
                     $invoice->appointment_id,
+                    $invoice->id,
                 );
 
                 $referenceNote = trim(($referenceNote ? $referenceNote.' · ' : '').$card->code);

@@ -67,6 +67,61 @@ class PackagesAndGiftCardsTest extends TestCase
         app(GiftCardService::class)->consume($giftCard, 500.00, 'Overspend attempt');
     }
 
+    public function test_gift_card_consumption_can_link_tax_invoice_and_deactivate_card(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-GIFT-INVOICE',
+            'name' => 'Gift Invoice Customer',
+            'phone' => '5552224444',
+            'is_active' => true,
+        ]);
+
+        $giftCard = app(GiftCardService::class)->issue($customer, 200.00);
+        $invoice = TaxInvoice::create([
+            'invoice_number' => 'TAX-GIFT-001',
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'subtotal' => 95,
+            'vat_amount' => 5,
+            'total' => 100,
+            'issued_at' => now(),
+            'cashier_name' => $user->name,
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.gift-cards.consume', $giftCard), [
+                'amount' => 60,
+                'reason' => 'Invoice redemption',
+                'tax_invoice_id' => $invoice->id,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('gift_card_transactions', [
+            'gift_card_id' => $giftCard->id,
+            'tax_invoice_id' => $invoice->id,
+            'amount_change' => -60,
+            'balance_after' => 140,
+        ]);
+
+        $this->actingAs($user)
+            ->patch(route('loyalty.gift-cards.deactivate', $giftCard))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('gift_cards', [
+            'id' => $giftCard->id,
+            'status' => 'inactive',
+        ]);
+    }
+
     public function test_staff_can_issue_gift_card_and_assign_package_via_loyalty_routes(): void
     {
         $managerRole = Role::create([

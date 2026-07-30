@@ -24,6 +24,7 @@ export default function LoyaltyIndex({
     customerPackages,
     giftCards,
     recentGiftTransactions,
+    invoicesForGiftCards,
     recentLedgers,
     rewards,
     recentRedemptions,
@@ -119,7 +120,7 @@ export default function LoyaltyIndex({
     const assignGiftCardForm = useForm({ gift_card_id: '', assigned_customer_id: '' });
     const giftNfcLookupForm = useForm({ gift_nfc_uid: '' });
     const giftNfcBindForm = useForm({ gift_card_id: '', nfc_uid: '', replace_existing: false });
-    const consumeGiftCardForm = useForm({ gift_card_id: '', appointment_id: '', amount: '', reason: '', notes: '' });
+    const consumeGiftCardForm = useForm({ gift_card_id: '', appointment_id: '', tax_invoice_id: '', amount: '', reason: '', notes: '' });
     const pointsForm = useForm({ customer_id: '', points_change: '', reason: '', reference: '', notes: '' });
     const rewardForm = useForm({
         name: '',
@@ -382,6 +383,7 @@ export default function LoyaltyIndex({
                         cardTypes={cardTypes}
                         customers={customers}
                         membershipCards={membershipCards}
+                        giftCards={giftCards}
                         membershipRegistrations={membershipRegistrations}
                         currentUserName={auth?.user?.name ?? ''}
                         openRegistrationByDefault={(page.url || '').includes('register=1')}
@@ -445,6 +447,7 @@ export default function LoyaltyIndex({
                         customers={customers}
                         giftCards={giftCards}
                         recentGiftTransactions={recentGiftTransactions}
+                        invoicesForGiftCards={invoicesForGiftCards}
                         appointmentsForRedeem={appointmentsForRedeem}
                         nfcBridgeLoadingTarget={nfcBridgeLoadingTarget}
                         readUidFromBridge={readUidFromBridge}
