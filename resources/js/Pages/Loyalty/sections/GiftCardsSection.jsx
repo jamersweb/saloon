@@ -188,7 +188,7 @@ export default function GiftCardsSection({
             </section>
 
             <section className="ta-card p-5">
-                <h3 className="mb-4 text-sm font-semibold text-slate-700">Consume gift card</h3>
+                <h3 className="mb-4 text-sm font-semibold text-slate-700">Redeem gift card</h3>
                 <form onSubmit={(e) => { e.preventDefault(); consumeGiftCardForm.post(route('loyalty.gift-cards.consume', consumeGiftCardForm.data.gift_card_id), { onSuccess: () => consumeGiftCardForm.reset('amount', 'reason', 'notes', 'appointment_id', 'tax_invoice_id') }); }} className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
                     <div><SearchableSelect label="Gift card" value={consumeGiftCardForm.data.gift_card_id} onChange={(id) => { consumeGiftCardForm.setData('gift_card_id', id); consumeGiftCardForm.setData('appointment_id', ''); consumeGiftCardForm.setData('tax_invoice_id', ''); }} options={activeGiftCardOptions} placeholder="Search gift card" />{fieldError(consumeGiftCardForm, 'gift_card_id')}</div>
                     <div className="lg:col-span-2">
@@ -211,7 +211,7 @@ export default function GiftCardsSection({
                     <div><label className="ta-field-label">Amount</label><input className="ta-input" type="number" min="0.01" step="0.01" value={consumeGiftCardForm.data.amount} onChange={(e) => consumeGiftCardForm.setData('amount', e.target.value)} required />{fieldError(consumeGiftCardForm, 'amount')}</div>
                     <div><label className="ta-field-label">Reason</label><input className="ta-input" value={consumeGiftCardForm.data.reason} onChange={(e) => consumeGiftCardForm.setData('reason', e.target.value)} required />{fieldError(consumeGiftCardForm, 'reason')}</div>
                     <div><label className="ta-field-label">Notes</label><input className="ta-input" value={consumeGiftCardForm.data.notes} onChange={(e) => consumeGiftCardForm.setData('notes', e.target.value)} />{fieldError(consumeGiftCardForm, 'notes')}</div>
-                    <button className="ta-btn-primary lg:col-span-6" disabled={consumeGiftCardForm.processing || !canManage || !consumeGiftCardForm.data.gift_card_id}>Consume gift card</button>
+                    <button className="ta-btn-primary lg:col-span-6" disabled={consumeGiftCardForm.processing || !canManage || !consumeGiftCardForm.data.gift_card_id}>Redeem gift card</button>
                 </form>
             </section>
 
@@ -245,7 +245,7 @@ export default function GiftCardsSection({
             </section>
 
             <section className="ta-card overflow-hidden">
-                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Gift cards</h3></div>
+                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Gift Card Registry</h3></div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Code</th><th className="px-5 py-3">NFC UID</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Initial</th><th className="px-5 py-3">Remaining</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
@@ -255,7 +255,7 @@ export default function GiftCardsSection({
             </section>
 
             <section className="ta-card overflow-hidden">
-                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Gift card transactions</h3></div>
+                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Transactions</h3></div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Gift card</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Balance</th><th className="px-5 py-3">Reason</th><th className="px-5 py-3">Invoice</th></tr></thead>

@@ -56,9 +56,6 @@ export default function MembershipCardsSection({
             || String(cardType.slug || '').toLowerCase().includes('gift')
         )
     );
-    const membershipCardActsAsGift = (card) => cardTypeActsAsGift(
-        (cardTypes || []).find((cardType) => String(cardType.id) === String(card?.membership_card_type_id)),
-    );
     const ROWS_PER_PAGE = 10;
     const importFileRef = useRef(null);
     const [membershipCardTypeFilter, setMembershipCardTypeFilter] = useState('');
@@ -214,6 +211,8 @@ export default function MembershipCardsSection({
 
     const selectedCustomerId = selectedMembershipCard?.customer_id ? String(selectedMembershipCard.customer_id) : null;
     const selectedGiftCards = selectedCustomerId ? (giftCardsByCustomerId[selectedCustomerId] || []) : [];
+    const selectedActiveGiftCards = selectedGiftCards.filter((card) => card.status === 'active');
+    const selectedGiftCardBalance = selectedActiveGiftCards.reduce((sum, card) => sum + Number(card.remaining_value || 0), 0);
     const selectedUsageHistory = useMemo(() => {
         if (!selectedCustomerId) return [];
         return (appointmentsForRedeem || [])
@@ -867,7 +866,7 @@ export default function MembershipCardsSection({
             <section className="ta-card overflow-hidden">
                 <div className="border-b border-slate-200 px-5 py-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <h3 className="text-sm font-semibold text-slate-700">NFC card registry</h3>
+                        <h3 className="text-sm font-semibold text-slate-700">Membership Card Registry</h3>
                         <div className="grid gap-2 md:grid-cols-3">
                             <input className="ta-input" value={registrySearch} onChange={(e) => setRegistrySearch(e.target.value)} placeholder="Search customer, card, UID" />
                             <select className="ta-input" value={registryTypeFilter} onChange={(e) => setRegistryTypeFilter(e.target.value)}>
@@ -889,7 +888,7 @@ export default function MembershipCardsSection({
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Card</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">NFC UID</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
                         <tbody>
                             {nfcRegistryPageRows.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="6">No NFC cards match the current filters.</td></tr>}
-                            {nfcRegistryPageRows.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.customer_id == null ? <span className="text-amber-700">Inventory (unassigned)</span> : card.customer_name}<div className="text-xs text-slate-500">{card.customer_id == null ? '—' : card.customer_phone || 'No phone'}</div></td><td className="px-5 py-3 text-slate-600">{card.card_number || '—'}</td><td className="px-5 py-3 text-slate-600">{card.card_type_name}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEditMembershipCard(card)}>{membershipCardActsAsGift(card) ? 'Refill' : 'Edit'}</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => { if (window.confirm(`Delete card ${card.card_number || card.id}?`)) { router.delete(route('loyalty.cards.destroy', card.id), { preserveScroll: true }); } }}>Delete</button><button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => copyNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Copy NFC URL</button><button type="button" className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => openNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Open NFC URL</button></div></td></tr>)}
+                            {nfcRegistryPageRows.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.customer_id == null ? <span className="text-amber-700">Inventory (unassigned)</span> : card.customer_name}<div className="text-xs text-slate-500">{card.customer_id == null ? '—' : card.customer_phone || 'No phone'}</div></td><td className="px-5 py-3 text-slate-600">{card.card_number || '—'}</td><td className="px-5 py-3 text-slate-600">{card.card_type_name}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" onClick={() => startEditMembershipCard(card)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" onClick={() => { if (window.confirm(`Delete card ${card.card_number || card.id}?`)) { router.delete(route('loyalty.cards.destroy', card.id), { preserveScroll: true }); } }}>Delete</button><button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => copyNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Copy NFC URL</button><button type="button" className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => openNfcPortalUrl(card.nfc_uid)} disabled={!card.nfc_uid}>Open NFC URL</button></div></td></tr>)}
                         </tbody>
                     </table>
                 </div>
@@ -916,7 +915,7 @@ export default function MembershipCardsSection({
             <Modal show={Boolean(editingMembershipCardId)} onClose={() => !editMembershipCardForm.processing && setEditingMembershipCardId(null)} maxWidth="3xl">
                 <div className="p-6">
                     <h3 className="mb-4 text-base font-semibold text-slate-800">
-                        {editingMembershipCardActsAsGift ? 'Edit gift membership card' : 'Edit membership card'} #{editingMembershipCardId}
+                        {editingMembershipCardActsAsGift ? 'Edit prepaid membership card' : 'Edit membership card'} #{editingMembershipCardId}
                     </h3>
                     <form
                         onSubmit={(e) => {
@@ -935,10 +934,10 @@ export default function MembershipCardsSection({
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><textarea className="ta-input min-h-[96px]" value={editMembershipCardForm.data.notes} onChange={(e) => editMembershipCardForm.setData('notes', e.target.value)} />{fieldError(editMembershipCardForm, 'notes')}</div>
                         {editingMembershipCardActsAsGift ? (
                             <div className="md:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                                <p className="text-sm font-semibold text-emerald-900">Refill gift card balance</p>
+                                <p className="text-sm font-semibold text-emerald-900">Add prepaid balance</p>
                                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                                     <div>
-                                        <label className="ta-field-label">Refill amount</label>
+                                        <label className="ta-field-label">Amount</label>
                                         <input
                                             className="ta-input"
                                             type="number"
@@ -951,12 +950,12 @@ export default function MembershipCardsSection({
                                         {fieldError(refillMembershipCardForm, 'amount')}
                                     </div>
                                     <div>
-                                        <label className="ta-field-label">Refill notes</label>
+                                        <label className="ta-field-label">Notes</label>
                                         <input
                                             className="ta-input"
                                             value={refillMembershipCardForm.data.notes}
                                             onChange={(e) => refillMembershipCardForm.setData('notes', e.target.value)}
-                                            placeholder="Top up for customer"
+                                            placeholder="Prepaid balance top-up"
                                         />
                                         {fieldError(refillMembershipCardForm, 'notes')}
                                     </div>
@@ -974,7 +973,7 @@ export default function MembershipCardsSection({
                                             });
                                         }}
                                     >
-                                        Refill
+                                        Add balance
                                     </button>
                                 </div>
                             </div>
@@ -1021,9 +1020,9 @@ export default function MembershipCardsSection({
                 </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Membership ID</th><th className="px-5 py-3">Member Full Name</th><th className="px-5 py-3">Card Number</th><th className="px-5 py-3">Membership Start</th><th className="px-5 py-3">Card Type</th><th className="px-5 py-3">Points Balance</th><th className="px-5 py-3">Gift Cards</th><th className="px-5 py-3">Gift Balance</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Actions</th></tr></thead>
+                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Membership ID</th><th className="px-5 py-3">Member Full Name</th><th className="px-5 py-3">Card Number</th><th className="px-5 py-3">Membership Start</th><th className="px-5 py-3">Card Type</th><th className="px-5 py-3">Points Balance</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Actions</th></tr></thead>
                         <tbody>
-                            {membershipCustomers.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="12">No membership customers found for this filter.</td></tr>}
+                            {membershipCustomers.length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="10">No membership customers found for this filter.</td></tr>}
                             {membershipCustomersPageRows.map((card) => (
                                 <tr
                                     key={card.id}
@@ -1036,8 +1035,6 @@ export default function MembershipCardsSection({
                                     <td className="px-5 py-3 text-slate-600">{card.activated_at ? new Date(card.activated_at).toLocaleDateString() : (card.issued_at ? new Date(card.issued_at).toLocaleDateString() : '-')}</td>
                                     <td className="px-5 py-3 text-slate-600">{card.card_type_name || '-'}</td>
                                     <td className="px-5 py-3 text-slate-600">{pointsByCustomerId[String(card.customer_id)] ?? 0}</td>
-                                    <td className="px-5 py-3 text-slate-600">{(giftCardsByCustomerId[String(card.customer_id)] || []).length}</td>
-                                    <td className="px-5 py-3 text-slate-600">{(giftCardsByCustomerId[String(card.customer_id)] || []).reduce((sum, giftCard) => sum + Number(giftCard.remaining_value || 0), 0).toFixed(2)}</td>
                                     <td className="px-5 py-3 text-slate-600">{card.status}</td>
                                     <td className="px-5 py-3 text-slate-600">{card.customer_phone || '-'}</td>
                                     <td className="px-5 py-3 text-slate-600">{card.customer_email || '-'}</td>
@@ -1048,30 +1045,6 @@ export default function MembershipCardsSection({
                     </table>
                 </div>
                 {renderPager(membershipCustomersPage, membershipCustomersTotalPages, setMembershipCustomersPage)}
-            </section>
-
-            <section className="ta-card overflow-hidden">
-                <div className="border-b border-slate-200 px-5 py-4">
-                    <h3 className="text-sm font-semibold text-slate-700">Gift Cards Assigned To Customers</h3>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Code</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Initial</th><th className="px-5 py-3">Remaining</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">NFC UID</th></tr></thead>
-                        <tbody>
-                            {(giftCards || []).length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="6">No gift cards found.</td></tr>}
-                            {(giftCards || []).map((card) => (
-                                <tr key={card.id} className="border-t border-slate-100">
-                                    <td className="px-5 py-3 text-slate-700">{card.code}</td>
-                                    <td className="px-5 py-3 text-slate-600">{card.customer_name || 'Unassigned'}<div className="text-xs text-slate-500">{card.customer_phone || '-'}</div></td>
-                                    <td className="px-5 py-3 text-slate-600">{card.initial_value}</td>
-                                    <td className="px-5 py-3 text-slate-600">{card.remaining_value}</td>
-                                    <td className="px-5 py-3 text-slate-600">{card.status}</td>
-                                    <td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
             </section>
 
             {selectedMembershipCard && (
@@ -1085,16 +1058,20 @@ export default function MembershipCardsSection({
                     </div>
 
                     <div className="mb-4 rounded-lg border border-slate-200">
-                        <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Customer Gift Cards</div>
-                        <div className="grid gap-2 p-3 text-sm md:grid-cols-2 lg:grid-cols-3">
-                            {selectedGiftCards.length === 0 && <div className="text-slate-500">No gift cards found for this customer.</div>}
-                            {selectedGiftCards.map((card) => (
-                                <div key={card.id} className="rounded border border-slate-100 p-2 text-slate-700">
-                                    <div className="font-medium">{card.code}</div>
-                                    <div className="text-xs text-slate-500">Remaining {card.remaining_value} of {card.initial_value} - {card.status}</div>
-                                    {card.nfc_uid ? <div className="text-xs text-slate-500">NFC {card.nfc_uid}</div> : null}
-                                </div>
-                            ))}
+                        <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Wallet Summary</div>
+                        <div className="grid gap-3 p-3 text-sm md:grid-cols-3">
+                            <div>
+                                <div className="text-xs text-slate-500">Active Gift Cards</div>
+                                <div className="mt-1 font-medium text-slate-800">{selectedActiveGiftCards.length}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-slate-500">Gift Card Balance</div>
+                                <div className="mt-1 font-medium text-slate-800">{selectedGiftCardBalance.toFixed(2)}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-slate-500">Packages</div>
+                                <div className="mt-1 font-medium text-slate-800">{(customers || []).find((customer) => String(customer.id) === selectedCustomerId)?.active_packages?.length || 0}</div>
+                            </div>
                         </div>
                     </div>
 
