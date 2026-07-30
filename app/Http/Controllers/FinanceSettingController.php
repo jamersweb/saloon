@@ -58,7 +58,7 @@ class FinanceSettingController extends Controller
             'invoice_prefix' => ['required', 'string', 'max:16'],
             'next_invoice_number' => ['required', 'integer', 'min:1'],
             'currency_code' => ['required', 'string', 'size:3'],
-            'whatsapp_driver' => ['nullable', 'in:log,meta'],
+            'whatsapp_driver' => ['nullable', 'in:log,meta,ycloud'],
             'whatsapp_base_url' => ['nullable', 'url', 'max:255'],
             'whatsapp_api_version' => ['nullable', 'string', 'max:16'],
             'whatsapp_phone_number_id' => ['nullable', 'string', 'max:64'],

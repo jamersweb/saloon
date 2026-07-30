@@ -98,6 +98,7 @@ export default function FinanceSettings({ settings }) {
                             <select className="ta-input" value={form.data.whatsapp_driver || 'log'} onChange={(e) => form.setData('whatsapp_driver', e.target.value)}>
                                 <option value="log">log</option>
                                 <option value="meta">meta</option>
+                                <option value="ycloud">YCloud</option>
                             </select>
                         </div>
                         <div>
@@ -107,10 +108,16 @@ export default function FinanceSettings({ settings }) {
                         <div className="md:col-span-2">
                             <label className="ta-field-label">Base URL</label>
                             <input className="ta-input" value={form.data.whatsapp_base_url || ''} onChange={(e) => form.setData('whatsapp_base_url', e.target.value)} />
+                            {form.data.whatsapp_driver === 'ycloud' && (
+                                <p className="mt-1 text-xs text-slate-500">YCloud sends through https://api.ycloud.com by default.</p>
+                            )}
                         </div>
                         <div>
-                            <label className="ta-field-label">Phone number ID</label>
+                            <label className="ta-field-label">{form.data.whatsapp_driver === 'ycloud' ? 'Sender phone number' : 'Phone number ID'}</label>
                             <input className="ta-input" value={form.data.whatsapp_phone_number_id || ''} onChange={(e) => form.setData('whatsapp_phone_number_id', e.target.value)} />
+                            {form.data.whatsapp_driver === 'ycloud' && (
+                                <p className="mt-1 text-xs text-slate-500">Use the WhatsApp Business sender registered in YCloud, including country code.</p>
+                            )}
                         </div>
                         <div>
                             <label className="ta-field-label">Business account ID</label>
@@ -137,13 +144,13 @@ export default function FinanceSettings({ settings }) {
                             <input className="ta-input" value={form.data.whatsapp_public_booking_template_name || ''} onChange={(e) => form.setData('whatsapp_public_booking_template_name', e.target.value)} placeholder="e.g. booking_alert" />
                         </div>
                         <div className="md:col-span-2">
-                            <label className="ta-field-label">Access token</label>
+                            <label className="ta-field-label">{form.data.whatsapp_driver === 'ycloud' ? 'YCloud API key' : 'Access token'}</label>
                             <input
                                 type="password"
                                 className="ta-input"
                                 value={form.data.whatsapp_access_token || ''}
                                 onChange={(e) => form.setData('whatsapp_access_token', e.target.value)}
-                                placeholder={settings.whatsapp_access_token_configured ? 'Stored. Enter a new token only to rotate it.' : 'Paste a Meta access token'}
+                                placeholder={settings.whatsapp_access_token_configured ? 'Stored. Enter a new token only to rotate it.' : form.data.whatsapp_driver === 'ycloud' ? 'Paste a YCloud API key' : 'Paste a Meta access token'}
                             />
                             <p className="mt-1 text-xs text-slate-500">
                                 {settings.whatsapp_access_token_configured ? 'A token is already stored. Leaving this blank keeps the current token.' : 'No token is stored yet.'}

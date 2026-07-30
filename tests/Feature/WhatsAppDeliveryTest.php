@@ -8,11 +8,13 @@ use App\Models\CampaignTemplate;
 use App\Models\CommunicationLog;
 use App\Models\Customer;
 use App\Models\CustomerDueService;
+use App\Models\FinanceSetting;
 use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\User;
 use App\Models\WhatsAppMessageTemplate;
 use App\Support\Permissions;
+use App\Services\WhatsAppService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -156,6 +158,95 @@ class WhatsAppDeliveryTest extends TestCase
                 && $request['template']['name'] === 'hello_world'
                 && $request['template']['language']['code'] === 'en_US';
         });
+    }
+
+    public function test_whatsapp_template_command_posts_template_payload_to_ycloud(): void
+    {
+        FinanceSetting::current()->update([
+            'whatsapp_driver' => 'ycloud',
+            'whatsapp_base_url' => 'https://graph.facebook.com',
+            'whatsapp_phone_number_id' => '+971501111111',
+            'whatsapp_access_token' => 'ycloud-secret-key',
+            'whatsapp_default_language_code' => 'en',
+        ]);
+
+        Http::fake([
+            'https://api.ycloud.com/*' => Http::response([
+                'id' => 'ycloud-template-123',
+                'status' => 'accepted',
+            ], 200),
+        ]);
+
+        $this->artisan('app:send-whatsapp-template', [
+            'recipient' => '971502222222',
+            'template' => 'hello_world',
+            '--language' => 'en',
+        ])
+            ->expectsOutput('WhatsApp template sent successfully.')
+            ->assertExitCode(0);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'https://api.ycloud.com/v2/whatsapp/messages'
+                && $request->hasHeader('X-API-Key', 'ycloud-secret-key')
+                && $request['from'] === '+971501111111'
+                && $request['to'] === '+971502222222'
+                && $request['type'] === 'template'
+                && $request['template']['name'] === 'hello_world'
+                && $request['template']['language']['code'] === 'en';
+        });
+    }
+
+    public function test_ycloud_text_delivery_uses_e164_numbers_and_api_key_header(): void
+    {
+        FinanceSetting::current()->update([
+            'whatsapp_driver' => 'ycloud',
+            'whatsapp_phone_number_id' => '+971501111111',
+            'whatsapp_access_token' => 'ycloud-secret-key',
+        ]);
+
+        Http::fake([
+            'https://api.ycloud.com/*' => Http::response([
+                'id' => 'ycloud-text-123',
+                'status' => 'accepted',
+            ], 200),
+        ]);
+
+        $result = app(WhatsAppService::class)->sendText('+971 50 222 2222', 'Hello from Vina');
+
+        $this->assertTrue($result['successful']);
+        $this->assertSame('whatsapp-ycloud', $result['provider']);
+        $this->assertSame('ycloud-text-123', $result['provider_message_id']);
+        $this->assertSame('+971502222222', $result['recipient']);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'https://api.ycloud.com/v2/whatsapp/messages'
+                && $request->hasHeader('X-API-Key', 'ycloud-secret-key')
+                && $request['from'] === '+971501111111'
+                && $request['to'] === '+971502222222'
+                && $request['type'] === 'text'
+                && $request['text']['body'] === 'Hello from Vina'
+                && $request['text']['preview_url'] === false;
+        });
+    }
+
+    public function test_ycloud_configuration_errors_return_failed_result_without_throwing(): void
+    {
+        config()->set('services.whatsapp.phone_number_id', null);
+        config()->set('services.whatsapp.token', null);
+        config()->set('services.whatsapp.ycloud_sender', null);
+        config()->set('services.whatsapp.ycloud_api_key', null);
+
+        FinanceSetting::current()->update([
+            'whatsapp_driver' => 'ycloud',
+            'whatsapp_phone_number_id' => null,
+            'whatsapp_access_token' => null,
+        ]);
+
+        $result = app(WhatsAppService::class)->sendText('+971502222222', 'Hello');
+
+        $this->assertFalse($result['successful']);
+        $this->assertSame('whatsapp-ycloud', $result['provider']);
+        $this->assertSame('WhatsApp YCloud configuration is incomplete.', $result['error_message']);
     }
 
     public function test_invalid_whatsapp_recipient_creates_failed_log_without_throwing(): void

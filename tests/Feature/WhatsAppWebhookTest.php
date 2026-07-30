@@ -78,4 +78,95 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertNotNull($log->read_at);
         $this->assertSame('sent', $log->status);
     }
+
+    public function test_whatsapp_webhook_updates_delivery_from_ycloud_payload(): void
+    {
+        $customer = Customer::create([
+            'customer_code' => 'CUST-WA-YCLOUD',
+            'name' => 'YCloud Webhook Customer',
+            'phone' => '+971502222222',
+            'is_active' => true,
+        ]);
+
+        $log = CommunicationLog::create([
+            'customer_id' => $customer->id,
+            'channel' => 'whatsapp',
+            'context' => 'campaign:15',
+            'recipient' => '+971502222222',
+            'message' => 'Hello',
+            'status' => 'sent',
+            'provider' => 'whatsapp-ycloud',
+            'provider_status' => 'accepted',
+            'message_type' => 'text',
+            'provider_message_id' => 'ycloud-message-1',
+            'accepted_at' => now(),
+        ]);
+
+        $this->postJson(route('whatsapp.webhook.receive'), [
+            'id' => 'evt_ycloud_read',
+            'type' => 'whatsapp.message.updated',
+            'apiVersion' => 'v2',
+            'createTime' => '2026-07-30T10:00:00.000Z',
+            'whatsappMessage' => [
+                'id' => 'ycloud-message-1',
+                'wamid' => 'wamid.example',
+                'status' => 'read',
+                'createTime' => '2026-07-30T09:59:55.000Z',
+                'sendTime' => '2026-07-30T10:00:01.000Z',
+                'deliverTime' => '2026-07-30T10:00:02.000Z',
+                'readTime' => '2026-07-30T10:00:03.000Z',
+            ],
+        ])->assertOk();
+
+        $log->refresh();
+
+        $this->assertSame('read', $log->provider_status);
+        $this->assertNotNull($log->read_at);
+        $this->assertSame('sent', $log->status);
+        $this->assertSame('evt_ycloud_read', $log->provider_payload['webhook']['id']);
+    }
+
+    public function test_whatsapp_webhook_records_ycloud_failure_message(): void
+    {
+        $customer = Customer::create([
+            'customer_code' => 'CUST-WA-YCLOUD-FAIL',
+            'name' => 'YCloud Failed Customer',
+            'phone' => '+971502222222',
+            'is_active' => true,
+        ]);
+
+        $log = CommunicationLog::create([
+            'customer_id' => $customer->id,
+            'channel' => 'whatsapp',
+            'context' => 'campaign:16',
+            'recipient' => '+971502222222',
+            'message' => 'Hello',
+            'status' => 'sent',
+            'provider' => 'whatsapp-ycloud',
+            'provider_status' => 'accepted',
+            'message_type' => 'text',
+            'provider_message_id' => 'ycloud-message-failed',
+            'accepted_at' => now(),
+        ]);
+
+        $this->postJson(route('whatsapp.webhook.receive'), [
+            'id' => 'evt_ycloud_failed',
+            'type' => 'whatsapp.message.updated',
+            'apiVersion' => 'v2',
+            'createTime' => '2026-07-30T10:00:00.000Z',
+            'whatsappMessage' => [
+                'id' => 'ycloud-message-failed',
+                'status' => 'failed',
+                'errorCode' => '100',
+                'errorMessage' => 'Parameter Invalid',
+            ],
+        ])->assertOk();
+
+        $log->refresh();
+
+        $this->assertSame('failed', $log->provider_status);
+        $this->assertSame('failed', $log->status);
+        $this->assertSame('100 Parameter Invalid', $log->error_message);
+        $this->assertNotNull($log->failed_at);
+    }
 }

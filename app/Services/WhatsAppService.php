@@ -22,6 +22,7 @@ class WhatsAppService
 
         return match ($driver) {
             'meta' => $this->sendViaMeta($recipient, $message),
+            'ycloud' => $this->sendViaYCloud($recipient, $message),
             'log' => $this->sendViaLog($recipient, $message),
             default => throw new InvalidArgumentException("Unsupported WhatsApp driver [{$driver}]."),
         };
@@ -37,6 +38,7 @@ class WhatsAppService
 
         return match ($driver) {
             'meta' => $this->sendTemplateViaMeta($recipient, $templateName, $languageCode, $components),
+            'ycloud' => $this->sendTemplateViaYCloud($recipient, $templateName, $languageCode, $components),
             'log' => $this->sendTemplateViaLog($recipient, $templateName, $languageCode, $components),
             default => throw new InvalidArgumentException("Unsupported WhatsApp driver [{$driver}]."),
         };
@@ -175,6 +177,104 @@ class WhatsAppService
         ];
     }
 
+    private function sendViaYCloud(string $recipient, string $message): array
+    {
+        $normalizedRecipient = $this->normalizeRecipientForYCloud($recipient);
+        [$endpoint, $apiKey, $sender, $configurationError] = $this->ycloudConfiguration($normalizedRecipient, $message);
+
+        if ($configurationError !== null) {
+            return $configurationError;
+        }
+
+        $payload = [
+            'from' => $sender,
+            'to' => $normalizedRecipient,
+            'type' => 'text',
+            'text' => [
+                'body' => $message,
+                'preview_url' => false,
+            ],
+        ];
+
+        try {
+            $response = $this->http
+                ->asJson()
+                ->withHeaders(['X-API-Key' => $apiKey])
+                ->post($endpoint, $payload)
+                ->throw();
+        } catch (RequestException $exception) {
+            return [
+                'successful' => false,
+                'provider' => 'whatsapp-ycloud',
+                'provider_message_id' => null,
+                'recipient' => $normalizedRecipient,
+                'message' => $message,
+                'error_message' => $this->providerErrorMessage($exception),
+            ];
+        }
+
+        return [
+            'successful' => true,
+            'provider' => 'whatsapp-ycloud',
+            'provider_message_id' => Arr::get($response->json(), 'id'),
+            'recipient' => $normalizedRecipient,
+            'message' => $message,
+            'error_message' => null,
+        ];
+    }
+
+    private function sendTemplateViaYCloud(string $recipient, string $templateName, string $languageCode, array $components): array
+    {
+        $normalizedRecipient = $this->normalizeRecipientForYCloud($recipient);
+        $payload = [
+            'from' => null,
+            'to' => $normalizedRecipient,
+            'type' => 'template',
+            'template' => array_filter([
+                'name' => $templateName,
+                'language' => ['code' => $languageCode],
+                'components' => $components === [] ? null : array_values($components),
+            ], fn ($value) => $value !== null),
+        ];
+
+        [$endpoint, $apiKey, $sender, $configurationError] = $this->ycloudConfiguration(
+            $normalizedRecipient,
+            json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: $templateName,
+        );
+
+        if ($configurationError !== null) {
+            return $configurationError;
+        }
+
+        $payload['from'] = $sender;
+
+        try {
+            $response = $this->http
+                ->asJson()
+                ->withHeaders(['X-API-Key' => $apiKey])
+                ->post($endpoint, $payload)
+                ->throw();
+        } catch (RequestException $exception) {
+            return [
+                'successful' => false,
+                'provider' => 'whatsapp-ycloud',
+                'provider_message_id' => null,
+                'recipient' => $normalizedRecipient,
+                'message' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'error_message' => $this->providerErrorMessage($exception),
+            ];
+        }
+
+        return [
+            'successful' => true,
+            'provider' => 'whatsapp-ycloud',
+            'provider_message_id' => Arr::get($response->json(), 'id'),
+            'recipient' => $normalizedRecipient,
+            'message' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'error_message' => null,
+        ];
+    }
+
     private function metaConfiguration(string $normalizedRecipient, string $message): array
     {
         $token = $this->resolvedConfig('token');
@@ -200,6 +300,54 @@ class WhatsAppService
         return ["{$baseUrl}/{$version}/{$phoneNumberId}/messages", $token, null];
     }
 
+    private function ycloudConfiguration(string $normalizedRecipient, string $message): array
+    {
+        $settings = FinanceSetting::current();
+        $apiKey = (string) ($settings->whatsapp_access_token ?: config('services.whatsapp.ycloud_api_key') ?: config('services.whatsapp.token'));
+        $rawSender = (string) ($settings->whatsapp_phone_number_id ?: config('services.whatsapp.ycloud_sender') ?: config('services.whatsapp.phone_number_id'));
+        $configuredBaseUrl = (string) ($settings->whatsapp_base_url ?: config('services.whatsapp.base_url'));
+        $baseUrl = str_contains($configuredBaseUrl, 'graph.facebook.com')
+            ? (string) config('services.whatsapp.ycloud_base_url', 'https://api.ycloud.com')
+            : $configuredBaseUrl;
+        $baseUrl = rtrim($baseUrl ?: 'https://api.ycloud.com', '/');
+
+        if ($apiKey === '' || $rawSender === '') {
+            return [
+                null,
+                null,
+                null,
+                [
+                    'successful' => false,
+                    'provider' => 'whatsapp-ycloud',
+                    'provider_message_id' => null,
+                    'recipient' => $normalizedRecipient,
+                    'message' => $message,
+                    'error_message' => 'WhatsApp YCloud configuration is incomplete.',
+                ],
+            ];
+        }
+
+        try {
+            $sender = $this->normalizeRecipientForYCloud($rawSender);
+        } catch (InvalidArgumentException) {
+            return [
+                null,
+                null,
+                null,
+                [
+                    'successful' => false,
+                    'provider' => 'whatsapp-ycloud',
+                    'provider_message_id' => null,
+                    'recipient' => $normalizedRecipient,
+                    'message' => $message,
+                    'error_message' => 'WhatsApp YCloud sender phone number is invalid.',
+                ],
+            ];
+        }
+
+        return ["{$baseUrl}/v2/whatsapp/messages", $apiKey, $sender, null];
+    }
+
     private function normalizeRecipient(string $recipient): string
     {
         $normalized = preg_replace('/\D+/', '', $recipient) ?? '';
@@ -213,7 +361,25 @@ class WhatsAppService
 
     public function normalizeRecipientForTransport(string $recipient): string
     {
+        if ($this->resolvedConfig('driver', 'log') === 'ycloud') {
+            return $this->normalizeRecipientForYCloud($recipient);
+        }
+
         return $this->normalizeRecipient($recipient);
+    }
+
+    private function normalizeRecipientForYCloud(string $recipient): string
+    {
+        $normalized = $this->normalizeRecipient($recipient);
+
+        return '+' . $normalized;
+    }
+
+    private function providerErrorMessage(RequestException $exception): string
+    {
+        return Arr::get($exception->response?->json(), 'error.message')
+            ?? Arr::get($exception->response?->json(), 'message')
+            ?? $exception->getMessage();
     }
 
     private function resolvedConfig(string $key, ?string $default = null): string
