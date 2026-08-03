@@ -41,6 +41,12 @@ const blankSplitPayment = (paidAt) => ({
     gift_card_id: '',
 });
 
+const localDateTimeInputValue = (date = new Date()) => {
+    const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+
+    return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+};
+
 export default function FinanceInvoicesShow({
     invoice,
     customers,
@@ -60,6 +66,9 @@ export default function FinanceInvoicesShow({
     const [invoiceConfirm, setInvoiceConfirm] = useState(null);
     const [invoiceConfirmBusy, setInvoiceConfirmBusy] = useState(false);
     const isDraft = invoice.status === 'draft';
+    const isUnpaidFinalized = invoice.status === 'finalized' && invoice.balance > 0.009;
+    const pdfDocumentLabel = isUnpaidFinalized ? 'invoice' : 'receipt';
+    const currentLocalDateTime = localDateTimeInputValue();
 
     const editForm = useForm({
         customer_id: invoice.customer_id ? String(invoice.customer_id) : '',
@@ -84,14 +93,14 @@ export default function FinanceInvoicesShow({
     const payForm = useForm({
         amount: invoice.balance > 0 ? String(Math.min(invoice.balance, invoice.total)) : '',
         method: 'cash',
-        paid_at: new Date().toISOString().slice(0, 16),
+        paid_at: currentLocalDateTime,
         reference_note: '',
         gift_card_id: '',
     });
     const splitForm = useForm({
         payments: [
-            blankSplitPayment(new Date().toISOString().slice(0, 16)),
-            blankSplitPayment(new Date().toISOString().slice(0, 16)),
+            blankSplitPayment(currentLocalDateTime),
+            blankSplitPayment(currentLocalDateTime),
         ],
     });
 
@@ -215,10 +224,10 @@ export default function FinanceInvoicesShow({
     };
 
     const splitTotal = splitForm.data.payments.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const addSplitRow = () => splitForm.setData('payments', [...splitForm.data.payments, blankSplitPayment(new Date().toISOString().slice(0, 16))]);
+    const addSplitRow = () => splitForm.setData('payments', [...splitForm.data.payments, blankSplitPayment(localDateTimeInputValue())]);
     const removeSplitRow = (idx) => {
         const next = splitForm.data.payments.filter((_, i) => i !== idx);
-        splitForm.setData('payments', next.length >= 2 ? next : [blankSplitPayment(new Date().toISOString().slice(0, 16)), blankSplitPayment(new Date().toISOString().slice(0, 16))]);
+        splitForm.setData('payments', next.length >= 2 ? next : [blankSplitPayment(localDateTimeInputValue()), blankSplitPayment(localDateTimeInputValue())]);
     };
 
     return (
@@ -239,16 +248,16 @@ export default function FinanceInvoicesShow({
                             rel="noreferrer"
                             className="text-sm font-medium text-indigo-600 hover:underline"
                         >
-                            Print PDF receipt
+                            Print PDF {pdfDocumentLabel}
                         </a>
                     )}
                 </div>
 
                 {invoice.status === 'finalized' && can_manage_full_finance && (
                     <section className="ta-card p-5">
-                        <h3 className="mb-2 text-sm font-semibold text-slate-700">Email PDF receipt</h3>
+                        <h3 className="mb-2 text-sm font-semibold text-slate-700">Email PDF {pdfDocumentLabel}</h3>
                         <p className="mb-4 text-xs text-slate-500">
-                            Sends the thermal-style tax receipt as a PDF attachment. Configure outgoing mail in your server <code className="rounded bg-slate-100 px-1">.env</code> (for example{' '}
+                            Sends the thermal-style tax {pdfDocumentLabel} as a PDF attachment. Configure outgoing mail in your server <code className="rounded bg-slate-100 px-1">.env</code> (for example{' '}
                             <code className="rounded bg-slate-100 px-1">MAIL_MAILER</code>, <code className="rounded bg-slate-100 px-1">MAIL_HOST</code>).
                         </p>
                         <form
@@ -331,6 +340,20 @@ export default function FinanceInvoicesShow({
                     )}
                     <p className="text-xs text-slate-500">VAT rate used on lines: {vat_rate_percent}%</p>
                 </section>
+
+                {isUnpaidFinalized && (
+                    <section className="ta-card border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p className="font-semibold">Payment still needs to be recorded.</p>
+                                <p className="mt-1 text-amber-900">This invoice is issued, but the portal will keep showing checkout until {money(invoice.balance, currency_code)} is posted as a payment.</p>
+                            </div>
+                            <a href="#record-payment" className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100">
+                                Record payment
+                            </a>
+                        </div>
+                    </section>
+                )}
 
                 {isDraft ? (
                     <section className="ta-card p-5">
@@ -606,8 +629,8 @@ export default function FinanceInvoicesShow({
                             </div>
                         </section>
 
-                        {invoice.status === 'finalized' && invoice.balance > 0.009 && (
-                            <section className="ta-card p-5">
+                        {isUnpaidFinalized && (
+                            <section id="record-payment" className="ta-card p-5 scroll-mt-6">
                                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Record payment</h3>
                                 <form
                                     onSubmit={(e) => {
@@ -711,7 +734,7 @@ export default function FinanceInvoicesShow({
                             </section>
                         )}
 
-                        {invoice.status === 'finalized' && invoice.balance > 0.009 && (
+                        {isUnpaidFinalized && (
                             <section className="ta-card p-5">
                                 <div className="mb-4 flex items-center justify-between gap-3">
                                     <div>
