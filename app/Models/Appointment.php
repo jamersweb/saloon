@@ -149,7 +149,7 @@ class Appointment extends Model
             return ['awaiting_checkout' => false, 'checkout_invoice_id' => null, 'checkout_status' => 'not_required'];
         }
 
-        $active = $this->activeVisitInvoices();
+        $active = $this->checkoutInvoices();
 
         if ($active->isEmpty()) {
             return ['awaiting_checkout' => true, 'checkout_invoice_id' => null, 'checkout_status' => 'needs_payment'];
@@ -176,6 +176,21 @@ class Appointment extends Model
         }
 
         return ['awaiting_checkout' => false, 'checkout_invoice_id' => null, 'checkout_status' => 'paid'];
+    }
+
+    public function checkoutInvoices(): Collection
+    {
+        $primaryInvoices = $this->activeVisitInvoices()
+            ->filter(fn (TaxInvoice $invoice) => $invoice->related_invoice_id === null)
+            ->values();
+
+        $finalized = $primaryInvoices
+            ->where('status', TaxInvoice::STATUS_FINALIZED)
+            ->values();
+
+        return $finalized->isNotEmpty()
+            ? $finalized
+            : $primaryInvoices;
     }
 
     private function activeVisitInvoices(): Collection

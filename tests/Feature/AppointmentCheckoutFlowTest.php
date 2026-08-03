@@ -129,6 +129,68 @@ class AppointmentCheckoutFlowTest extends TestCase
             );
     }
 
+    public function test_paid_visit_is_not_marked_for_checkout_when_stale_draft_exists(): void
+    {
+        $reception = $this->seedReceptionUser();
+        $appointment = $this->inProgressAppointment($reception);
+        $appointment->update(['status' => Appointment::STATUS_COMPLETED]);
+
+        $invoice = TaxInvoice::create([
+            'appointment_id' => $appointment->id,
+            'customer_id' => $appointment->customer_id,
+            'customer_display_name' => $appointment->customer_name,
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'subtotal' => 100,
+            'vat_amount' => 5,
+            'total' => 105,
+            'issued_at' => now(),
+            'created_by' => $reception->id,
+        ]);
+
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 105,
+            'method' => InvoicePayment::METHOD_CASH,
+            'paid_at' => now(),
+            'created_by' => $reception->id,
+        ]);
+
+        TaxInvoice::create([
+            'appointment_id' => $appointment->id,
+            'customer_id' => $appointment->customer_id,
+            'customer_display_name' => $appointment->customer_name,
+            'status' => TaxInvoice::STATUS_DRAFT,
+            'subtotal' => 100,
+            'vat_amount' => 5,
+            'total' => 105,
+            'created_by' => $reception->id,
+        ]);
+
+        $this->assertSame([
+            'awaiting_checkout' => false,
+            'checkout_invoice_id' => null,
+            'checkout_status' => 'paid',
+        ], $appointment->fresh()->checkoutSummary());
+
+        $this->actingAs($reception)
+            ->get(route('appointments.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('appointments.0.id', $appointment->id)
+                ->where('appointments.0.awaiting_checkout', false)
+                ->where('appointments.0.checkout_status', 'paid')
+                ->where('appointments.0.invoice_amount_paid', fn ($value) => abs((float) $value - 105.0) < 0.02)
+                ->where('appointments.0.invoice_balance_due', fn ($value) => (float) $value < 0.02)
+            );
+
+        $this->actingAs($reception)
+            ->get(route('appointments.index', ['status' => 'needs_pay']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('appointments', 0)
+            );
+    }
+
     public function test_reception_finish_and_pay_with_cash_auto_deducts_assigned_gift_voucher(): void
     {
         $reception = $this->seedReceptionUser();

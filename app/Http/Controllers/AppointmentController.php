@@ -1820,22 +1820,7 @@ class AppointmentController extends Controller
      */
     private function invoicePaymentSummaryForAppointment(Appointment $appointment): array
     {
-        if (! empty($appointment->visit_id)) {
-            $visitAppointmentIds = Appointment::query()
-                ->where('visit_id', $appointment->visit_id)
-                ->pluck('id');
-
-            $invoices = TaxInvoice::query()
-                ->with('payments')
-                ->whereIn('appointment_id', $visitAppointmentIds)
-                ->where('status', '!=', TaxInvoice::STATUS_VOID)
-                ->get();
-        } else {
-            $appointment->loadMissing('taxInvoices.payments');
-            $invoices = $appointment->taxInvoices
-                ->where('status', '!=', TaxInvoice::STATUS_VOID)
-                ->values();
-        }
+        $invoices = $appointment->checkoutInvoices();
 
         $total = (float) $invoices->sum(fn (TaxInvoice $invoice) => (float) $invoice->total);
         $amountPaid = (float) $invoices->sum(fn (TaxInvoice $invoice) => (float) $invoice->payments->sum('amount'));
