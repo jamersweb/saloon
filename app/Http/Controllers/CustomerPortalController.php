@@ -6,6 +6,7 @@ use App\Models\Appointment;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyLedger;
 use App\Models\CustomerMembershipCard;
+use App\Models\GiftCard;
 use App\Services\CustomerPortalService;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -37,14 +38,34 @@ class CustomerPortalController extends Controller
                 'customer.giftCards',
                 'customer.appointments.service',
                 'customer.appointments.staffProfile.user',
+                'type',
             ])
             ->where('nfc_uid', $normalizedUid)
-            ->first();
+            ->get()
+            ->first(fn (CustomerMembershipCard $membershipCard) => ! $membershipCard->type?->isGiftCardType());
 
-        abort_unless($card?->customer, 404);
+        $customer = $card?->customer;
+
+        if (! $customer) {
+            $giftCard = GiftCard::query()
+                ->with([
+                    'customer.loyaltyAccount.tier',
+                    'customer.membershipCards.type',
+                    'customer.packages.package',
+                    'customer.giftCards',
+                    'customer.appointments.service',
+                    'customer.appointments.staffProfile.user',
+                ])
+                ->where('nfc_uid', $normalizedUid)
+                ->first();
+
+            $customer = $giftCard?->customer;
+        }
+
+        abort_unless($customer, 404);
 
         return Inertia::render('Public/CustomerPortal', [
-            'customer' => $this->buildPortalCustomerPayload($card->customer),
+            'customer' => $this->buildPortalCustomerPayload($customer),
         ]);
     }
 
@@ -53,7 +74,10 @@ class CustomerPortalController extends Controller
      */
     private function buildPortalCustomerPayload(Customer $customer): array
     {
-        $currentCard = $customer->membershipCards->firstWhere('status', 'active') ?? $customer->membershipCards->first();
+        $membershipCards = $customer->membershipCards
+            ->reject(fn (CustomerMembershipCard $card) => $card->type?->isGiftCardType())
+            ->values();
+        $currentCard = $membershipCards->firstWhere('status', 'active') ?? $membershipCards->first();
         $appointments = $customer->appointments
             ->filter(fn ($appointment) => in_array($appointment->status, [
                 Appointment::STATUS_PENDING,

@@ -80,11 +80,14 @@ class LoyaltyController extends Controller
             ->orderBy('min_points')
             ->orderBy('name')
             ->get();
+        $membershipCardTypes = $cardTypes
+            ->reject(fn (MembershipCardType $cardType) => $cardType->isGiftCardType())
+            ->values();
 
         return Inertia::render('Loyalty/Index', [
             'section' => $section,
             'tiers' => LoyaltyTier::query()->orderBy('min_points')->get(),
-            'cardTypes' => $cardTypes->map(fn (MembershipCardType $cardType) => [
+            'cardTypes' => $membershipCardTypes->map(fn (MembershipCardType $cardType) => [
                 'id' => $cardType->id,
                 'name' => $cardType->name,
                 'slug' => $cardType->slug,
@@ -128,6 +131,7 @@ class LoyaltyController extends Controller
                 ]),
             'membershipCards' => CustomerMembershipCard::query()
                 ->with(['customer:id,name,phone,email', 'type:id,name'])
+                ->whereHas('type', fn ($query) => $this->whereMembershipCardType($query))
                 ->latest()
                 ->limit(200)
                 ->get()
@@ -154,6 +158,7 @@ class LoyaltyController extends Controller
                     'membershipCardType:id,name',
                     'registeredBy:id,name',
                 ])
+                ->whereHas('membershipCardType', fn ($query) => $this->whereMembershipCardType($query))
                 ->latest()
                 ->limit(120)
                 ->get()
@@ -181,10 +186,13 @@ class LoyaltyController extends Controller
                 ->get()
                 ->map(function (Customer $customer) use ($cardTypes) {
                     $points = (int) ($customer->loyaltyAccount?->current_points ?? 0);
-                    $currentCard = $customer->membershipCards->firstWhere('status', 'active') ?? $customer->membershipCards->first();
+                    $trueMembershipCards = $customer->membershipCards
+                        ->reject(fn (CustomerMembershipCard $card) => $card->type?->isGiftCardType())
+                        ->values();
+                    $currentCard = $trueMembershipCards->firstWhere('status', 'active') ?? $trueMembershipCards->first();
                     $eligibleCard = $cardTypes
                         ->where('is_active', true)
-                        ->where('kind', '!=', 'gift')
+                        ->reject(fn (MembershipCardType $cardType) => $cardType->isGiftCardType())
                         ->where('min_points', '<=', $points)
                         ->sortByDesc('min_points')
                         ->first();
@@ -515,6 +523,20 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Gift card assigned to customer.');
     }
 
+    public function unassignGiftCard(Request $request, GiftCard $giftCard): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager', 'staff');
+
+        $previousCustomerId = $giftCard->assigned_customer_id;
+        $giftCard->update(['assigned_customer_id' => null]);
+
+        Audit::log($request->user()?->id, 'gift_card.unassigned', 'GiftCard', $giftCard->id, [
+            'previous_assigned_customer_id' => $previousCustomerId,
+        ]);
+
+        return back()->with('status', 'Gift card unassigned from customer.');
+    }
+
     public function updateGiftCard(Request $request, GiftCard $giftCard): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
@@ -605,7 +627,7 @@ class LoyaltyController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('membership_card_types', 'name')],
-            'kind' => ['required', Rule::in(['physical', 'virtual', 'gift'])],
+            'kind' => ['required', Rule::in(['physical', 'virtual'])],
             'min_points' => ['required', 'integer', 'min:0'],
             'direct_purchase_price' => ['nullable', 'numeric', 'min:0'],
             'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
@@ -613,6 +635,8 @@ class LoyaltyController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'is_transferable' => ['nullable', 'boolean'],
         ]);
+
+        $this->assertMembershipCardTypePayloadIsNotGiftCard($data['name'], $data['kind']);
 
         $cardType = MembershipCardType::create([
             ...$data,
@@ -632,7 +656,7 @@ class LoyaltyController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('membership_card_types', 'name')->ignore($cardType->id)],
-            'kind' => ['required', Rule::in(['physical', 'virtual', 'gift'])],
+            'kind' => ['required', Rule::in(['physical', 'virtual'])],
             'min_points' => ['required', 'integer', 'min:0'],
             'direct_purchase_price' => ['nullable', 'numeric', 'min:0'],
             'validity_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
@@ -640,6 +664,8 @@ class LoyaltyController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'is_transferable' => ['nullable', 'boolean'],
         ]);
+
+        $this->assertMembershipCardTypePayloadIsNotGiftCard($data['name'], $data['kind']);
 
         $cardType->update([
             ...$data,
@@ -653,7 +679,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card type updated.');
     }
 
-    public function assignCard(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService, PackageBalanceService $packageBalanceService): RedirectResponse
+    public function assignCard(Request $request, MembershipCardService $membershipCardService, PackageBalanceService $packageBalanceService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -676,6 +702,7 @@ class LoyaltyController extends Controller
 
         $customer = Customer::findOrFail((int) $data['customer_id']);
         $cardType = MembershipCardType::findOrFail((int) $data['membership_card_type_id']);
+        $this->assertMembershipCardType($cardType);
 
         $card = $membershipCardService->assignCard(
             customer: $customer,
@@ -689,7 +716,6 @@ class LoyaltyController extends Controller
             ],
         );
 
-        $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
         $this->assignLinkedPackageIfConfigured($customer, $cardType, $packageBalanceService, $request->user()?->id, $data['notes'] ?? null);
 
         Audit::log($request->user()?->id, 'loyalty.card_assigned', 'CustomerMembershipCard', $card->id, [
@@ -700,7 +726,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card assigned.');
     }
 
-    public function registerMember(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService, PackageBalanceService $packageBalanceService): RedirectResponse
+    public function registerMember(Request $request, MembershipCardService $membershipCardService, PackageBalanceService $packageBalanceService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff', 'reception');
 
@@ -749,7 +775,7 @@ class LoyaltyController extends Controller
         $customer = null;
         $card = null;
 
-        DB::transaction(function () use ($request, $data, $membershipCardService, $giftCardService, $packageBalanceService, &$customer, &$card): void {
+        DB::transaction(function () use ($request, $data, $membershipCardService, $packageBalanceService, &$customer, &$card): void {
             $customer = ! empty($data['customer_id'])
                 ? Customer::findOrFail((int) $data['customer_id'])
                 : new Customer();
@@ -766,6 +792,7 @@ class LoyaltyController extends Controller
             $customer->save();
 
             $cardType = MembershipCardType::findOrFail((int) $data['membership_card_type_id']);
+            $this->assertMembershipCardType($cardType);
             $card = $membershipCardService->assignCard(
                 customer: $customer,
                 type: $cardType,
@@ -778,7 +805,6 @@ class LoyaltyController extends Controller
                 ],
             );
 
-            $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
             $this->assignLinkedPackageIfConfigured($customer, $cardType, $packageBalanceService, $request->user()?->id, $data['card_notes'] ?? $data['notes'] ?? null);
 
             MembershipRegistration::create([
@@ -841,6 +867,7 @@ class LoyaltyController extends Controller
         ]);
 
         $cardType = MembershipCardType::findOrFail((int) $data['membership_card_type_id']);
+        $this->assertMembershipCardType($cardType);
 
         $card = $membershipCardService->issueInventoryCard(
             type: $cardType,
@@ -861,7 +888,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card pre-issued (not assigned to a customer yet). Card # '.$card->card_number);
     }
 
-    public function linkInventoryCardToCustomer(Request $request, MembershipCardService $membershipCardService, GiftCardService $giftCardService): RedirectResponse
+    public function linkInventoryCardToCustomer(Request $request, MembershipCardService $membershipCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -873,7 +900,8 @@ class LoyaltyController extends Controller
         ]);
 
         $customer = Customer::findOrFail((int) $data['customer_id']);
-        $card = CustomerMembershipCard::query()->findOrFail((int) $data['customer_membership_card_id']);
+        $card = CustomerMembershipCard::query()->with('type')->findOrFail((int) $data['customer_membership_card_id']);
+        $this->assertMembershipCardType($card->type);
 
         $linkAttributes = [
             'status' => $data['status'] ?? 'active',
@@ -888,8 +916,6 @@ class LoyaltyController extends Controller
             assignedBy: $request->user()?->id,
             attributes: $linkAttributes,
         );
-
-        $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
 
         Audit::log($request->user()?->id, 'loyalty.card_inventory_linked', 'CustomerMembershipCard', $card->id, [
             'customer_id' => $customer->id,
@@ -959,7 +985,7 @@ class LoyaltyController extends Controller
         return back()->with('status', 'NFC UID linked to membership card.');
     }
 
-    public function updateMembershipCard(Request $request, CustomerMembershipCard $card, MembershipCardService $membershipCardService, GiftCardService $giftCardService): RedirectResponse
+    public function updateMembershipCard(Request $request, CustomerMembershipCard $card, MembershipCardService $membershipCardService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
@@ -979,6 +1005,7 @@ class LoyaltyController extends Controller
         ]);
 
         $cardType = MembershipCardType::findOrFail((int) $data['membership_card_type_id']);
+        $this->assertMembershipCardType($cardType);
 
         $card = $membershipCardService->updateCard($card, $cardType, [
             'card_number' => $data['card_number'] ?? null,
@@ -986,7 +1013,6 @@ class LoyaltyController extends Controller
             'status' => $data['status'],
             'notes' => $data['notes'] ?? null,
         ], $request->user()?->id);
-        $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
 
         Audit::log($request->user()?->id, 'loyalty.card_updated', 'CustomerMembershipCard', $card->id, [
             'customer_id' => $card->customer_id,
@@ -996,49 +1022,20 @@ class LoyaltyController extends Controller
         return back()->with('status', 'Membership card updated.');
     }
 
-    public function refillMembershipCard(Request $request, CustomerMembershipCard $card, GiftCardService $giftCardService, GiftCardSalePostingService $giftCardSalePostingService): RedirectResponse
+    public function refillMembershipCard(Request $request, CustomerMembershipCard $card): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
-        $data = $request->validate([
-            'amount' => ['required', 'numeric', 'min:0.01'],
-            'notes' => ['nullable', 'string'],
+        return back()->withErrors([
+            'membership_card' => 'Gift-card balance is managed from the Gift Cards page.',
         ]);
-
-        $transaction = $giftCardService->topUpFromMembershipCard(
-            $card,
-            (float) $data['amount'],
-            'Membership card refill',
-            $request->user()?->id,
-            $data['notes'] ?? null,
-        );
-
-        $giftCard = $giftCardService->ensureGiftCardFromMembershipCard($card, $request->user()?->id);
-        if ($giftCard) {
-            $giftCardSalePostingService->post(
-                $giftCard,
-                $card->customer,
-                $request->user()?->id,
-                $data['notes'] ?? null,
-                (float) $data['amount'],
-                'Gift Card Top-up: '.$card->card_number
-            );
-        }
-
-        Audit::log($request->user()?->id, 'gift_card.refilled_from_membership', 'GiftCardTransaction', $transaction->id, [
-            'membership_card_id' => $card->id,
-            'amount' => (float) $data['amount'],
-        ]);
-
-        return back()->with('status', 'Gift card refilled.');
     }
 
-    public function deactivateMembershipCard(Request $request, CustomerMembershipCard $card, GiftCardService $giftCardService): RedirectResponse
+    public function deactivateMembershipCard(Request $request, CustomerMembershipCard $card): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
         $card->update(['status' => 'inactive']);
-        $giftCardService->ensureGiftCardFromMembershipCard($card->fresh(['customer', 'type']), $request->user()?->id);
 
         Audit::log($request->user()?->id, 'loyalty.card_deactivated', 'CustomerMembershipCard', $card->id, [
             'customer_id' => $card->customer_id,
@@ -1595,6 +1592,33 @@ class LoyaltyController extends Controller
 
             $attempt++;
             $suffix = '-'.$attempt;
+        }
+    }
+
+    private function whereMembershipCardType($query): void
+    {
+        $query->where('kind', '!=', 'gift')
+            ->where('name', 'not like', '%gift%')
+            ->where('slug', 'not like', '%gift%');
+    }
+
+    private function assertMembershipCardType(?MembershipCardType $cardType, string $field = 'membership_card_type_id'): void
+    {
+        if (! $cardType || $cardType->isGiftCardType()) {
+            throw ValidationException::withMessages([
+                $field => 'Gift cards must be managed from the Gift Cards page.',
+            ]);
+        }
+    }
+
+    private function assertMembershipCardTypePayloadIsNotGiftCard(string $name, string $kind): void
+    {
+        $name = strtolower($name);
+
+        if ($kind === 'gift' || str_contains($name, 'gift')) {
+            throw ValidationException::withMessages([
+                'name' => 'Gift cards must be created from the Gift Cards page, not membership card types.',
+            ]);
         }
     }
 

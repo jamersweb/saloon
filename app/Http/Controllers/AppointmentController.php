@@ -20,7 +20,6 @@ use App\Models\TaxInvoice;
 use App\Services\BookingAvailabilityService;
 use App\Services\AppointmentVisitService;
 use App\Services\DueServiceManager;
-use App\Services\GiftCardService;
 use App\Services\LoyaltyService;
 use App\Services\PackageBalanceService;
 use App\Services\StaffAppointmentNotificationService;
@@ -139,22 +138,12 @@ class AppointmentController extends Controller
             ->map(fn (Appointment $appointment) => $this->serializeAppointment($appointment, $request))
             ->when($status === 'needs_pay', fn ($rows) => $rows->filter(fn (array $appointment) => $appointment['awaiting_checkout'])->values());
 
-        if ($customerIds !== []) {
-            $giftCardService = app(GiftCardService::class);
-            foreach ($customerIds as $customerId) {
-                $giftCardService->backfillGiftCardsForCustomer((int) $customerId, $request->user()?->id);
-            }
-        }
-
         $giftCardsForCheckout = $customerIds === []
             ? []
             : GiftCard::query()
                 ->where('status', 'active')
                 ->where('remaining_value', '>', 0)
-                ->where(function ($query) use ($customerIds): void {
-                    $query->whereIn('assigned_customer_id', $customerIds)
-                        ->orWhereNull('assigned_customer_id');
-                })
+                ->whereIn('assigned_customer_id', $customerIds)
                 ->orderBy('code')
                 ->limit(200)
                 ->get(['id', 'code', 'remaining_value', 'assigned_customer_id'])
@@ -219,8 +208,6 @@ class AppointmentController extends Controller
                 ->orderBy('name')
                 ->limit(750)
                 ->get()
-                ->each(fn (Customer $customer) => app(GiftCardService::class)->backfillGiftCardsForCustomer((int) $customer->id, $request->user()?->id))
-                ->load('giftCards')
                 ->map(fn (Customer $customer) => $this->serializeCustomerForAppointments($customer)),
             'staffProfiles' => StaffProfile::query()->with('user.role:id,name')->where('is_active', true)->assignableToServices()->orderBy('employee_code')->get()->map(fn (StaffProfile $staff) => [
                 'id' => $staff->id,
@@ -899,10 +886,9 @@ class AppointmentController extends Controller
                         ]);
                     }
                     if ($invoice->customer_id !== null
-                        && $card->assigned_customer_id !== null
                         && (int) $card->assigned_customer_id !== (int) $invoice->customer_id) {
                         throw ValidationException::withMessages([
-                            'checkout_gift_card_id' => 'This gift card is assigned to a different customer than this visit.',
+                            'checkout_gift_card_id' => 'Assign this gift card to the visit customer before using it for payment.',
                         ]);
                     }
                 }

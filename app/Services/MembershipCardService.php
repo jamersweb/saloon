@@ -37,6 +37,8 @@ class MembershipCardService
         return MembershipCardType::query()
             ->where('is_active', true)
             ->where('kind', '!=', 'gift')
+            ->where('name', 'not like', '%gift%')
+            ->where('slug', 'not like', '%gift%')
             ->where('min_points', '<=', $points)
             ->orderByDesc('min_points')
             ->first();

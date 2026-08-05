@@ -372,6 +372,56 @@ class PackagesAndGiftCardsTest extends TestCase
             ->assertSessionHas('gift_nfc_lookup.code');
     }
 
+    public function test_gift_card_can_be_unassigned_and_reassigned_without_membership_card_shadow_record(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $wrongCustomer = Customer::create([
+            'customer_code' => 'CUST-GIFT-WRONG',
+            'name' => 'Wrong Customer',
+            'phone' => '5556061000',
+            'is_active' => true,
+        ]);
+        $rightCustomer = Customer::create([
+            'customer_code' => 'CUST-GIFT-RIGHT',
+            'name' => 'Right Customer',
+            'phone' => '5556062000',
+            'is_active' => true,
+        ]);
+
+        $giftCard = app(GiftCardService::class)->issue($wrongCustomer, 500.00);
+
+        $this->actingAs($user)
+            ->patch(route('loyalty.gift-cards.unassign', $giftCard))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('gift_cards', [
+            'id' => $giftCard->id,
+            'assigned_customer_id' => null,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.gift-cards.assign'), [
+                'gift_card_id' => $giftCard->id,
+                'assigned_customer_id' => $rightCustomer->id,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('gift_cards', [
+            'id' => $giftCard->id,
+            'assigned_customer_id' => $rightCustomer->id,
+        ]);
+        $this->assertDatabaseMissing('customer_membership_cards', [
+            'customer_id' => $wrongCustomer->id,
+            'card_number' => $giftCard->code,
+        ]);
+    }
+
     public function test_gift_card_nfc_bind_rejects_uid_linked_to_membership_card(): void
     {
         $managerRole = Role::create([

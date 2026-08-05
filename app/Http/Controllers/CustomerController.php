@@ -85,20 +85,24 @@ class CustomerController extends Controller
                     'name' => $package->name,
                     'price' => $package->price,
                 ]),
-            'customers' => $customers->map(fn (Customer $customer) => [
-                'id' => $customer->id,
-                'customer_code' => $customer->customer_code,
-                'name' => $customer->name,
-                'phone' => $customer->phone,
-                'email' => $customer->email,
-                'points' => $customer->loyaltyAccount?->current_points ?? 0,
-                'current_card' => $customer->membershipCards->firstWhere('status', 'active')?->type?->name,
-                'allergies' => $customer->allergies,
-                'notes' => $customer->notes,
-                'acquisition_source' => $customer->acquisition_source,
-                'is_active' => $customer->is_active,
-                'birthday' => $customer->birthday?->format('Y-m-d'),
-            ]),
+            'customers' => $customers->map(function (Customer $customer) {
+                $currentCard = $this->currentMembershipCard($customer);
+
+                return [
+                    'id' => $customer->id,
+                    'customer_code' => $customer->customer_code,
+                    'name' => $customer->name,
+                    'phone' => $customer->phone,
+                    'email' => $customer->email,
+                    'points' => $customer->loyaltyAccount?->current_points ?? 0,
+                    'current_card' => $currentCard?->type?->name,
+                    'allergies' => $customer->allergies,
+                    'notes' => $customer->notes,
+                    'acquisition_source' => $customer->acquisition_source,
+                    'is_active' => $customer->is_active,
+                    'birthday' => $customer->birthday?->format('Y-m-d'),
+                ];
+            }),
             'selectedCustomer' => $selectedCustomer ? $this->serializeCustomerProfile($selectedCustomer) : null,
             'history' => $history->map(fn (Appointment $appointment) => [
                 'id' => $appointment->id,
@@ -189,7 +193,7 @@ class CustomerController extends Controller
     {
         $customer->loadMissing(self::PROFILE_RELATIONS);
 
-        $currentCard = $customer->membershipCards->firstWhere('status', 'active') ?? $customer->membershipCards->first();
+        $currentCard = $this->currentMembershipCard($customer);
         $customerPortalService = app(CustomerPortalService::class);
         $activePortalToken = $customer->portalTokens->first(fn ($token) => $customerPortalService->isActive($token));
 
@@ -224,5 +228,14 @@ class CustomerController extends Controller
             'portal_url' => $activePortalToken ? route('customer.portal.show', $activePortalToken->token) : null,
             'portal_expires_at' => $activePortalToken?->expires_at,
         ];
+    }
+
+    private function currentMembershipCard(Customer $customer): ?\App\Models\CustomerMembershipCard
+    {
+        $membershipCards = $customer->membershipCards
+            ->reject(fn ($card) => $card->type?->isGiftCardType())
+            ->values();
+
+        return $membershipCards->firstWhere('status', 'active') ?? $membershipCards->first();
     }
 }

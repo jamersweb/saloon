@@ -57,10 +57,9 @@ class TaxInvoicePaymentService
                 }
 
                 if ($invoice->customer_id !== null
-                    && $card->assigned_customer_id !== null
                     && (int) $card->assigned_customer_id !== (int) $invoice->customer_id) {
                     throw ValidationException::withMessages([
-                        'gift_card_id' => 'This gift card is assigned to a different customer than the invoice.',
+                        'gift_card_id' => 'Assign this gift card to the invoice customer before using it for payment.',
                     ]);
                 }
 

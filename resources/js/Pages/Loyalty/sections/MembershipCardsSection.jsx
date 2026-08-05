@@ -10,7 +10,6 @@ export default function MembershipCardsSection({
     cardTypes,
     customers,
     membershipCards,
-    giftCards = [],
     membershipRegistrations,
     currentUserName,
     openRegistrationByDefault = false,
@@ -26,7 +25,6 @@ export default function MembershipCardsSection({
     assignCardForm,
     editingMembershipCardId,
     editMembershipCardForm,
-    refillMembershipCardForm,
     setEditingMembershipCardId,
     startEditMembershipCard,
     memberRegistrationForm,
@@ -44,18 +42,22 @@ export default function MembershipCardsSection({
         value: String(customer.id),
         label: `${customer.name}${customer.phone ? ` - ${customer.phone}` : ''}${customer.points !== undefined ? ` (${customer.points} pts)` : ''}`,
     }));
-    const cardTypeOptions = cardTypes
-        .filter((type) => type.is_active)
-        .map((cardType) => ({ value: String(cardType.id), label: cardType.name }));
-    const cardTypeActsAsGift = (cardType) => Boolean(
+    const isGiftCardType = (cardType) => Boolean(
         cardType
-        && Number(cardType.direct_purchase_price || 0) > 0
         && (
             String(cardType.kind || '').toLowerCase() === 'gift'
             || String(cardType.name || '').toLowerCase().includes('gift')
             || String(cardType.slug || '').toLowerCase().includes('gift')
         )
     );
+    const membershipCardTypes = (cardTypes || []).filter((type) => !isGiftCardType(type));
+    const membershipCardRows = (membershipCards || []).filter((card) => {
+        const type = membershipCardTypes.find((cardType) => String(cardType.id) === String(card.membership_card_type_id));
+        return Boolean(type);
+    });
+    const cardTypeOptions = membershipCardTypes
+        .filter((type) => type.is_active)
+        .map((cardType) => ({ value: String(cardType.id), label: cardType.name }));
     const ROWS_PER_PAGE = 10;
     const importFileRef = useRef(null);
     const [membershipCardTypeFilter, setMembershipCardTypeFilter] = useState('');
@@ -86,32 +88,18 @@ export default function MembershipCardsSection({
     }, [customers]);
 
     const membershipCustomers = useMemo(() => {
-        const rows = (membershipCards || []).filter((card) => card.customer_id != null);
+        const rows = membershipCardRows.filter((card) => card.customer_id != null);
         if (!membershipCardTypeFilter) {
             return rows;
         }
         return rows.filter((card) => String(card.membership_card_type_id) === String(membershipCardTypeFilter));
-    }, [membershipCards, membershipCardTypeFilter]);
-    const giftCardsByCustomerId = useMemo(() => {
-        const map = {};
-        (giftCards || []).forEach((card) => {
-            if (!card.assigned_customer_id) {
-                return;
-            }
-            const key = String(card.assigned_customer_id);
-            if (!map[key]) {
-                map[key] = [];
-            }
-            map[key].push(card);
-        });
-        return map;
-    }, [giftCards]);
+    }, [membershipCardRows, membershipCardTypeFilter]);
 
-    const cardTypesTotalPages = Math.max(1, Math.ceil((cardTypes || []).length / ROWS_PER_PAGE));
+    const cardTypesTotalPages = Math.max(1, Math.ceil(membershipCardTypes.length / ROWS_PER_PAGE));
     const filteredRegistryCards = useMemo(() => {
         const term = registrySearch.trim().toLowerCase();
 
-        return (membershipCards || []).filter((card) => {
+        return membershipCardRows.filter((card) => {
             if (registryStatusFilter && String(card.status) !== String(registryStatusFilter)) {
                 return false;
             }
@@ -139,15 +127,15 @@ export default function MembershipCardsSection({
 
             return haystack.includes(term);
         });
-    }, [membershipCards, registrySearch, registryStatusFilter, registryTypeFilter]);
+    }, [membershipCardRows, registrySearch, registryStatusFilter, registryTypeFilter]);
 
     const nfcRegistryTotalPages = Math.max(1, Math.ceil(filteredRegistryCards.length / ROWS_PER_PAGE));
     const membershipCustomersTotalPages = Math.max(1, Math.ceil(membershipCustomers.length / ROWS_PER_PAGE));
     const registrationTotalPages = Math.max(1, Math.ceil((membershipRegistrations || []).length / ROWS_PER_PAGE));
 
     const cardTypesPageRows = useMemo(
-        () => (cardTypes || []).slice((cardTypesPage - 1) * ROWS_PER_PAGE, cardTypesPage * ROWS_PER_PAGE),
-        [cardTypes, cardTypesPage],
+        () => membershipCardTypes.slice((cardTypesPage - 1) * ROWS_PER_PAGE, cardTypesPage * ROWS_PER_PAGE),
+        [membershipCardTypes, cardTypesPage],
     );
     const nfcRegistryPageRows = useMemo(
         () => filteredRegistryCards.slice((nfcRegistryPage - 1) * ROWS_PER_PAGE, nfcRegistryPage * ROWS_PER_PAGE),
@@ -201,18 +189,15 @@ export default function MembershipCardsSection({
     }, [openRegistrationByDefault]);
 
     const selectedMembershipCard = useMemo(
-        () => (membershipCards || []).find((card) => String(card.id) === String(selectedMembershipCardId)) || null,
-        [membershipCards, selectedMembershipCardId],
+        () => membershipCardRows.find((card) => String(card.id) === String(selectedMembershipCardId)) || null,
+        [membershipCardRows, selectedMembershipCardId],
     );
     const editingMembershipCard = useMemo(
-        () => (membershipCards || []).find((card) => String(card.id) === String(editingMembershipCardId)) || null,
-        [membershipCards, editingMembershipCardId],
+        () => membershipCardRows.find((card) => String(card.id) === String(editingMembershipCardId)) || null,
+        [membershipCardRows, editingMembershipCardId],
     );
 
     const selectedCustomerId = selectedMembershipCard?.customer_id ? String(selectedMembershipCard.customer_id) : null;
-    const selectedGiftCards = selectedCustomerId ? (giftCardsByCustomerId[selectedCustomerId] || []) : [];
-    const selectedActiveGiftCards = selectedGiftCards.filter((card) => card.status === 'active');
-    const selectedGiftCardBalance = selectedActiveGiftCards.reduce((sum, card) => sum + Number(card.remaining_value || 0), 0);
     const selectedUsageHistory = useMemo(() => {
         if (!selectedCustomerId) return [];
         return (appointmentsForRedeem || [])
@@ -392,13 +377,9 @@ export default function MembershipCardsSection({
         });
     };
 
-    const selectedRegistrationCardType = (cardTypes || []).find(
+    const selectedRegistrationCardType = membershipCardTypes.find(
         (cardType) => String(cardType.id) === String(memberRegistrationForm.data.membership_card_type_id),
     );
-    const editingMembershipCardType = (cardTypes || []).find(
-        (cardType) => String(cardType.id) === String(editMembershipCardForm.data.membership_card_type_id),
-    );
-    const editingMembershipCardActsAsGift = cardTypeActsAsGift(editingMembershipCardType);
 
     return (
         <div className="space-y-6">
@@ -602,7 +583,7 @@ export default function MembershipCardsSection({
                                     {registrationStep === 2 && (
                                         <div className="space-y-6">
                                             <div className="grid gap-4 lg:grid-cols-3">
-                                                {cardTypes.filter((type) => type.kind !== 'gift' && type.is_active).map((cardType) => (
+                                                {membershipCardTypes.filter((type) => type.is_active).map((cardType) => (
                                                     <button
                                                         key={cardType.id}
                                                         type="button"
@@ -741,7 +722,7 @@ export default function MembershipCardsSection({
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Create membership card type</h3>
                 <form onSubmit={(e) => { e.preventDefault(); createCardTypeForm.post(route('loyalty.card-types.store'), { onSuccess: () => createCardTypeForm.reset('name', 'direct_purchase_price', 'validity_days', 'service_package_id') }); }} className="grid gap-3 md:grid-cols-8">
                     <div><label className="ta-field-label">Name</label><input className="ta-input" value={createCardTypeForm.data.name} onChange={(e) => createCardTypeForm.setData('name', e.target.value)} required />{fieldError(createCardTypeForm, 'name')}</div>
-                    <div><label className="ta-field-label">Kind</label><select className="ta-input" value={createCardTypeForm.data.kind} onChange={(e) => createCardTypeForm.setData('kind', e.target.value)}><option value="physical">Physical</option><option value="virtual">Virtual</option><option value="gift">Gift</option></select>{fieldError(createCardTypeForm, 'kind')}</div>
+                    <div><label className="ta-field-label">Kind</label><select className="ta-input" value={createCardTypeForm.data.kind} onChange={(e) => createCardTypeForm.setData('kind', e.target.value)}><option value="physical">Physical</option><option value="virtual">Virtual</option></select>{fieldError(createCardTypeForm, 'kind')}</div>
                     <div><label className="ta-field-label">Min points</label><input className="ta-input" type="number" min="0" value={createCardTypeForm.data.min_points} onChange={(e) => createCardTypeForm.setData('min_points', e.target.value)} required />{fieldError(createCardTypeForm, 'min_points')}</div>
                     <div><label className="ta-field-label">Direct price</label><input className="ta-input" type="number" min="0" step="0.01" value={createCardTypeForm.data.direct_purchase_price} onChange={(e) => createCardTypeForm.setData('direct_purchase_price', e.target.value)} />{fieldError(createCardTypeForm, 'direct_purchase_price')}</div>
                     <div><label className="ta-field-label">Validity days</label><input className="ta-input" type="number" min="1" value={createCardTypeForm.data.validity_days} onChange={(e) => createCardTypeForm.setData('validity_days', e.target.value)} />{fieldError(createCardTypeForm, 'validity_days')}</div>
@@ -777,7 +758,7 @@ export default function MembershipCardsSection({
                         className="grid gap-3 md:grid-cols-2"
                     >
                         <div><label className="ta-field-label">Name</label><input className="ta-input" value={editCardTypeForm.data.name} onChange={(e) => editCardTypeForm.setData('name', e.target.value)} required />{fieldError(editCardTypeForm, 'name')}</div>
-                        <div><label className="ta-field-label">Kind</label><select className="ta-input" value={editCardTypeForm.data.kind} onChange={(e) => editCardTypeForm.setData('kind', e.target.value)}><option value="physical">Physical</option><option value="virtual">Virtual</option><option value="gift">Gift</option></select>{fieldError(editCardTypeForm, 'kind')}</div>
+                        <div><label className="ta-field-label">Kind</label><select className="ta-input" value={editCardTypeForm.data.kind} onChange={(e) => editCardTypeForm.setData('kind', e.target.value)}><option value="physical">Physical</option><option value="virtual">Virtual</option></select>{fieldError(editCardTypeForm, 'kind')}</div>
                         <div><label className="ta-field-label">Min points</label><input className="ta-input" type="number" min="0" value={editCardTypeForm.data.min_points} onChange={(e) => editCardTypeForm.setData('min_points', e.target.value)} required />{fieldError(editCardTypeForm, 'min_points')}</div>
                         <div><label className="ta-field-label">Direct price</label><input className="ta-input" type="number" min="0" step="0.01" value={editCardTypeForm.data.direct_purchase_price ?? ''} onChange={(e) => editCardTypeForm.setData('direct_purchase_price', e.target.value)} />{fieldError(editCardTypeForm, 'direct_purchase_price')}</div>
                         <div><label className="ta-field-label">Validity days</label><input className="ta-input" type="number" min="1" value={editCardTypeForm.data.validity_days ?? ''} onChange={(e) => editCardTypeForm.setData('validity_days', e.target.value)} />{fieldError(editCardTypeForm, 'validity_days')}</div>
@@ -812,7 +793,7 @@ export default function MembershipCardsSection({
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Link pre-issued card to customer</h3>
                 <form onSubmit={(e) => { e.preventDefault(); linkInventoryForm.post(route('loyalty.cards.link-customer'), { onSuccess: () => linkInventoryForm.reset('customer_membership_card_id', 'notes') }); }} className="grid gap-3 md:grid-cols-6">
                     <div><label className="ta-field-label">Customer</label><select className="ta-input" value={linkInventoryForm.data.customer_id} onChange={(e) => linkInventoryForm.setData('customer_id', e.target.value)} required><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} ({customer.points} pts)</option>)}</select>{fieldError(linkInventoryForm, 'customer_id')}</div>
-                    <div className="md:col-span-2"><label className="ta-field-label">Pre-issued card</label><select className="ta-input" value={linkInventoryForm.data.customer_membership_card_id} onChange={(e) => linkInventoryForm.setData('customer_membership_card_id', e.target.value)} required><option value="">Select unassigned card</option>{membershipCards.filter((c) => c.customer_id == null).map((card) => <option key={card.id} value={card.id}>#{card.card_number || card.id} — {card.card_type_name}</option>)}</select>{fieldError(linkInventoryForm, 'customer_membership_card_id')}</div>
+                    <div className="md:col-span-2"><label className="ta-field-label">Pre-issued card</label><select className="ta-input" value={linkInventoryForm.data.customer_membership_card_id} onChange={(e) => linkInventoryForm.setData('customer_membership_card_id', e.target.value)} required><option value="">Select unassigned card</option>{membershipCardRows.filter((c) => c.customer_id == null).map((card) => <option key={card.id} value={card.id}>#{card.card_number || card.id} — {card.card_type_name}</option>)}</select>{fieldError(linkInventoryForm, 'customer_membership_card_id')}</div>
                     <div><label className="ta-field-label">Status after link</label><select className="ta-input" value={linkInventoryForm.data.status} onChange={(e) => linkInventoryForm.setData('status', e.target.value)}><option value="active">active</option><option value="pending">pending</option><option value="inactive">inactive</option></select>{fieldError(linkInventoryForm, 'status')}</div>
                     <button className="ta-btn-primary" disabled={linkInventoryForm.processing || !canManage}>Link to customer</button>
                     <div className="md:col-span-6"><label className="ta-field-label">Notes</label><input className="ta-input" value={linkInventoryForm.data.notes} onChange={(e) => linkInventoryForm.setData('notes', e.target.value)} placeholder="Optional (e.g. sale reference)" />{fieldError(linkInventoryForm, 'notes')}</div>
@@ -855,7 +836,7 @@ export default function MembershipCardsSection({
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Bind / replace NFC UID</h3>
                 <form onSubmit={(e) => { e.preventDefault(); nfcBindForm.post(route('loyalty.cards.nfc-bind'), { onSuccess: () => nfcBindForm.reset('nfc_uid', 'replace_existing') }); }} className="grid gap-3 md:grid-cols-4">
-                    <div><label className="ta-field-label">Membership card</label><select className="ta-input" value={nfcBindForm.data.customer_membership_card_id} onChange={(e) => nfcBindForm.setData('customer_membership_card_id', e.target.value)} required><option value="">Select card</option>{membershipCards.map((card) => <option key={card.id} value={card.id}>{card.customer_id == null ? 'Inventory' : card.customer_name} · {card.card_number || 'No number'} ({card.card_type_name})</option>)}</select>{fieldError(nfcBindForm, 'customer_membership_card_id')}</div>
+                    <div><label className="ta-field-label">Membership card</label><select className="ta-input" value={nfcBindForm.data.customer_membership_card_id} onChange={(e) => nfcBindForm.setData('customer_membership_card_id', e.target.value)} required><option value="">Select card</option>{membershipCardRows.map((card) => <option key={card.id} value={card.id}>{card.customer_id == null ? 'Inventory' : card.customer_name} · {card.card_number || 'No number'} ({card.card_type_name})</option>)}</select>{fieldError(nfcBindForm, 'customer_membership_card_id')}</div>
                     <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={nfcBindForm.data.nfc_uid} onChange={(e) => nfcBindForm.setData('nfc_uid', e.target.value)} placeholder="Scan new UID" required />{fieldError(nfcBindForm, 'nfc_uid')}</div>
                     <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('bind')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'bind' ? 'Reading...' : 'Read UID'}</button>
                     <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={nfcBindForm.data.replace_existing} onChange={(e) => nfcBindForm.setData('replace_existing', e.target.checked)} />Replace existing binding if UID is already linked</label>
@@ -871,7 +852,7 @@ export default function MembershipCardsSection({
                             <input className="ta-input" value={registrySearch} onChange={(e) => setRegistrySearch(e.target.value)} placeholder="Search customer, card, UID" />
                             <select className="ta-input" value={registryTypeFilter} onChange={(e) => setRegistryTypeFilter(e.target.value)}>
                                 <option value="">All card types</option>
-                                {cardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}
+                                {membershipCardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}
                             </select>
                             <select className="ta-input" value={registryStatusFilter} onChange={(e) => setRegistryStatusFilter(e.target.value)}>
                                 <option value="">All statuses</option>
@@ -915,7 +896,7 @@ export default function MembershipCardsSection({
             <Modal show={Boolean(editingMembershipCardId)} onClose={() => !editMembershipCardForm.processing && setEditingMembershipCardId(null)} maxWidth="3xl">
                 <div className="p-6">
                     <h3 className="mb-4 text-base font-semibold text-slate-800">
-                        {editingMembershipCardActsAsGift ? 'Edit prepaid membership card' : 'Edit membership card'} #{editingMembershipCardId}
+                        Edit membership card #{editingMembershipCardId}
                     </h3>
                     <form
                         onSubmit={(e) => {
@@ -927,57 +908,11 @@ export default function MembershipCardsSection({
                         }}
                         className="grid gap-3 md:grid-cols-2"
                     >
-                        <div><label className="ta-field-label">Card type</label><select className="ta-input" value={editMembershipCardForm.data.membership_card_type_id} onChange={(e) => editMembershipCardForm.setData('membership_card_type_id', e.target.value)} required><option value="">Select card type</option>{cardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}</select>{fieldError(editMembershipCardForm, 'membership_card_type_id')}</div>
+                        <div><label className="ta-field-label">Card type</label><select className="ta-input" value={editMembershipCardForm.data.membership_card_type_id} onChange={(e) => editMembershipCardForm.setData('membership_card_type_id', e.target.value)} required><option value="">Select card type</option>{membershipCardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}</select>{fieldError(editMembershipCardForm, 'membership_card_type_id')}</div>
                         <div><label className="ta-field-label">Status</label><select className="ta-input" value={editMembershipCardForm.data.status} onChange={(e) => editMembershipCardForm.setData('status', e.target.value)} required><option value="pending">pending</option><option value="active">active</option><option value="inactive">inactive</option><option value="expired">expired</option></select>{fieldError(editMembershipCardForm, 'status')}</div>
                         <div><label className="ta-field-label">Card number</label><input className="ta-input" value={editMembershipCardForm.data.card_number} onChange={(e) => editMembershipCardForm.setData('card_number', e.target.value)} required />{fieldError(editMembershipCardForm, 'card_number')}</div>
                         <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={editMembershipCardForm.data.nfc_uid} onChange={(e) => editMembershipCardForm.setData('nfc_uid', e.target.value)} />{fieldError(editMembershipCardForm, 'nfc_uid')}</div>
                         <div className="md:col-span-2"><label className="ta-field-label">Notes</label><textarea className="ta-input min-h-[96px]" value={editMembershipCardForm.data.notes} onChange={(e) => editMembershipCardForm.setData('notes', e.target.value)} />{fieldError(editMembershipCardForm, 'notes')}</div>
-                        {editingMembershipCardActsAsGift ? (
-                            <div className="md:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                                <p className="text-sm font-semibold text-emerald-900">Add prepaid balance</p>
-                                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                    <div>
-                                        <label className="ta-field-label">Amount</label>
-                                        <input
-                                            className="ta-input"
-                                            type="number"
-                                            min="0.01"
-                                            step="0.01"
-                                            value={refillMembershipCardForm.data.amount}
-                                            onChange={(e) => refillMembershipCardForm.setData('amount', e.target.value)}
-                                            placeholder="300"
-                                        />
-                                        {fieldError(refillMembershipCardForm, 'amount')}
-                                    </div>
-                                    <div>
-                                        <label className="ta-field-label">Notes</label>
-                                        <input
-                                            className="ta-input"
-                                            value={refillMembershipCardForm.data.notes}
-                                            onChange={(e) => refillMembershipCardForm.setData('notes', e.target.value)}
-                                            placeholder="Prepaid balance top-up"
-                                        />
-                                        {fieldError(refillMembershipCardForm, 'notes')}
-                                    </div>
-                                </div>
-                                {fieldError(refillMembershipCardForm, 'membership_card')}
-                                <div className="mt-3">
-                                    <button
-                                        type="button"
-                                        className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800"
-                                        disabled={refillMembershipCardForm.processing || !canManage}
-                                        onClick={() => {
-                                            refillMembershipCardForm.post(route('loyalty.cards.refill', editingMembershipCardId), {
-                                                preserveScroll: true,
-                                                onSuccess: () => refillMembershipCardForm.reset(),
-                                            });
-                                        }}
-                                    >
-                                        Add balance
-                                    </button>
-                                </div>
-                            </div>
-                        ) : null}
                         <div className="md:col-span-2 flex gap-2">
                             <button className="ta-btn-primary" disabled={editMembershipCardForm.processing || !canManage}>Save</button>
                             <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditingMembershipCardId(null)}>Cancel</button>
@@ -1014,7 +949,7 @@ export default function MembershipCardsSection({
                     <div className="w-64 max-w-full">
                         <select className="ta-input" value={membershipCardTypeFilter} onChange={(e) => setMembershipCardTypeFilter(e.target.value)}>
                             <option value="">All card types</option>
-                            {cardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}
+                            {membershipCardTypes.map((cardType) => <option key={cardType.id} value={cardType.id}>{cardType.name}</option>)}
                         </select>
                     </div>
                 </div>
@@ -1058,19 +993,15 @@ export default function MembershipCardsSection({
                     </div>
 
                     <div className="mb-4 rounded-lg border border-slate-200">
-                        <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Wallet Summary</div>
-                        <div className="grid gap-3 p-3 text-sm md:grid-cols-3">
-                            <div>
-                                <div className="text-xs text-slate-500">Active Gift Cards</div>
-                                <div className="mt-1 font-medium text-slate-800">{selectedActiveGiftCards.length}</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-slate-500">Gift Card Balance</div>
-                                <div className="mt-1 font-medium text-slate-800">{selectedGiftCardBalance.toFixed(2)}</div>
-                            </div>
+                        <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Membership Summary</div>
+                        <div className="grid gap-3 p-3 text-sm md:grid-cols-2">
                             <div>
                                 <div className="text-xs text-slate-500">Packages</div>
                                 <div className="mt-1 font-medium text-slate-800">{(customers || []).find((customer) => String(customer.id) === selectedCustomerId)?.active_packages?.length || 0}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-slate-500">Status</div>
+                                <div className="mt-1 font-medium text-slate-800">{selectedMembershipCard.status}</div>
                             </div>
                         </div>
                     </div>

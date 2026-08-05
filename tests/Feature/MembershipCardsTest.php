@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\MembershipCardService;
 use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class MembershipCardsTest extends TestCase
@@ -402,8 +403,8 @@ class MembershipCardsTest extends TestCase
         ]);
 
         $cardType = MembershipCardType::create([
-            'name' => 'Gift Card',
-            'slug' => 'gift-card-manual',
+            'name' => 'Premium Card',
+            'slug' => 'premium-card-manual',
             'kind' => 'physical',
             'min_points' => 0,
             'is_active' => true,
@@ -506,7 +507,7 @@ class MembershipCardsTest extends TestCase
             ->assertSessionHasErrors('card_number');
     }
 
-    public function test_updating_gift_style_membership_card_syncs_linked_gift_card(): void
+    public function test_gift_style_membership_card_type_cannot_be_assigned_from_membership_flow(): void
     {
         $managerRole = Role::create([
             'name' => 'manager',
@@ -523,38 +524,88 @@ class MembershipCardsTest extends TestCase
         ]);
 
         $giftType = MembershipCardType::create([
-            'name' => 'Gift Membership',
-            'slug' => 'gift-membership',
-            'kind' => 'gift',
+            'name' => 'Gift Card - 500',
+            'slug' => 'gift-card-500',
+            'kind' => 'physical',
             'min_points' => 0,
-            'direct_purchase_price' => 300,
+            'direct_purchase_price' => 500,
             'is_active' => true,
         ]);
 
-        $card = CustomerMembershipCard::create([
+        $this->actingAs($user)
+            ->post(route('loyalty.cards.assign'), [
+                'customer_id' => $customer->id,
+                'membership_card_type_id' => $giftType->id,
+                'card_number' => '3602568010020010',
+                'status' => 'active',
+            ])
+            ->assertSessionHasErrors('membership_card_type_id');
+
+        $this->assertDatabaseMissing('customer_membership_cards', [
             'customer_id' => $customer->id,
             'membership_card_type_id' => $giftType->id,
-            'card_number' => '3602567010010010',
+        ]);
+    }
+
+    public function test_customer_profile_ignores_legacy_gift_style_membership_card(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-GIFT-LEGACY',
+            'name' => 'Legacy Gift Customer',
+            'phone' => '5557002000',
+            'is_active' => true,
+        ]);
+
+        $giftType = MembershipCardType::create([
+            'name' => 'Gift Card - 500',
+            'slug' => 'gift-card-500',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'direct_purchase_price' => 500,
+            'is_active' => true,
+        ]);
+
+        $goldType = MembershipCardType::create([
+            'name' => 'Gold',
+            'slug' => 'gold-profile',
+            'kind' => 'physical',
+            'min_points' => 0,
+            'direct_purchase_price' => 5000,
+            'is_active' => true,
+        ]);
+
+        CustomerMembershipCard::create([
+            'customer_id' => $customer->id,
+            'membership_card_type_id' => $giftType->id,
+            'card_number' => '3602568010020010',
+            'status' => 'active',
+            'issued_at' => now(),
+            'activated_at' => now(),
+        ]);
+
+        CustomerMembershipCard::create([
+            'customer_id' => $customer->id,
+            'membership_card_type_id' => $goldType->id,
+            'card_number' => '2602567810000001',
             'status' => 'active',
             'issued_at' => now(),
             'activated_at' => now(),
         ]);
 
         $this->actingAs($user)
-            ->put(route('loyalty.cards.update', $card), [
-                'membership_card_type_id' => $giftType->id,
-                'card_number' => '3602567010010011',
-                'status' => 'active',
-                'notes' => 'Updated during testing',
-            ])
-            ->assertSessionHasNoErrors();
-
-        $this->assertDatabaseHas('gift_cards', [
-            'code' => '3602 5670 1001 0011',
-            'assigned_customer_id' => $customer->id,
-            'initial_value' => 300,
-            'remaining_value' => 300,
-            'status' => 'active',
-        ]);
+            ->get(route('customers.index', ['customer_id' => $customer->id]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('selectedCustomer.current_card', 'Gold')
+                ->where('selectedCustomer.gift_cards', [])
+                ->etc()
+            );
     }
 }

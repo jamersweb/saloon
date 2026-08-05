@@ -46,4 +46,14 @@ class MembershipCardType extends Model
     {
         return $this->belongsTo(ServicePackage::class, 'service_package_id');
     }
+
+    public function isGiftCardType(): bool
+    {
+        $name = strtolower((string) $this->name);
+        $slug = strtolower((string) $this->slug);
+
+        return $this->kind === 'gift'
+            || str_contains($name, 'gift')
+            || str_contains($slug, 'gift');
+    }
 }

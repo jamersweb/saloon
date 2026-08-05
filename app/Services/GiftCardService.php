@@ -344,10 +344,9 @@ class GiftCardService
                         'tax_invoice_id' => 'Select a valid invoice with a customer.',
                     ]);
                 }
-                if ($giftCard->assigned_customer_id !== null
-                    && (int) $giftCard->assigned_customer_id !== (int) $invoice->customer_id) {
+                if ((int) $giftCard->assigned_customer_id !== (int) $invoice->customer_id) {
                     throw ValidationException::withMessages([
-                        'tax_invoice_id' => 'The gift card is assigned to a different customer than this invoice.',
+                        'tax_invoice_id' => 'Assign this gift card to the invoice customer before using it.',
                     ]);
                 }
                 $invoiceAppointmentId = $invoice->appointment_id ? (int) $invoice->appointment_id : null;
@@ -360,10 +359,9 @@ class GiftCardService
                         'appointment_id' => 'Select a valid appointment with a customer.',
                     ]);
                 }
-                if ($giftCard->assigned_customer_id !== null
-                    && (int) $giftCard->assigned_customer_id !== (int) $appointment->customer_id) {
+                if ((int) $giftCard->assigned_customer_id !== (int) $appointment->customer_id) {
                     throw ValidationException::withMessages([
-                        'appointment_id' => 'The gift card is assigned to a different customer than this visit.',
+                        'appointment_id' => 'Assign this gift card to the visit customer before using it.',
                     ]);
                 }
             }

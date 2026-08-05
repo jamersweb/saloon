@@ -53,10 +53,10 @@ export default function GiftCardsSection({
         label: `${card.code} (${card.remaining_value})${card.customer_name ? ` - ${card.customer_name}` : ' - unassigned'}`,
     }));
     const assignableGiftCardOptions = giftCards
-        .filter((card) => !card.assigned_customer_id && card.status === 'active')
+        .filter((card) => !['redeemed', 'expired'].includes(card.status))
         .map((card) => ({
             value: String(card.id),
-            label: `${card.code} (${card.remaining_value}) - unassigned`,
+            label: `${card.code} (${card.remaining_value})${card.customer_name ? ` - currently ${card.customer_name}` : ' - unassigned'}`,
         }));
     const activeGiftCardOptions = giftCards
         .filter((card) => card.status === 'active')
@@ -88,6 +88,10 @@ export default function GiftCardsSection({
     const deactivateGiftCard = (card) => {
         if (!window.confirm(`Deactivate gift card ${card.code}?`)) return;
         router.patch(route('loyalty.gift-cards.deactivate', card.id), {}, { preserveScroll: true });
+    };
+    const unassignGiftCard = (card) => {
+        if (!window.confirm(`Unassign gift card ${card.code} from ${card.customer_name}?`)) return;
+        router.patch(route('loyalty.gift-cards.unassign', card.id), {}, { preserveScroll: true });
     };
 
     return (
@@ -152,7 +156,7 @@ export default function GiftCardsSection({
             </section>
 
             <section className="ta-card p-5">
-                <h3 className="mb-4 text-sm font-semibold text-slate-700">Issue gift card</h3>
+                <h3 className="mb-4 text-sm font-semibold text-slate-700">Create gift card / inventory</h3>
                 <form onSubmit={(e) => { e.preventDefault(); giftCardForm.post(route('loyalty.gift-cards.store'), { onSuccess: () => giftCardForm.reset('assigned_customer_id', 'initial_value', 'random_voucher', 'nfc_uid', 'notes') }); }} className="grid gap-3 md:grid-cols-6">
                     <div><SearchableSelect label="Customer" value={giftCardForm.data.assigned_customer_id} onChange={(id) => giftCardForm.setData('assigned_customer_id', id)} options={[{ value: '', label: 'Unassigned' }, ...customerOptions]} placeholder="Search customer" />{fieldError(giftCardForm, 'assigned_customer_id')}</div>
                     <div><label className="ta-field-label">Initial value</label><input className="ta-input" type="number" min="0.01" step="0.01" value={giftCardForm.data.initial_value} onChange={(e) => giftCardForm.setData('initial_value', e.target.value)} required={!giftCardForm.data.random_voucher} disabled={giftCardForm.data.random_voucher} />{fieldError(giftCardForm, 'initial_value')}</div>
@@ -165,7 +169,7 @@ export default function GiftCardsSection({
             </section>
 
             <section className="ta-card p-5">
-                <h3 className="mb-4 text-sm font-semibold text-slate-700">Assign existing gift card to customer</h3>
+                <h3 className="mb-4 text-sm font-semibold text-slate-700">Assign / reassign gift card to customer</h3>
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();
@@ -176,7 +180,7 @@ export default function GiftCardsSection({
                     className="grid gap-3 md:grid-cols-3"
                 >
                     <div>
-                        <SearchableSelect label="Gift card" value={assignGiftCardForm.data.gift_card_id} onChange={(id) => assignGiftCardForm.setData('gift_card_id', id)} options={assignableGiftCardOptions} placeholder="Search unassigned gift card" />
+                        <SearchableSelect label="Gift card" value={assignGiftCardForm.data.gift_card_id} onChange={(id) => assignGiftCardForm.setData('gift_card_id', id)} options={assignableGiftCardOptions} placeholder="Search gift card" />
                         {fieldError(assignGiftCardForm, 'gift_card_id')}
                     </div>
                     <div>
@@ -249,7 +253,7 @@ export default function GiftCardsSection({
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Code</th><th className="px-5 py-3">NFC UID</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Initial</th><th className="px-5 py-3">Remaining</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
-                        <tbody>{giftCards.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.code}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.customer_name || 'Unassigned'}<div className="text-xs text-slate-500">{card.customer_phone || ''}</div></td><td className="px-5 py-3 text-slate-600">{card.initial_value}</td><td className="px-5 py-3 text-slate-600">{card.remaining_value}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" disabled={!canManage} onClick={() => openEditGiftCard(card)}>Edit</button>{card.status !== 'inactive' ? <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" disabled={!canManage} onClick={() => deactivateGiftCard(card)}>Deactivate</button> : null}</div></td></tr>)}</tbody>
+                        <tbody>{giftCards.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.code}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.customer_name || 'Unassigned'}<div className="text-xs text-slate-500">{card.customer_phone || ''}</div></td><td className="px-5 py-3 text-slate-600">{card.initial_value}</td><td className="px-5 py-3 text-slate-600">{card.remaining_value}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" disabled={!canManage} onClick={() => openEditGiftCard(card)}>Edit</button>{card.assigned_customer_id ? <button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700" disabled={!canManage} onClick={() => unassignGiftCard(card)}>Unassign</button> : null}{card.status !== 'inactive' ? <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" disabled={!canManage} onClick={() => deactivateGiftCard(card)}>Deactivate</button> : null}</div></td></tr>)}</tbody>
                     </table>
                 </div>
             </section>
