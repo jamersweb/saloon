@@ -1,3 +1,14 @@
+import TablePagination from '@/Components/TablePagination';
+import { useEffect, useMemo, useState } from 'react';
+
+const ROWS_PER_PAGE = 10;
+
+const matchesSearch = (values, term) => values
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(term);
+
 export default function RewardsSection({
     fieldError,
     canManage,
@@ -13,6 +24,13 @@ export default function RewardsSection({
     salonServices,
     appointmentsForRedeem,
 }) {
+    const [rewardSearch, setRewardSearch] = useState('');
+    const [rewardStatusFilter, setRewardStatusFilter] = useState('');
+    const [rewardPage, setRewardPage] = useState(1);
+    const [redemptionSearch, setRedemptionSearch] = useState('');
+    const [redemptionRewardFilter, setRedemptionRewardFilter] = useState('');
+    const [redemptionPage, setRedemptionPage] = useState(1);
+
     const selectedRedeemReward = rewards.find((r) => String(r.id) === String(redeemForm.data.loyalty_reward_id));
     const redeemQuantityMax = Math.min(20, selectedRedeemReward?.max_units_per_redemption ?? 20);
     const redeemAppointments = (appointmentsForRedeem || []).filter((a) => String(a.customer_id) === String(redeemForm.data.customer_id));
@@ -21,6 +39,93 @@ export default function RewardsSection({
         allowedServiceIdsForRedeem.length > 0
             ? redeemAppointments.filter((a) => allowedServiceIdsForRedeem.includes(a.service_id))
             : redeemAppointments;
+
+    const filteredRewards = useMemo(() => {
+        const term = rewardSearch.trim().toLowerCase();
+
+        return (rewards || []).filter((reward) => {
+            if (rewardStatusFilter === 'active' && !reward.is_active) {
+                return false;
+            }
+
+            if (rewardStatusFilter === 'inactive' && reward.is_active) {
+                return false;
+            }
+
+            if (!term) {
+                return true;
+            }
+
+            return matchesSearch([
+                reward.name,
+                reward.description,
+                reward.points_cost,
+                reward.stock_quantity,
+                reward.is_active ? 'active' : 'inactive',
+                reward.requires_appointment_id ? 'requires visit' : '',
+                ...(reward.allowed_salon_services || []).map((service) => service.name),
+            ], term);
+        });
+    }, [rewardSearch, rewardStatusFilter, rewards]);
+
+    const redemptionRewardOptions = useMemo(() => (
+        [...new Set((recentRedemptions || []).map((row) => row.reward_name).filter(Boolean))]
+            .sort((a, b) => String(a).localeCompare(String(b)))
+    ), [recentRedemptions]);
+
+    const filteredRedemptions = useMemo(() => {
+        const term = redemptionSearch.trim().toLowerCase();
+
+        return (recentRedemptions || []).filter((row) => {
+            if (redemptionRewardFilter && row.reward_name !== redemptionRewardFilter) {
+                return false;
+            }
+
+            if (!term) {
+                return true;
+            }
+
+            return matchesSearch([
+                row.customer_name,
+                row.reward_name,
+                row.visit_label,
+                row.points_spent,
+                row.redeemed_by,
+                row.created_at ? new Date(row.created_at).toLocaleString() : '',
+            ], term);
+        });
+    }, [recentRedemptions, redemptionRewardFilter, redemptionSearch]);
+
+    const rewardTotalPages = Math.max(1, Math.ceil(filteredRewards.length / ROWS_PER_PAGE));
+    const redemptionTotalPages = Math.max(1, Math.ceil(filteredRedemptions.length / ROWS_PER_PAGE));
+    const rewardPageRows = useMemo(
+        () => filteredRewards.slice((rewardPage - 1) * ROWS_PER_PAGE, rewardPage * ROWS_PER_PAGE),
+        [filteredRewards, rewardPage],
+    );
+    const redemptionPageRows = useMemo(
+        () => filteredRedemptions.slice((redemptionPage - 1) * ROWS_PER_PAGE, redemptionPage * ROWS_PER_PAGE),
+        [filteredRedemptions, redemptionPage],
+    );
+
+    useEffect(() => {
+        setRewardPage(1);
+    }, [rewardSearch, rewardStatusFilter]);
+
+    useEffect(() => {
+        if (rewardPage > rewardTotalPages) {
+            setRewardPage(rewardTotalPages);
+        }
+    }, [rewardPage, rewardTotalPages]);
+
+    useEffect(() => {
+        setRedemptionPage(1);
+    }, [redemptionRewardFilter, redemptionSearch]);
+
+    useEffect(() => {
+        if (redemptionPage > redemptionTotalPages) {
+            setRedemptionPage(redemptionTotalPages);
+        }
+    }, [redemptionPage, redemptionTotalPages]);
 
     return (
         <div className="space-y-6">
@@ -34,7 +139,7 @@ export default function RewardsSection({
                     <div><label className="ta-field-label">Max units / redemption</label><input className="ta-input" type="number" min="1" max="20" placeholder="Default 20" value={rewardForm.data.max_units_per_redemption ?? ''} onChange={(e) => rewardForm.setData('max_units_per_redemption', e.target.value)} />{fieldError(rewardForm, 'max_units_per_redemption')}</div>
                     <div><label className="ta-field-label">Max qty / calendar month</label><input className="ta-input" type="number" min="1" placeholder="Unlimited if empty" value={rewardForm.data.max_redemptions_per_calendar_month ?? ''} onChange={(e) => rewardForm.setData('max_redemptions_per_calendar_month', e.target.value)} />{fieldError(rewardForm, 'max_redemptions_per_calendar_month')}</div>
                     <div><label className="ta-field-label">Min days between</label><input className="ta-input" type="number" min="1" placeholder="No cooldown if empty" value={rewardForm.data.min_days_between_redemptions ?? ''} onChange={(e) => rewardForm.setData('min_days_between_redemptions', e.target.value)} />{fieldError(rewardForm, 'min_days_between_redemptions')}</div>
-                    <label className="flex items-center text-sm text-slate-600 lg:col-span-2"><input type="checkbox" className="mr-2" checked={rewardForm.data.requires_appointment_id} onChange={(e) => rewardForm.setData('requires_appointment_id', e.target.checked)} />Require visit (appointment) to redeem — one redemption per appointment</label>
+                    <label className="flex items-center text-sm text-slate-600 lg:col-span-2"><input type="checkbox" className="mr-2" checked={rewardForm.data.requires_appointment_id} onChange={(e) => rewardForm.setData('requires_appointment_id', e.target.checked)} />Require visit (appointment) to redeem - one redemption per appointment</label>
                     <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={rewardForm.data.is_active} onChange={(e) => rewardForm.setData('is_active', e.target.checked)} />Active</label>
                     <div className="md:col-span-3 lg:col-span-6">
                         <label className="ta-field-label">Eligible services (optional)</label>
@@ -60,12 +165,50 @@ export default function RewardsSection({
                     <button className="ta-btn-primary md:col-span-2 lg:col-span-6" disabled={rewardForm.processing || !canManage}>Add reward</button>
                 </form>
 
+                <div className="mt-4 grid gap-2 md:grid-cols-2 lg:max-w-xl">
+                    <div>
+                        <label className="ta-field-label">Search rewards</label>
+                        <input className="ta-input" value={rewardSearch} onChange={(e) => setRewardSearch(e.target.value)} placeholder="Reward, service, points" />
+                    </div>
+                    <div>
+                        <label className="ta-field-label">Status</label>
+                        <select className="ta-input" value={rewardStatusFilter} onChange={(e) => setRewardStatusFilter(e.target.value)}>
+                            <option value="">All statuses</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div className="mt-4 overflow-x-auto">
                     <table className="min-w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Reward</th><th className="px-4 py-2">Points</th><th className="px-4 py-2">Rules</th><th className="px-4 py-2">Stock</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Actions</th></tr></thead>
-                        <tbody>{rewards.map((reward) => <tr key={reward.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{reward.name}</td><td className="px-4 py-2 text-slate-600">{reward.points_cost}</td><td className="px-4 py-2 text-xs text-slate-600"><div>Max/redeem: {reward.max_units_per_redemption ?? '20'}</div><div>Max/mo: {reward.max_redemptions_per_calendar_month ?? '—'}</div><div>Gap: {reward.min_days_between_redemptions != null ? `${reward.min_days_between_redemptions}d` : '—'}</div>{reward.requires_appointment_id ? <div className="mt-0.5 font-medium text-amber-700">Per visit</div> : null}{(reward.allowed_salon_services || []).length ? <div className="mt-0.5 text-sky-800">Services: {(reward.allowed_salon_services || []).map((s) => s.name).join(', ')}</div> : null}</td><td className="px-4 py-2 text-slate-600">{reward.stock_quantity ?? 'Unlimited'}</td><td className="px-4 py-2"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${reward.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{reward.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-4 py-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700" onClick={() => startEditReward(reward)}>Edit</button></td></tr>)}</tbody>
+                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                            <tr><th className="px-4 py-2">Reward</th><th className="px-4 py-2">Points</th><th className="px-4 py-2">Rules</th><th className="px-4 py-2">Stock</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Actions</th></tr>
+                        </thead>
+                        <tbody>
+                            {rewardPageRows.map((reward) => (
+                                <tr key={reward.id} className="border-t border-slate-100">
+                                    <td className="px-4 py-2 text-slate-700">{reward.name}</td>
+                                    <td className="px-4 py-2 text-slate-600">{reward.points_cost}</td>
+                                    <td className="px-4 py-2 text-xs text-slate-600">
+                                        <div>Max/redeem: {reward.max_units_per_redemption ?? '20'}</div>
+                                        <div>Max/mo: {reward.max_redemptions_per_calendar_month ?? '-'}</div>
+                                        <div>Gap: {reward.min_days_between_redemptions != null ? `${reward.min_days_between_redemptions}d` : '-'}</div>
+                                        {reward.requires_appointment_id ? <div className="mt-0.5 font-medium text-amber-700">Per visit</div> : null}
+                                        {(reward.allowed_salon_services || []).length ? <div className="mt-0.5 text-sky-800">Services: {(reward.allowed_salon_services || []).map((s) => s.name).join(', ')}</div> : null}
+                                    </td>
+                                    <td className="px-4 py-2 text-slate-600">{reward.stock_quantity ?? 'Unlimited'}</td>
+                                    <td className="px-4 py-2"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${reward.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{reward.is_active ? 'Active' : 'Inactive'}</span></td>
+                                    <td className="px-4 py-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700" onClick={() => startEditReward(reward)}>Edit</button></td>
+                                </tr>
+                            ))}
+                            {rewardPageRows.length === 0 ? (
+                                <tr className="border-t border-slate-100"><td className="px-4 py-6 text-sm text-slate-500" colSpan="6">No rewards match the current filters.</td></tr>
+                            ) : null}
+                        </tbody>
                     </table>
                 </div>
+                <TablePagination page={rewardPage} totalPages={rewardTotalPages} totalItems={filteredRewards.length} pageSize={ROWS_PER_PAGE} onPageChange={setRewardPage} itemLabel="rewards" />
             </section>
 
             {editingRewardId && (
@@ -118,13 +261,47 @@ export default function RewardsSection({
             </section>
 
             <section className="ta-card overflow-hidden">
-                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Recent redemptions</h3></div>
+                <div className="border-b border-slate-200 px-5 py-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <h3 className="text-sm font-semibold text-slate-700">Recent redemptions</h3>
+                        <div className="grid w-full gap-2 md:grid-cols-2 lg:max-w-xl">
+                            <div>
+                                <label className="ta-field-label">Search</label>
+                                <input className="ta-input" value={redemptionSearch} onChange={(e) => setRedemptionSearch(e.target.value)} placeholder="Customer, reward, visit, staff" />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Reward</label>
+                                <select className="ta-input" value={redemptionRewardFilter} onChange={(e) => setRedemptionRewardFilter(e.target.value)}>
+                                    <option value="">All rewards</option>
+                                    {redemptionRewardOptions.map((reward) => <option key={reward} value={reward}>{reward}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Reward</th><th className="px-5 py-3">Visit</th><th className="px-5 py-3">Points</th><th className="px-5 py-3">By</th></tr></thead>
-                        <tbody>{recentRedemptions.map((row) => <tr key={row.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{new Date(row.created_at).toLocaleString()}</td><td className="px-5 py-3 text-slate-700">{row.customer_name}</td><td className="px-5 py-3 text-slate-600">{row.reward_name}{row.quantity > 1 ? ` ×${row.quantity}` : ''}</td><td className="px-5 py-3 text-slate-600">{row.visit_label || '—'}</td><td className="px-5 py-3 font-semibold text-red-600">-{row.points_spent}</td><td className="px-5 py-3 text-slate-600">{row.redeemed_by || '-'}</td></tr>)}</tbody>
+                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                            <tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Reward</th><th className="px-5 py-3">Visit</th><th className="px-5 py-3">Points</th><th className="px-5 py-3">By</th></tr>
+                        </thead>
+                        <tbody>
+                            {redemptionPageRows.map((row) => (
+                                <tr key={row.id} className="border-t border-slate-100">
+                                    <td className="px-5 py-3 text-slate-600">{new Date(row.created_at).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-slate-700">{row.customer_name}</td>
+                                    <td className="px-5 py-3 text-slate-600">{row.reward_name}{row.quantity > 1 ? ` x${row.quantity}` : ''}</td>
+                                    <td className="px-5 py-3 text-slate-600">{row.visit_label || '-'}</td>
+                                    <td className="px-5 py-3 font-semibold text-red-600">-{row.points_spent}</td>
+                                    <td className="px-5 py-3 text-slate-600">{row.redeemed_by || '-'}</td>
+                                </tr>
+                            ))}
+                            {redemptionPageRows.length === 0 ? (
+                                <tr className="border-t border-slate-100"><td className="px-5 py-6 text-sm text-slate-500" colSpan="6">No redemptions match the current filters.</td></tr>
+                            ) : null}
+                        </tbody>
                     </table>
                 </div>
+                <TablePagination page={redemptionPage} totalPages={redemptionTotalPages} totalItems={filteredRedemptions.length} pageSize={ROWS_PER_PAGE} onPageChange={setRedemptionPage} itemLabel="redemptions" />
             </section>
         </div>
     );

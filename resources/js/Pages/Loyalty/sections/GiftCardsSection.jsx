@@ -1,7 +1,16 @@
 import SearchableSelect from '@/Components/SearchableSelect';
 import Modal from '@/Components/Modal';
+import TablePagination from '@/Components/TablePagination';
 import { router } from '@inertiajs/react';
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+const ROWS_PER_PAGE = 10;
+
+const matchesSearch = (values, term) => values
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(term);
 
 export default function GiftCardsSection({
     fieldError,
@@ -24,6 +33,15 @@ export default function GiftCardsSection({
 }) {
     const importFileRef = useRef(null);
     const [editingGiftCard, setEditingGiftCard] = useState(null);
+    const [registrySearch, setRegistrySearch] = useState('');
+    const [registryStatusFilter, setRegistryStatusFilter] = useState('');
+    const [registryAssignmentFilter, setRegistryAssignmentFilter] = useState('');
+    const [registryValueFilter, setRegistryValueFilter] = useState('');
+    const [registryPage, setRegistryPage] = useState(1);
+    const [transactionSearch, setTransactionSearch] = useState('');
+    const [transactionTypeFilter, setTransactionTypeFilter] = useState('');
+    const [transactionReasonFilter, setTransactionReasonFilter] = useState('');
+    const [transactionPage, setTransactionPage] = useState(1);
     const [editGiftCardData, setEditGiftCardData] = useState({
         assigned_customer_id: '',
         nfc_uid: '',
@@ -64,6 +82,109 @@ export default function GiftCardsSection({
             value: String(card.id),
             label: `${card.code} (${card.remaining_value})${card.assigned_customer_id ? '' : ' - unassigned'}`,
         }));
+    const giftCardValueOptions = useMemo(() => (
+        [...new Set((giftCards || []).map((card) => String(card.initial_value ?? '')).filter(Boolean))]
+            .sort((a, b) => Number(a) - Number(b))
+    ), [giftCards]);
+    const transactionReasonOptions = useMemo(() => (
+        [...new Set((recentGiftTransactions || []).map((row) => row.reason).filter(Boolean))]
+            .sort((a, b) => String(a).localeCompare(String(b)))
+    ), [recentGiftTransactions]);
+    const filteredGiftCards = useMemo(() => {
+        const term = registrySearch.trim().toLowerCase();
+
+        return (giftCards || []).filter((card) => {
+            if (registryStatusFilter && String(card.status) !== registryStatusFilter) {
+                return false;
+            }
+
+            if (registryAssignmentFilter === 'assigned' && !card.assigned_customer_id) {
+                return false;
+            }
+
+            if (registryAssignmentFilter === 'unassigned' && card.assigned_customer_id) {
+                return false;
+            }
+
+            if (registryValueFilter && String(card.initial_value) !== registryValueFilter) {
+                return false;
+            }
+
+            if (!term) {
+                return true;
+            }
+
+            return matchesSearch([
+                card.code,
+                card.nfc_uid,
+                card.customer_name,
+                card.customer_phone,
+                card.initial_value,
+                card.remaining_value,
+                card.status,
+                card.notes,
+                card.assigned_customer_id ? 'assigned' : 'unassigned inventory',
+            ], term);
+        });
+    }, [giftCards, registryAssignmentFilter, registrySearch, registryStatusFilter, registryValueFilter]);
+    const filteredGiftTransactions = useMemo(() => {
+        const term = transactionSearch.trim().toLowerCase();
+
+        return (recentGiftTransactions || []).filter((row) => {
+            const amount = Number(row.amount_change || 0);
+
+            if (transactionTypeFilter === 'credit' && amount <= 0) {
+                return false;
+            }
+
+            if (transactionTypeFilter === 'debit' && amount >= 0) {
+                return false;
+            }
+
+            if (transactionReasonFilter && String(row.reason) !== transactionReasonFilter) {
+                return false;
+            }
+
+            if (!term) {
+                return true;
+            }
+
+            return matchesSearch([
+                row.gift_code,
+                row.amount_change,
+                row.balance_after,
+                row.reason,
+                row.invoice_label,
+                row.created_at ? new Date(row.created_at).toLocaleString() : '',
+            ], term);
+        });
+    }, [recentGiftTransactions, transactionReasonFilter, transactionSearch, transactionTypeFilter]);
+    const registryTotalPages = Math.max(1, Math.ceil(filteredGiftCards.length / ROWS_PER_PAGE));
+    const transactionTotalPages = Math.max(1, Math.ceil(filteredGiftTransactions.length / ROWS_PER_PAGE));
+    const registryPageRows = useMemo(
+        () => filteredGiftCards.slice((registryPage - 1) * ROWS_PER_PAGE, registryPage * ROWS_PER_PAGE),
+        [filteredGiftCards, registryPage],
+    );
+    const transactionPageRows = useMemo(
+        () => filteredGiftTransactions.slice((transactionPage - 1) * ROWS_PER_PAGE, transactionPage * ROWS_PER_PAGE),
+        [filteredGiftTransactions, transactionPage],
+    );
+    useEffect(() => {
+        setRegistryPage(1);
+    }, [registryAssignmentFilter, registrySearch, registryStatusFilter, registryValueFilter]);
+    useEffect(() => {
+        if (registryPage > registryTotalPages) {
+            setRegistryPage(registryTotalPages);
+        }
+    }, [registryPage, registryTotalPages]);
+    useEffect(() => {
+        setTransactionPage(1);
+    }, [transactionReasonFilter, transactionSearch, transactionTypeFilter]);
+    useEffect(() => {
+        if (transactionPage > transactionTotalPages) {
+            setTransactionPage(transactionTotalPages);
+        }
+    }, [transactionPage, transactionTotalPages]);
     const openEditGiftCard = (card) => {
         setEditingGiftCard(card);
         setEditGiftCardData({
@@ -249,23 +370,98 @@ export default function GiftCardsSection({
             </section>
 
             <section className="ta-card overflow-hidden">
-                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Gift Card Registry</h3></div>
+                <div className="border-b border-slate-200 px-5 py-4">
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-700">Gift Card Registry</h3>
+                            <p className="mt-1 text-xs text-slate-500">Showing cards from gift card inventory only.</p>
+                        </div>
+                        <div className="grid w-full gap-2 md:grid-cols-2 xl:max-w-4xl xl:grid-cols-4">
+                            <div>
+                                <label className="ta-field-label">Search</label>
+                                <input className="ta-input" value={registrySearch} onChange={(e) => setRegistrySearch(e.target.value)} placeholder="Code, customer, phone, UID" />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Status</label>
+                                <select className="ta-input" value={registryStatusFilter} onChange={(e) => setRegistryStatusFilter(e.target.value)}>
+                                    <option value="">All statuses</option>
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                    <option value="redeemed">Redeemed</option>
+                                    <option value="expired">Expired</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Assignment</label>
+                                <select className="ta-input" value={registryAssignmentFilter} onChange={(e) => setRegistryAssignmentFilter(e.target.value)}>
+                                    <option value="">All cards</option>
+                                    <option value="assigned">Assigned</option>
+                                    <option value="unassigned">Unassigned</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Initial value</label>
+                                <select className="ta-input" value={registryValueFilter} onChange={(e) => setRegistryValueFilter(e.target.value)}>
+                                    <option value="">All values</option>
+                                    {giftCardValueOptions.map((value) => <option key={value} value={value}>{value}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Code</th><th className="px-5 py-3">NFC UID</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Initial</th><th className="px-5 py-3">Remaining</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
-                        <tbody>{giftCards.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.code}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.customer_name || 'Unassigned'}<div className="text-xs text-slate-500">{card.customer_phone || ''}</div></td><td className="px-5 py-3 text-slate-600">{card.initial_value}</td><td className="px-5 py-3 text-slate-600">{card.remaining_value}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" disabled={!canManage} onClick={() => openEditGiftCard(card)}>Edit</button>{card.assigned_customer_id ? <button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700" disabled={!canManage} onClick={() => unassignGiftCard(card)}>Unassign</button> : null}{card.status !== 'inactive' ? <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" disabled={!canManage} onClick={() => deactivateGiftCard(card)}>Deactivate</button> : null}</div></td></tr>)}</tbody>
+                        <tbody>
+                            {registryPageRows.map((card) => <tr key={card.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{card.code}</td><td className="px-5 py-3 text-slate-600">{card.nfc_uid || 'Unbound'}</td><td className="px-5 py-3 text-slate-600">{card.customer_name || 'Unassigned'}<div className="text-xs text-slate-500">{card.customer_phone || ''}</div></td><td className="px-5 py-3 text-slate-600">{card.initial_value}</td><td className="px-5 py-3 text-slate-600">{card.remaining_value}</td><td className="px-5 py-3 text-slate-600">{card.status}</td><td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700" disabled={!canManage} onClick={() => openEditGiftCard(card)}>Edit</button>{card.assigned_customer_id ? <button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700" disabled={!canManage} onClick={() => unassignGiftCard(card)}>Unassign</button> : null}{card.status !== 'inactive' ? <button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700" disabled={!canManage} onClick={() => deactivateGiftCard(card)}>Deactivate</button> : null}</div></td></tr>)}
+                            {registryPageRows.length === 0 ? (
+                                <tr className="border-t border-slate-100"><td className="px-5 py-6 text-sm text-slate-500" colSpan="7">No gift cards match the current filters.</td></tr>
+                            ) : null}
+                        </tbody>
                     </table>
                 </div>
+                <TablePagination page={registryPage} totalPages={registryTotalPages} totalItems={filteredGiftCards.length} pageSize={ROWS_PER_PAGE} onPageChange={setRegistryPage} itemLabel="cards" />
             </section>
 
             <section className="ta-card overflow-hidden">
-                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Transactions</h3></div>
+                <div className="border-b border-slate-200 px-5 py-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <h3 className="text-sm font-semibold text-slate-700">Transactions</h3>
+                        <div className="grid w-full gap-2 md:grid-cols-3 lg:max-w-3xl">
+                            <div>
+                                <label className="ta-field-label">Search</label>
+                                <input className="ta-input" value={transactionSearch} onChange={(e) => setTransactionSearch(e.target.value)} placeholder="Gift card, reason, invoice" />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Type</label>
+                                <select className="ta-input" value={transactionTypeFilter} onChange={(e) => setTransactionTypeFilter(e.target.value)}>
+                                    <option value="">All changes</option>
+                                    <option value="credit">Credits</option>
+                                    <option value="debit">Debits</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Reason</label>
+                                <select className="ta-input" value={transactionReasonFilter} onChange={(e) => setTransactionReasonFilter(e.target.value)}>
+                                    <option value="">All reasons</option>
+                                    {transactionReasonOptions.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Gift card</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Balance</th><th className="px-5 py-3">Reason</th><th className="px-5 py-3">Invoice</th></tr></thead>
-                        <tbody>{recentGiftTransactions.map((row) => <tr key={row.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{new Date(row.created_at).toLocaleString()}</td><td className="px-5 py-3 text-slate-700">{row.gift_code}</td><td className="px-5 py-3 text-red-600">{row.amount_change}</td><td className="px-5 py-3 text-slate-700">{row.balance_after}</td><td className="px-5 py-3 text-slate-600">{row.reason}</td><td className="px-5 py-3 text-slate-600">{row.invoice_label || '-'}</td></tr>)}</tbody>
+                        <tbody>
+                            {transactionPageRows.map((row) => <tr key={row.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{new Date(row.created_at).toLocaleString()}</td><td className="px-5 py-3 text-slate-700">{row.gift_code}</td><td className={`px-5 py-3 ${Number(row.amount_change || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{row.amount_change}</td><td className="px-5 py-3 text-slate-700">{row.balance_after}</td><td className="px-5 py-3 text-slate-600">{row.reason}</td><td className="px-5 py-3 text-slate-600">{row.invoice_label || '-'}</td></tr>)}
+                            {transactionPageRows.length === 0 ? (
+                                <tr className="border-t border-slate-100"><td className="px-5 py-6 text-sm text-slate-500" colSpan="6">No transactions match the current filters.</td></tr>
+                            ) : null}
+                        </tbody>
                     </table>
                 </div>
+                <TablePagination page={transactionPage} totalPages={transactionTotalPages} totalItems={filteredGiftTransactions.length} pageSize={ROWS_PER_PAGE} onPageChange={setTransactionPage} itemLabel="transactions" />
             </section>
         </div>
     );

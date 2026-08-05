@@ -1,12 +1,15 @@
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
 import SearchableSelect from '@/Components/SearchableSelect';
+import TablePagination from '@/Components/TablePagination';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 const money = (value, currency = 'AED') => new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(value || 0));
+const ROWS_PER_PAGE = 10;
+const matchesSearch = (values, term) => values.filter(Boolean).join(' ').toLowerCase().includes(term);
 
 export default function RentalsIndex({ agreements, settlements, customers, cost_centers, agreement_types, rental_models }) {
     const { flash, auth, app_currency_code: currencyCode = 'AED' } = usePage().props;
@@ -52,6 +55,12 @@ export default function RentalsIndex({ agreements, settlements, customers, cost_
     const [settlingAgreement, setSettlingAgreement] = useState(null);
     const [deactivateAgreementId, setDeactivateAgreementId] = useState(null);
     const [deactivateBusy, setDeactivateBusy] = useState(false);
+    const [agreementSearch, setAgreementSearch] = useState('');
+    const [agreementStatusFilter, setAgreementStatusFilter] = useState('');
+    const [agreementPage, setAgreementPage] = useState(1);
+    const [settlementSearch, setSettlementSearch] = useState('');
+    const [settlementCostCenterFilter, setSettlementCostCenterFilter] = useState('');
+    const [settlementPage, setSettlementPage] = useState(1);
 
     const startEdit = (agreement) => {
         setEditingAgreement(agreement);
@@ -81,6 +90,90 @@ export default function RentalsIndex({ agreements, settlements, customers, cost_
         });
         settleForm.clearErrors();
     };
+    const filteredAgreements = useMemo(() => {
+        const term = agreementSearch.trim().toLowerCase();
+
+        return (agreements || []).filter((agreement) => {
+            if (agreementStatusFilter === 'active' && !agreement.is_active) {
+                return false;
+            }
+
+            if (agreementStatusFilter === 'inactive' && agreement.is_active) {
+                return false;
+            }
+
+            if (!term) {
+                return true;
+            }
+
+            return matchesSearch([
+                agreement.partner_name,
+                agreement.customer_name,
+                agreement_types[agreement.agreement_type] || agreement.agreement_type,
+                cost_centers[agreement.cost_center] || agreement.cost_center,
+                rental_models[agreement.rental_model] || agreement.rental_model,
+                agreement.fixed_rent_amount,
+                agreement.commission_percent,
+                agreement.start_date,
+                agreement.end_date,
+                agreement.is_active ? 'active' : 'inactive',
+            ], term);
+        });
+    }, [agreementSearch, agreementStatusFilter, agreement_types, agreements, cost_centers, rental_models]);
+    const filteredSettlements = useMemo(() => {
+        const term = settlementSearch.trim().toLowerCase();
+
+        return (settlements || []).filter((settlement) => {
+            if (settlementCostCenterFilter && settlement.cost_center !== settlementCostCenterFilter) {
+                return false;
+            }
+
+            if (!term) {
+                return true;
+            }
+
+            return matchesSearch([
+                settlement.settlement_date,
+                settlement.partner_name,
+                cost_centers[settlement.cost_center] || settlement.cost_center,
+                settlement.gross_sales_amount,
+                settlement.fixed_rent_amount,
+                settlement.commission_amount,
+                settlement.total_amount,
+                settlement.invoice_number,
+            ], term);
+        });
+    }, [cost_centers, settlementCostCenterFilter, settlementSearch, settlements]);
+    const agreementTotalPages = Math.max(1, Math.ceil(filteredAgreements.length / ROWS_PER_PAGE));
+    const settlementTotalPages = Math.max(1, Math.ceil(filteredSettlements.length / ROWS_PER_PAGE));
+    const agreementPageRows = useMemo(
+        () => filteredAgreements.slice((agreementPage - 1) * ROWS_PER_PAGE, agreementPage * ROWS_PER_PAGE),
+        [agreementPage, filteredAgreements],
+    );
+    const settlementPageRows = useMemo(
+        () => filteredSettlements.slice((settlementPage - 1) * ROWS_PER_PAGE, settlementPage * ROWS_PER_PAGE),
+        [filteredSettlements, settlementPage],
+    );
+
+    useEffect(() => {
+        setAgreementPage(1);
+    }, [agreementSearch, agreementStatusFilter]);
+
+    useEffect(() => {
+        if (agreementPage > agreementTotalPages) {
+            setAgreementPage(agreementTotalPages);
+        }
+    }, [agreementPage, agreementTotalPages]);
+
+    useEffect(() => {
+        setSettlementPage(1);
+    }, [settlementCostCenterFilter, settlementSearch]);
+
+    useEffect(() => {
+        if (settlementPage > settlementTotalPages) {
+            setSettlementPage(settlementTotalPages);
+        }
+    }, [settlementPage, settlementTotalPages]);
 
     return (
         <AuthenticatedLayout header="Rental Income">
@@ -121,12 +214,30 @@ export default function RentalsIndex({ agreements, settlements, customers, cost_
                 </section>
 
                 <section className="ta-card overflow-hidden">
-                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Rental agreements</h3></div>
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                            <h3 className="text-sm font-semibold text-slate-700">Rental agreements</h3>
+                            <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl">
+                                <div>
+                                    <label className="ta-field-label">Search</label>
+                                    <input className="ta-input" value={agreementSearch} onChange={(e) => setAgreementSearch(e.target.value)} placeholder="Partner, customer, terms" />
+                                </div>
+                                <div>
+                                    <label className="ta-field-label">Status</label>
+                                    <select className="ta-input" value={agreementStatusFilter} onChange={(e) => setAgreementStatusFilter(e.target.value)}>
+                                        <option value="">All statuses</option>
+                                        <option value="active">Active</option>
+                                        <option value="inactive">Inactive</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Partner</th><th className="px-5 py-3">Type</th><th className="px-5 py-3">Terms</th><th className="px-5 py-3">Dates</th><th className="px-5 py-3">Settlements</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr></thead>
                             <tbody>
-                                {agreements.map((agreement) => (
+                                {agreementPageRows.map((agreement) => (
                                     <tr key={agreement.id} className="border-t border-slate-100 align-top">
                                         <td className="px-5 py-3"><div className="font-medium text-slate-800">{agreement.partner_name}</div><div className="text-xs text-slate-500">{agreement.customer_name || 'Manual partner record'}</div></td>
                                         <td className="px-5 py-3 text-slate-600"><div>{agreement_types[agreement.agreement_type] || agreement.agreement_type}</div><div className="text-xs text-slate-500">{cost_centers[agreement.cost_center] || agreement.cost_center}</div></td>
@@ -143,18 +254,39 @@ export default function RentalsIndex({ agreements, settlements, customers, cost_
                                         </td>
                                     </tr>
                                 ))}
+                                {agreementPageRows.length === 0 ? (
+                                    <tr className="border-t border-slate-100"><td className="px-5 py-6 text-sm text-slate-500" colSpan="7">No rental agreements match the current filters.</td></tr>
+                                ) : null}
                             </tbody>
                         </table>
                     </div>
+                    <TablePagination page={agreementPage} totalPages={agreementTotalPages} totalItems={filteredAgreements.length} pageSize={ROWS_PER_PAGE} onPageChange={setAgreementPage} itemLabel="agreements" />
                 </section>
 
                 <section className="ta-card overflow-hidden">
-                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Recent settlements</h3></div>
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                            <h3 className="text-sm font-semibold text-slate-700">Recent settlements</h3>
+                            <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl">
+                                <div>
+                                    <label className="ta-field-label">Search</label>
+                                    <input className="ta-input" value={settlementSearch} onChange={(e) => setSettlementSearch(e.target.value)} placeholder="Partner, invoice, amount" />
+                                </div>
+                                <div>
+                                    <label className="ta-field-label">Cost center</label>
+                                    <select className="ta-input" value={settlementCostCenterFilter} onChange={(e) => setSettlementCostCenterFilter(e.target.value)}>
+                                        <option value="">All cost centers</option>
+                                        {Object.entries(cost_centers).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Partner</th><th className="px-5 py-3">Gross sales</th><th className="px-5 py-3">Fixed</th><th className="px-5 py-3">Commission</th><th className="px-5 py-3">Total</th><th className="px-5 py-3">Invoice</th></tr></thead>
                             <tbody>
-                                {settlements.map((settlement) => (
+                                {settlementPageRows.map((settlement) => (
                                     <tr key={settlement.id} className="border-t border-slate-100">
                                         <td className="px-5 py-3 text-slate-600">{settlement.settlement_date}</td>
                                         <td className="px-5 py-3 text-slate-600"><div>{settlement.partner_name}</div><div className="text-xs text-slate-500">{cost_centers[settlement.cost_center] || settlement.cost_center}</div></td>
@@ -165,9 +297,13 @@ export default function RentalsIndex({ agreements, settlements, customers, cost_
                                         <td className="px-5 py-3">{settlement.invoice_id ? <Link href={route('finance.invoices.show', settlement.invoice_id)} className="text-indigo-600 hover:underline">{settlement.invoice_number}</Link> : '-'}</td>
                                     </tr>
                                 ))}
+                                {settlementPageRows.length === 0 ? (
+                                    <tr className="border-t border-slate-100"><td className="px-5 py-6 text-sm text-slate-500" colSpan="7">No settlements match the current filters.</td></tr>
+                                ) : null}
                             </tbody>
                         </table>
                     </div>
+                    <TablePagination page={settlementPage} totalPages={settlementTotalPages} totalItems={filteredSettlements.length} pageSize={ROWS_PER_PAGE} onPageChange={setSettlementPage} itemLabel="settlements" />
                 </section>
 
                 <Modal show={Boolean(editingAgreement)} onClose={() => setEditingAgreement(null)} maxWidth="2xl">

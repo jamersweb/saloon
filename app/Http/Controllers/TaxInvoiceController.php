@@ -69,10 +69,37 @@ class TaxInvoiceController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
+        $filters = $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+            'status' => ['nullable', Rule::in([
+                TaxInvoice::STATUS_DRAFT,
+                TaxInvoice::STATUS_FINALIZED,
+                TaxInvoice::STATUS_VOID,
+            ])],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+        ]);
+
         $invoices = TaxInvoice::query()
             ->with(['customer:id,name', 'payments'])
+            ->when($filters['q'] ?? null, function ($query, string $term): void {
+                $query->where(function ($inner) use ($term): void {
+                    $inner
+                        ->where('invoice_number', 'like', "%{$term}%")
+                        ->orWhere('customer_display_name', 'like', "%{$term}%")
+                        ->orWhereHas('customer', function ($customerQuery) use ($term): void {
+                            $customerQuery
+                                ->where('name', 'like', "%{$term}%")
+                                ->orWhere('phone', 'like', "%{$term}%");
+                        });
+                });
+            })
+            ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
+            ->when($filters['date_from'] ?? null, fn ($query, string $date) => $query->whereDate('issued_at', '>=', $date))
+            ->when($filters['date_to'] ?? null, fn ($query, string $date) => $query->whereDate('issued_at', '<=', $date))
             ->latest()
             ->paginate(20)
+            ->withQueryString()
             ->through(function (TaxInvoice $invoice) {
                 return [
                     'id' => $invoice->id,
@@ -89,6 +116,7 @@ class TaxInvoiceController extends Controller
 
         return Inertia::render('Finance/Invoices/Index', [
             'invoices' => $invoices,
+            'filters' => $filters,
         ]);
     }
 

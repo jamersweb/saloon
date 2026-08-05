@@ -1,9 +1,21 @@
 import SearchableSelect from '@/Components/SearchableSelect';
+import TablePagination from '@/Components/TablePagination';
 import { router } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+const ROWS_PER_PAGE = 10;
 
 const formatMoney = (value, currencyCode = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode, minimumFractionDigits: 2 }).format(Number(value || 0));
+
+const matchesTerms = (values, terms) => {
+    if (terms.length === 0) {
+        return true;
+    }
+
+    const haystack = values.filter(Boolean).join(' ').toLowerCase();
+    return terms.every((term) => haystack.includes(term));
+};
 
 const toggleService = (form, serviceId) => {
     const id = Number(serviceId);
@@ -159,7 +171,12 @@ export default function PackagesSection({
     customerPackages,
     salonServices,
 }) {
+    const [packageLibrarySearch, setPackageLibrarySearch] = useState('');
+    const [packageLibraryStatusFilter, setPackageLibraryStatusFilter] = useState('');
+    const [packageLibraryPage, setPackageLibraryPage] = useState(1);
     const [customerPackageSearch, setCustomerPackageSearch] = useState('');
+    const [customerPackageStatusFilter, setCustomerPackageStatusFilter] = useState('');
+    const [customerPackagePage, setCustomerPackagePage] = useState(1);
     const activePackages = packages.filter((pkg) => pkg.is_active);
     const customerOptions = customers.map((customer) => ({
         value: String(customer.id),
@@ -175,6 +192,31 @@ export default function PackagesSection({
             value: String(pkg.id),
             label: `${pkg.customer_name}${pkg.customer_phone ? ` - ${pkg.customer_phone}` : ''} - ${pkg.package_name}`,
         }));
+    const filteredPackages = useMemo(() => {
+        const terms = packageLibrarySearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+        return (packages || []).filter((pkg) => {
+            if (packageLibraryStatusFilter === 'active' && !pkg.is_active) {
+                return false;
+            }
+
+            if (packageLibraryStatusFilter === 'inactive' && pkg.is_active) {
+                return false;
+            }
+
+            return matchesTerms([
+                pkg.name,
+                pkg.description,
+                pkg.price,
+                pkg.usage_limit,
+                pkg.initial_value,
+                pkg.validity_days,
+                pkg.services_per_visit_limit,
+                pkg.is_active ? 'active' : 'inactive',
+                ...(pkg.salon_services || []).map((service) => service.name),
+            ], terms);
+        });
+    }, [packageLibrarySearch, packageLibraryStatusFilter, packages]);
     const filteredCustomerPackages = useMemo(() => {
         const terms = customerPackageSearch
             .trim()
@@ -182,24 +224,49 @@ export default function PackagesSection({
             .split(/\s+/)
             .filter(Boolean);
 
-        if (terms.length === 0) {
-            return customerPackages;
-        }
-
         return customerPackages.filter((pkg) => {
-            const searchable = [
+            if (customerPackageStatusFilter && String(pkg.status) !== customerPackageStatusFilter) {
+                return false;
+            }
+
+            return matchesTerms([
                 pkg.customer_name,
                 pkg.customer_phone,
                 pkg.package_name,
                 pkg.status,
-            ]
-                .filter(Boolean)
-                .join(' ')
-                .toLowerCase();
-
-            return terms.every((term) => searchable.includes(term));
+            ], terms);
         });
-    }, [customerPackageSearch, customerPackages]);
+    }, [customerPackageSearch, customerPackageStatusFilter, customerPackages]);
+    const packageLibraryTotalPages = Math.max(1, Math.ceil(filteredPackages.length / ROWS_PER_PAGE));
+    const customerPackageTotalPages = Math.max(1, Math.ceil(filteredCustomerPackages.length / ROWS_PER_PAGE));
+    const packageLibraryPageRows = useMemo(
+        () => filteredPackages.slice((packageLibraryPage - 1) * ROWS_PER_PAGE, packageLibraryPage * ROWS_PER_PAGE),
+        [filteredPackages, packageLibraryPage],
+    );
+    const customerPackagePageRows = useMemo(
+        () => filteredCustomerPackages.slice((customerPackagePage - 1) * ROWS_PER_PAGE, customerPackagePage * ROWS_PER_PAGE),
+        [filteredCustomerPackages, customerPackagePage],
+    );
+
+    useEffect(() => {
+        setPackageLibraryPage(1);
+    }, [packageLibrarySearch, packageLibraryStatusFilter]);
+
+    useEffect(() => {
+        if (packageLibraryPage > packageLibraryTotalPages) {
+            setPackageLibraryPage(packageLibraryTotalPages);
+        }
+    }, [packageLibraryPage, packageLibraryTotalPages]);
+
+    useEffect(() => {
+        setCustomerPackagePage(1);
+    }, [customerPackageSearch, customerPackageStatusFilter]);
+
+    useEffect(() => {
+        if (customerPackagePage > customerPackageTotalPages) {
+            setCustomerPackagePage(customerPackageTotalPages);
+        }
+    }, [customerPackagePage, customerPackageTotalPages]);
 
     return (
         <div className="space-y-6">
@@ -235,8 +302,26 @@ export default function PackagesSection({
 
             <section className="ta-card overflow-hidden">
                 <div className="border-b border-slate-200 px-5 py-4">
-                    <h3 className="text-sm font-semibold text-slate-700">Package library</h3>
-                    <p className="mt-1 text-xs text-slate-500">Manage package templates before assigning them to customers.</p>
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-700">Package library</h3>
+                            <p className="mt-1 text-xs text-slate-500">Manage package templates before assigning them to customers.</p>
+                        </div>
+                        <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl">
+                            <div>
+                                <label className="ta-field-label">Search</label>
+                                <input className="ta-input" value={packageLibrarySearch} onChange={(e) => setPackageLibrarySearch(e.target.value)} placeholder="Package, service, price" />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Status</label>
+                                <select className="ta-input" value={packageLibraryStatusFilter} onChange={(e) => setPackageLibraryStatusFilter(e.target.value)}>
+                                    <option value="">All statuses</option>
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                     {fieldError({ errors: packageForm.errors }, 'packages')}
                 </div>
                 <div className="overflow-x-auto">
@@ -252,7 +337,7 @@ export default function PackagesSection({
                             </tr>
                         </thead>
                         <tbody>
-                            {packages.map((pkg) => (
+                            {packageLibraryPageRows.map((pkg) => (
                                 <tr key={pkg.id} className="border-t border-slate-100 align-top">
                                     <td className="px-5 py-4 text-slate-700">
                                         <div className="font-medium">{pkg.name}</div>
@@ -296,9 +381,15 @@ export default function PackagesSection({
                                     </td>
                                 </tr>
                             ))}
+                            {packageLibraryPageRows.length === 0 ? (
+                                <tr className="border-t border-slate-100">
+                                    <td className="px-5 py-6 text-sm text-slate-500" colSpan="6">No packages match the current filters.</td>
+                                </tr>
+                            ) : null}
                         </tbody>
                     </table>
                 </div>
+                <TablePagination page={packageLibraryPage} totalPages={packageLibraryTotalPages} totalItems={filteredPackages.length} pageSize={ROWS_PER_PAGE} onPageChange={setPackageLibraryPage} itemLabel="packages" />
             </section>
 
             <section className="ta-card p-5">
@@ -329,14 +420,26 @@ export default function PackagesSection({
                             <h3 className="text-sm font-semibold text-slate-700">Customer packages</h3>
                             <p className="mt-1 text-xs text-slate-500">Search by client name, phone, package, or status.</p>
                         </div>
-                        <div className="w-full md:w-80">
-                            <label className="ta-field-label">Find client</label>
-                            <input
-                                className="ta-input"
-                                value={customerPackageSearch}
-                                onChange={(e) => setCustomerPackageSearch(e.target.value)}
-                                placeholder="Type client name, e.g. Raheel"
-                            />
+                        <div className="grid w-full gap-2 sm:grid-cols-2 md:max-w-xl">
+                            <div>
+                                <label className="ta-field-label">Search</label>
+                                <input
+                                    className="ta-input"
+                                    value={customerPackageSearch}
+                                    onChange={(e) => setCustomerPackageSearch(e.target.value)}
+                                    placeholder="Client, phone, package"
+                                />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Status</label>
+                                <select className="ta-input" value={customerPackageStatusFilter} onChange={(e) => setCustomerPackageStatusFilter(e.target.value)}>
+                                    <option value="">All statuses</option>
+                                    <option value="active">Active</option>
+                                    <option value="used">Used</option>
+                                    <option value="expired">Expired</option>
+                                    <option value="inactive">Inactive</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -344,7 +447,7 @@ export default function PackagesSection({
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Package</th><th className="px-5 py-3">Sessions</th><th className="px-5 py-3">Value</th><th className="px-5 py-3">Status</th></tr></thead>
                         <tbody>
-                            {filteredCustomerPackages.map((pkg) => (
+                            {customerPackagePageRows.map((pkg) => (
                                 <tr key={pkg.id} className="border-t border-slate-100">
                                     <td className="px-5 py-3 text-slate-700">
                                         <div className="font-medium">{pkg.customer_name}</div>
@@ -356,7 +459,7 @@ export default function PackagesSection({
                                     <td className="px-5 py-3 text-slate-600">{pkg.status}</td>
                                 </tr>
                             ))}
-                            {filteredCustomerPackages.length === 0 ? (
+                            {customerPackagePageRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
                                     <td className="px-5 py-6 text-sm text-slate-500" colSpan="5">No customer packages match this search.</td>
                                 </tr>
@@ -364,6 +467,7 @@ export default function PackagesSection({
                         </tbody>
                     </table>
                 </div>
+                <TablePagination page={customerPackagePage} totalPages={customerPackageTotalPages} totalItems={filteredCustomerPackages.length} pageSize={ROWS_PER_PAGE} onPageChange={setCustomerPackagePage} itemLabel="customer packages" />
             </section>
         </div>
     );

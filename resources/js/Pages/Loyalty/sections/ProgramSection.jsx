@@ -1,3 +1,14 @@
+import TablePagination from '@/Components/TablePagination';
+import { useEffect, useMemo, useState } from 'react';
+
+const ROWS_PER_PAGE = 10;
+
+const matchesSearch = (values, term) => values
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(term);
+
 export default function ProgramSection({
     fieldError,
     canManage,
@@ -9,14 +20,60 @@ export default function ProgramSection({
     editTierForm,
     setEditingTierId,
 }) {
+    const [tierSearch, setTierSearch] = useState('');
+    const [tierStatusFilter, setTierStatusFilter] = useState('');
+    const [tierPage, setTierPage] = useState(1);
+
+    const filteredTiers = useMemo(() => {
+        const term = tierSearch.trim().toLowerCase();
+
+        return (tiers || []).filter((tier) => {
+            if (tierStatusFilter === 'active' && !tier.is_active) {
+                return false;
+            }
+
+            if (tierStatusFilter === 'inactive' && tier.is_active) {
+                return false;
+            }
+
+            if (!term) {
+                return true;
+            }
+
+            return matchesSearch([
+                tier.name,
+                tier.min_points,
+                tier.discount_percent,
+                tier.earn_multiplier,
+                tier.is_active ? 'active' : 'inactive',
+            ], term);
+        });
+    }, [tierSearch, tierStatusFilter, tiers]);
+
+    const tierTotalPages = Math.max(1, Math.ceil(filteredTiers.length / ROWS_PER_PAGE));
+    const tierPageRows = useMemo(
+        () => filteredTiers.slice((tierPage - 1) * ROWS_PER_PAGE, tierPage * ROWS_PER_PAGE),
+        [filteredTiers, tierPage],
+    );
+
+    useEffect(() => {
+        setTierPage(1);
+    }, [tierSearch, tierStatusFilter]);
+
+    useEffect(() => {
+        if (tierPage > tierTotalPages) {
+            setTierPage(tierTotalPages);
+        }
+    }, [tierPage, tierTotalPages]);
+
     return (
         <div className="space-y-6">
             <section className="ta-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Auto earn rules</h3>
                 <p className="mb-3 text-xs text-slate-600">How customers earn points from visits and spend. These apply when appointments are completed.</p>
                 <p className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                    Vina loyalty card PDF: tiers are Queen (10% / 1×), Titanium (15% / 1.5×), Gold (30% / 3×). Match that here under loyalty tiers. For ~1 point per AED 10 net before the tier multiplier, set{' '}
-                    <span className="font-medium text-slate-700">points per currency</span> to <span className="font-mono text-slate-800">0.1</span> (seeded default). PDF welcome bonuses (100 / 200 / 300 pts) are not auto-issued yet—record them once from the Points section if you use them.
+                    Vina loyalty card PDF: tiers are Queen (10% / 1x), Titanium (15% / 1.5x), Gold (30% / 3x). Match that here under loyalty tiers. For about 1 point per AED 10 net before the tier multiplier, set{' '}
+                    <span className="font-medium text-slate-700">points per currency</span> to <span className="font-mono text-slate-800">0.1</span> (seeded default). PDF welcome bonuses (100 / 200 / 300 pts) are not auto-issued yet - record them once from the Points section if you use them.
                 </p>
                 <form onSubmit={(e) => { e.preventDefault(); settingsForm.patch(route('loyalty.settings.update')); }} className="grid gap-3 md:grid-cols-5">
                     <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={settingsForm.data.auto_earn_enabled} onChange={(e) => settingsForm.setData('auto_earn_enabled', e.target.checked)} />Enable auto earn on completed appointment</label>{fieldError(settingsForm, 'auto_earn_enabled')}</div>
@@ -44,17 +101,39 @@ export default function ProgramSection({
             </section>
 
             <section className="ta-card overflow-hidden">
-                <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Tier rules</h3></div>
+                <div className="border-b border-slate-200 px-5 py-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <h3 className="text-sm font-semibold text-slate-700">Tier rules</h3>
+                        <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl">
+                            <div>
+                                <label className="ta-field-label">Search</label>
+                                <input className="ta-input" value={tierSearch} onChange={(e) => setTierSearch(e.target.value)} placeholder="Tier, points, discount" />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Status</label>
+                                <select className="ta-input" value={tierStatusFilter} onChange={(e) => setTierStatusFilter(e.target.value)}>
+                                    <option value="">All statuses</option>
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Tier</th><th className="px-5 py-3">Min points</th><th className="px-5 py-3">Discount</th><th className="px-5 py-3">Multiplier</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
                         <tbody>
-                            {tiers.map((tier) => (
+                            {tierPageRows.map((tier) => (
                                 <tr key={tier.id} className="border-t border-slate-100"><td className="px-5 py-3 font-medium text-slate-700">{tier.name}</td><td className="px-5 py-3 text-slate-600">{tier.min_points}</td><td className="px-5 py-3 text-slate-600">{tier.discount_percent}%</td><td className="px-5 py-3 text-slate-600">{tier.earn_multiplier}x</td><td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tier.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{tier.is_active ? 'Active' : 'Inactive'}</span></td><td className="px-5 py-3"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEditTier(tier)}>Edit</button></td></tr>
                             ))}
+                            {tierPageRows.length === 0 ? (
+                                <tr className="border-t border-slate-100"><td className="px-5 py-6 text-sm text-slate-500" colSpan="6">No tiers match the current filters.</td></tr>
+                            ) : null}
                         </tbody>
                     </table>
                 </div>
+                <TablePagination page={tierPage} totalPages={tierTotalPages} totalItems={filteredTiers.length} pageSize={ROWS_PER_PAGE} onPageChange={setTierPage} itemLabel="tiers" />
             </section>
 
             {editingTierId && (

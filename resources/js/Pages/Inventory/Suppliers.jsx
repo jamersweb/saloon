@@ -1,10 +1,13 @@
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import Modal from '@/Components/Modal';
+import TablePagination from '@/Components/TablePagination';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
+const ROWS_PER_PAGE = 10;
+const matchesSearch = (values, term) => values.filter(Boolean).join(' ').toLowerCase().includes(term);
 
 export default function SuppliersIndex({ suppliers }) {
     const { flash, auth } = usePage().props;
@@ -12,6 +15,9 @@ export default function SuppliersIndex({ suppliers }) {
     const [editingId, setEditingId] = useState(null);
     const [deactivateId, setDeactivateId] = useState(null);
     const [deactivateBusy, setDeactivateBusy] = useState(false);
+    const [supplierSearch, setSupplierSearch] = useState('');
+    const [supplierStatusFilter, setSupplierStatusFilter] = useState('');
+    const [supplierPage, setSupplierPage] = useState(1);
 
     const createForm = useForm({ name: '', contact_person: '', phone: '', email: '', address: '', is_active: true });
     const editForm = useForm({ name: '', contact_person: '', phone: '', email: '', address: '', is_active: true });
@@ -33,6 +39,47 @@ export default function SuppliersIndex({ suppliers }) {
         setEditingId(null);
         editForm.clearErrors();
     };
+    const filteredSuppliers = useMemo(() => {
+        const term = supplierSearch.trim().toLowerCase();
+
+        return (suppliers || []).filter((supplier) => {
+            if (supplierStatusFilter === 'active' && !supplier.is_active) {
+                return false;
+            }
+
+            if (supplierStatusFilter === 'inactive' && supplier.is_active) {
+                return false;
+            }
+
+            if (!term) {
+                return true;
+            }
+
+            return matchesSearch([
+                supplier.name,
+                supplier.contact_person,
+                supplier.phone,
+                supplier.email,
+                supplier.address,
+                supplier.is_active ? 'active' : 'inactive',
+            ], term);
+        });
+    }, [supplierSearch, supplierStatusFilter, suppliers]);
+    const supplierTotalPages = Math.max(1, Math.ceil(filteredSuppliers.length / ROWS_PER_PAGE));
+    const supplierPageRows = useMemo(
+        () => filteredSuppliers.slice((supplierPage - 1) * ROWS_PER_PAGE, supplierPage * ROWS_PER_PAGE),
+        [filteredSuppliers, supplierPage],
+    );
+
+    useEffect(() => {
+        setSupplierPage(1);
+    }, [supplierSearch, supplierStatusFilter]);
+
+    useEffect(() => {
+        if (supplierPage > supplierTotalPages) {
+            setSupplierPage(supplierTotalPages);
+        }
+    }, [supplierPage, supplierTotalPages]);
 
     return (
         <AuthenticatedLayout header="Suppliers">
@@ -53,12 +100,30 @@ export default function SuppliersIndex({ suppliers }) {
                 </section>
 
                 <section className="ta-card overflow-hidden">
-                    <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Supplier Directory</h3></div>
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                            <h3 className="text-sm font-semibold text-slate-700">Supplier Directory</h3>
+                            <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-xl">
+                                <div>
+                                    <label className="ta-field-label">Search</label>
+                                    <input className="ta-input" value={supplierSearch} onChange={(e) => setSupplierSearch(e.target.value)} placeholder="Name, phone, email" />
+                                </div>
+                                <div>
+                                    <label className="ta-field-label">Status</label>
+                                    <select className="ta-input" value={supplierStatusFilter} onChange={(e) => setSupplierStatusFilter(e.target.value)}>
+                                        <option value="">All statuses</option>
+                                        <option value="active">Active</option>
+                                        <option value="inactive">Inactive</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Name</th><th className="px-5 py-3">Contact</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
                             <tbody>
-                                {suppliers.map((supplier) => (
+                                {supplierPageRows.map((supplier) => (
                                     <tr key={supplier.id} className="border-t border-slate-100">
                                         <td className="px-5 py-3 font-medium text-slate-700">{supplier.name}</td>
                                         <td className="px-5 py-3 text-slate-600">{supplier.contact_person || '-'}</td>
@@ -68,9 +133,13 @@ export default function SuppliersIndex({ suppliers }) {
                                         <td className="px-5 py-3"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEdit(supplier)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => setDeactivateId(supplier.id)}>Deactivate</button></div></td>
                                     </tr>
                                 ))}
+                                {supplierPageRows.length === 0 ? (
+                                    <tr className="border-t border-slate-100"><td className="px-5 py-6 text-sm text-slate-500" colSpan="6">No suppliers match the current filters.</td></tr>
+                                ) : null}
                             </tbody>
                         </table>
                     </div>
+                    <TablePagination page={supplierPage} totalPages={supplierTotalPages} totalItems={filteredSuppliers.length} pageSize={ROWS_PER_PAGE} onPageChange={setSupplierPage} itemLabel="suppliers" />
                 </section>
 
                 <Modal show={Boolean(editingId)} onClose={closeEditModal} maxWidth="2xl">

@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 
 const money = (value) =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: 'AED', minimumFractionDigits: 2 }).format(Number(value || 0));
@@ -13,8 +13,25 @@ const statusBadge = (status) => {
     return map[status] || 'bg-slate-100 text-slate-700';
 };
 
-export default function FinanceInvoicesIndex({ invoices }) {
+export default function FinanceInvoicesIndex({ invoices, filters = {} }) {
     const { flash } = usePage().props;
+    const filterForm = useForm({
+        q: filters.q || '',
+        status: filters.status || '',
+        date_from: filters.date_from || '',
+        date_to: filters.date_to || '',
+    });
+    const applyFilters = (e) => {
+        e.preventDefault();
+        filterForm.get(route('finance.invoices.index'), {
+            preserveScroll: true,
+            preserveState: true,
+        });
+    };
+    const clearFilters = () => {
+        filterForm.reset('q', 'status', 'date_from', 'date_to');
+        router.get(route('finance.invoices.index'), {}, { preserveScroll: true });
+    };
 
     return (
         <AuthenticatedLayout header="Tax invoices">
@@ -33,6 +50,36 @@ export default function FinanceInvoicesIndex({ invoices }) {
                 </div>
 
                 <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <form onSubmit={applyFilters} className="grid gap-2 md:grid-cols-5 md:items-end">
+                            <div className="md:col-span-2">
+                                <label className="ta-field-label">Search</label>
+                                <input className="ta-input" value={filterForm.data.q} onChange={(e) => filterForm.setData('q', e.target.value)} placeholder="Invoice, customer, phone" />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Status</label>
+                                <select className="ta-input" value={filterForm.data.status} onChange={(e) => filterForm.setData('status', e.target.value)}>
+                                    <option value="">All statuses</option>
+                                    <option value="draft">Draft</option>
+                                    <option value="finalized">Finalized</option>
+                                    <option value="void">Void</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="ta-field-label">From</label>
+                                <input className="ta-input" type="date" value={filterForm.data.date_from} onChange={(e) => filterForm.setData('date_from', e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">To</label>
+                                <input className="ta-input" type="date" value={filterForm.data.date_to} onChange={(e) => filterForm.setData('date_to', e.target.value)} />
+                            </div>
+                            <div className="flex gap-2 md:col-span-5">
+                                <button className="ta-btn-primary" disabled={filterForm.processing}>Apply filters</button>
+                                <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={clearFilters}>Clear</button>
+                                <span className="self-center text-xs text-slate-500">Showing {invoices.from || 0}-{invoices.to || 0} of {invoices.total || 0}</span>
+                            </div>
+                        </form>
+                    </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
@@ -66,6 +113,11 @@ export default function FinanceInvoicesIndex({ invoices }) {
                                         </td>
                                     </tr>
                                 ))}
+                                {invoices.data.length === 0 ? (
+                                    <tr className="border-t border-slate-100">
+                                        <td className="px-5 py-6 text-sm text-slate-500" colSpan="8">No invoices match the current filters.</td>
+                                    </tr>
+                                ) : null}
                             </tbody>
                         </table>
                     </div>
