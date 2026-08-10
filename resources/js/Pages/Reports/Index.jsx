@@ -5,7 +5,7 @@ import { useState } from 'react';
 const toMoney = (value, currencyCode = 'AED') => new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(value || 0));
 const isMoneyMetric = (key) => key.includes('revenue') || key.includes('payment');
 
-function HorizontalBarChart({ rows, labelKey, valueKey, colorClass }) {
+function HorizontalBarChart({ rows, labelKey, valueKey, colorClass, valueFormatter = (value) => value }) {
     const max = Math.max(...rows.map((row) => Number(row[valueKey] || 0)), 1);
 
     return (
@@ -17,7 +17,7 @@ function HorizontalBarChart({ rows, labelKey, valueKey, colorClass }) {
                     <div key={`${row[labelKey]}-${idx}`}>
                         <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
                             <span className="truncate pr-3">{row[labelKey]}</span>
-                            <span className="font-semibold text-slate-700">{value}</span>
+                            <span className="font-semibold text-slate-700">{valueFormatter(value)}</span>
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                             <div className={`h-2 rounded-full ${colorClass}`} style={{ width: `${width}%` }} />
@@ -66,7 +66,7 @@ function RevenueTrendChart({ data, currencyCode }) {
     );
 }
 
-export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, clientRevenue = [], rentalAnalytics = { summary: {}, partners: [] }, marketingSpend = [], currencyCode = 'AED' }) {
+export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, staffServiceSales = [], dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, clientRevenue = [], rentalAnalytics = { summary: {}, partners: [] }, marketingSpend = [], currencyCode = 'AED' }) {
     const { auth } = usePage().props;
     const canExport = Boolean(auth?.permissions?.can_export_reports);
     const [filterForm, setFilterForm] = useState({
@@ -156,6 +156,7 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                         <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('client_revenue')}>Client Revenue CSV</button>
                         <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('marketing_campaigns')}>Campaign Spend CSV</button>
                         <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('rentals')}>Rental CSV</button>
+                        <button className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm disabled:opacity-50" disabled={!canExport} onClick={() => exportReport('staff_services')}>Staff Services CSV</button>
                         <button className="w-full rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-700 disabled:opacity-50" disabled={!canExport} onClick={() => exportPdf('summary')}>Summary PDF</button>
                         <button className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 disabled:opacity-50" disabled={!canExport} onClick={() => exportPdf('service')}>Service Report PDF</button>
                     </div>
@@ -203,14 +204,55 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                     <div className="ta-card overflow-hidden">
                         <div className="border-b border-slate-200 px-5 py-4"><h3 className="text-sm font-semibold text-slate-700">Top Staff (Chart + Table)</h3></div>
                         <div className="space-y-4 p-5">
-                            <HorizontalBarChart rows={staffPerformance} labelKey="staff_name" valueKey="total" colorClass="bg-amber-500" />
+                            <HorizontalBarChart rows={staffPerformance} labelKey="staff_name" valueKey="revenue" colorClass="bg-amber-500" valueFormatter={(value) => toMoney(value, currencyCode)} />
                             <div className="overflow-x-auto">
                                 <table className="min-w-full text-sm">
-                                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Staff</th><th className="px-5 py-3">Appointments</th></tr></thead>
-                                    <tbody>{staffPerformance.map((row, idx) => <tr key={`${row.staff_name}-${idx}`} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{row.staff_name}</td><td className="px-5 py-3 text-slate-600">{row.total}</td></tr>)}</tbody>
+                                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Staff</th><th className="px-5 py-3">Services</th><th className="px-5 py-3">Sales</th></tr></thead>
+                                    <tbody>{staffPerformance.map((row, idx) => <tr key={`${row.staff_name}-${idx}`} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-700">{row.staff_name}</td><td className="px-5 py-3 text-slate-600">{row.total}</td><td className="px-5 py-3 font-semibold text-slate-700">{toMoney(row.revenue, currencyCode)}</td></tr>)}</tbody>
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </section>
+
+                <section className="ta-card overflow-hidden">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <h3 className="text-sm font-semibold text-slate-700">Staff Service Sales</h3>
+                    </div>
+                    <div className="overflow-x-auto p-5">
+                        <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th className="px-4 py-2">Staff</th>
+                                    <th className="px-4 py-2">Service</th>
+                                    <th className="px-4 py-2">Completed Lines</th>
+                                    <th className="px-4 py-2">Qty</th>
+                                    <th className="px-4 py-2">Subtotal</th>
+                                    <th className="px-4 py-2">Discount</th>
+                                    <th className="px-4 py-2">VAT</th>
+                                    <th className="px-4 py-2">Sales</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {staffServiceSales.map((row, idx) => (
+                                    <tr key={`${row.staff_name}-${row.service_name}-${idx}`} className="border-t border-slate-100">
+                                        <td className="px-4 py-2 text-slate-700">{row.staff_name}</td>
+                                        <td className="px-4 py-2 text-slate-700">{row.service_name}</td>
+                                        <td className="px-4 py-2 text-slate-600">{row.service_count}</td>
+                                        <td className="px-4 py-2 text-slate-600">{row.quantity}</td>
+                                        <td className="px-4 py-2 text-slate-600">{toMoney(row.subtotal, currencyCode)}</td>
+                                        <td className="px-4 py-2 text-slate-600">{toMoney(row.discount_amount, currencyCode)}</td>
+                                        <td className="px-4 py-2 text-slate-600">{toMoney(row.tax, currencyCode)}</td>
+                                        <td className="px-4 py-2 font-semibold text-slate-700">{toMoney(row.total, currencyCode)}</td>
+                                    </tr>
+                                ))}
+                                {staffServiceSales.length === 0 && (
+                                    <tr className="border-t border-slate-100">
+                                        <td colSpan="8" className="px-4 py-6 text-center text-sm text-slate-500">No completed staff service sales found for this date range.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </section>
 

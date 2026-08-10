@@ -454,6 +454,98 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(84.0, $report['servicePerformance'][1]['revenue']);
     }
 
+    public function test_staff_service_sales_groups_services_and_sales_by_staff(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Staff Sales Client', 'INV-STAFF-1');
+
+        $extraService = SalonService::create([
+            'name' => 'Nail Polish',
+            'category' => 'Nails',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 80,
+            'is_active' => true,
+        ]);
+
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Hair Styling',
+            'quantity' => 2,
+            'unit_price' => 75,
+            'discount_amount' => 10,
+            'line_subtotal' => 140,
+            'tax_rate_percent' => 5,
+            'line_tax' => 7,
+            'line_total' => 147,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $extraService->id,
+            'description' => 'Nail Polish',
+            'quantity' => 1,
+            'unit_price' => 80,
+            'discount_amount' => 0,
+            'line_subtotal' => 80,
+            'tax_rate_percent' => 5,
+            'line_tax' => 4,
+            'line_total' => 84,
+        ]);
+
+        $controller = app(ReportController::class);
+        $dateFrom = Carbon::parse('2026-05-21')->startOfDay();
+        $dateTo = Carbon::parse('2026-05-21')->endOfDay();
+
+        $method = new ReflectionMethod(ReportController::class, 'staffServiceSalesRows');
+        $method->setAccessible(true);
+
+        $rows = collect($method->invoke($controller, $dateFrom, $dateTo))->keyBy('service_name');
+
+        $this->assertSame('Nadia Stylist', $rows['Hair Styling']['staff_name']);
+        $this->assertSame(1, $rows['Hair Styling']['service_count']);
+        $this->assertSame(2.0, $rows['Hair Styling']['quantity']);
+        $this->assertSame(147.0, $rows['Hair Styling']['total']);
+        $this->assertSame(84.0, $rows['Nail Polish']['total']);
+
+        $reportMethod = new ReflectionMethod(ReportController::class, 'collectReportData');
+        $reportMethod->setAccessible(true);
+        $report = $reportMethod->invoke($controller, $dateFrom, $dateTo);
+
+        $this->assertSame(231.0, $report['staffPerformance'][0]['revenue']);
+        $this->assertSame(2, $report['staffPerformance'][0]['total']);
+        $this->assertCount(2, $report['staffServiceSales']);
+    }
+
+    public function test_staff_services_csv_export_includes_service_sales_by_staff(): void
+    {
+        $manager = $this->managerUser();
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Staff CSV Client', 'INV-STAFF-CSV');
+
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Hair Styling',
+            'quantity' => 2,
+            'unit_price' => 75,
+            'discount_amount' => 10,
+            'line_subtotal' => 140,
+            'tax_rate_percent' => 5,
+            'line_tax' => 7,
+            'line_total' => 147,
+        ]);
+
+        $response = $this->actingAs($manager)
+            ->get(route('reports.export', [
+                'type' => 'staff_services',
+                'date_from' => '2026-05-21',
+                'date_to' => '2026-05-21',
+            ]));
+
+        $response->assertOk();
+
+        $csv = $response->streamedContent();
+
+        $this->assertStringContainsString('Staff,Service,"Completed Lines",Quantity,Subtotal,Discount,VAT,"Sales Total"', $csv);
+        $this->assertStringContainsString('"Nadia Stylist","Hair Styling",1,2,140,10,7,147', $csv);
+    }
+
     /**
      * @return array{Appointment, TaxInvoice}
      */

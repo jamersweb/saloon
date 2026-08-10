@@ -18,7 +18,7 @@
             padding: 2.5rem 1rem;
         }
         .card {
-            background: #fff;
+            background: #f7f4f2;
             border-radius: 18px;
             padding: 1.65rem;
             box-shadow: 0 8px 28px rgba(61, 43, 40, 0.08);
