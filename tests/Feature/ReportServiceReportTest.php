@@ -512,6 +512,10 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(231.0, $report['staffPerformance'][0]['revenue']);
         $this->assertSame(2, $report['staffPerformance'][0]['total']);
         $this->assertCount(2, $report['staffServiceSales']);
+        $this->assertSame('Nadia Stylist', $report['staffServiceTotals'][0]['staff_name']);
+        $this->assertSame(231.0, $report['staffServiceTotals'][0]['total']);
+        $this->assertSame(115.5, $report['staffServiceTotals'][0]['avg_sale_per_line']);
+        $this->assertSame(100.0, $report['staffServiceTotals'][0]['sales_percent']);
     }
 
     public function test_staff_services_csv_export_includes_service_sales_by_staff(): void
@@ -542,8 +546,11 @@ class ReportServiceReportTest extends TestCase
 
         $csv = $response->streamedContent();
 
-        $this->assertStringContainsString('Staff,Service,"Completed Lines",Quantity,Subtotal,Discount,VAT,"Sales Total"', $csv);
-        $this->assertStringContainsString('"Nadia Stylist","Hair Styling",1,2,140,10,7,147', $csv);
+        $this->assertStringContainsString('"Row Type",Staff,Service,"Completed Lines",Quantity,Subtotal,Discount,VAT,"Sales Total","Avg Sale / Line","% of Month Sales"', $csv);
+        $this->assertStringContainsString('"Staff Summary","Nadia Stylist","All services",1,2,140,10,7,147,147,100', $csv);
+        $this->assertStringContainsString('Detail,"Nadia Stylist","Hair Styling",1,2,140,10,7,147,147,100', $csv);
+        $this->assertStringContainsString('"Staff Total","Nadia Stylist","All services",1,2,140,10,7,147,147,100', $csv);
+        $this->assertStringContainsString('"Grand Total","Grand Total","All staff services",1,2,140,10,7,147,147,100', $csv);
     }
 
     /**

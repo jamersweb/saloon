@@ -51,6 +51,7 @@ class ReportController extends Controller
             'servicePerformance' => $report['servicePerformance'],
             'staffPerformance' => $report['staffPerformance'],
             'staffServiceSales' => $report['staffServiceSales'],
+            'staffServiceTotals' => $report['staffServiceTotals'],
             'dailyRevenue' => $report['dailyRevenue'],
             'waitingTimeByStaff' => $report['waitingTimeByStaff'],
             'lateMinutesByStaff' => $report['lateMinutesByStaff'],
@@ -187,17 +188,8 @@ class ReportController extends Controller
                 break;
 
             case 'staff_services':
-                $headers = ['Staff', 'Service', 'Completed Lines', 'Quantity', 'Subtotal', 'Discount', 'VAT', 'Sales Total'];
-                $rows = array_map(fn (array $row) => [
-                    $row['staff_name'],
-                    $row['service_name'],
-                    $row['service_count'],
-                    $row['quantity'],
-                    $row['subtotal'],
-                    $row['discount_amount'],
-                    $row['tax'],
-                    $row['total'],
-                ], $this->staffServiceSalesRows($dateFrom, $dateTo));
+                $headers = ['Row Type', 'Staff', 'Service', 'Completed Lines', 'Quantity', 'Subtotal', 'Discount', 'VAT', 'Sales Total', 'Avg Sale / Line', '% of Month Sales'];
+                $rows = $this->staffServiceSalesCsvRows($dateFrom, $dateTo);
                 break;
         }
 
@@ -380,12 +372,14 @@ class ReportController extends Controller
      */
     private function staffServiceSalesRowsFromServiceRows(array $rows): array
     {
+        $monthTotal = (float) collect($rows)->sum(fn (array $row) => (float) ($row['total'] ?? 0));
+
         return collect($rows)
             ->groupBy(fn (array $row) => implode('|', [
                 (string) ($row['staff_name'] ?: 'Unassigned'),
                 (string) ($row['service_name'] ?: 'Unknown service'),
             ]))
-            ->map(function (Collection $group, string $key): array {
+            ->map(function (Collection $group, string $key) use ($monthTotal): array {
                 [$staffName, $serviceName] = array_pad(explode('|', $key, 2), 2, '');
 
                 return [
@@ -397,6 +391,8 @@ class ReportController extends Controller
                     'discount_amount' => round((float) $group->sum(fn (array $row) => (float) ($row['discount_amount'] ?? 0)), 2),
                     'tax' => round((float) $group->sum(fn (array $row) => (float) ($row['tax'] ?? 0)), 2),
                     'total' => round((float) $group->sum(fn (array $row) => (float) ($row['total'] ?? 0)), 2),
+                    'avg_sale_per_line' => round($group->count() > 0 ? (float) $group->sum(fn (array $row) => (float) ($row['total'] ?? 0)) / $group->count() : 0, 2),
+                    'sales_percent' => $monthTotal > 0 ? round(((float) $group->sum(fn (array $row) => (float) ($row['total'] ?? 0)) / $monthTotal) * 100, 2) : 0.0,
                 ];
             })
             ->sortBy([
@@ -406,6 +402,117 @@ class ReportController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array{staff_name: string, service_count: int, quantity: float, subtotal: float, discount_amount: float, tax: float, total: float, avg_sale_per_line: float, sales_percent: float}>
+     */
+    private function staffServiceTotalsRowsFromStaffServiceRows(array $rows): array
+    {
+        $monthTotal = (float) collect($rows)->sum(fn (array $row) => (float) ($row['total'] ?? 0));
+
+        return collect($rows)
+            ->groupBy(fn (array $row) => (string) ($row['staff_name'] ?: 'Unassigned'))
+            ->map(function (Collection $group, string $staffName) use ($monthTotal): array {
+                $serviceCount = (int) $group->sum(fn (array $row) => (int) ($row['service_count'] ?? 0));
+                $total = (float) $group->sum(fn (array $row) => (float) ($row['total'] ?? 0));
+
+                return [
+                    'staff_name' => $staffName,
+                    'service_count' => $serviceCount,
+                    'quantity' => round((float) $group->sum(fn (array $row) => (float) ($row['quantity'] ?? 0)), 2),
+                    'subtotal' => round((float) $group->sum(fn (array $row) => (float) ($row['subtotal'] ?? 0)), 2),
+                    'discount_amount' => round((float) $group->sum(fn (array $row) => (float) ($row['discount_amount'] ?? 0)), 2),
+                    'tax' => round((float) $group->sum(fn (array $row) => (float) ($row['tax'] ?? 0)), 2),
+                    'total' => round($total, 2),
+                    'avg_sale_per_line' => round($serviceCount > 0 ? $total / $serviceCount : 0, 2),
+                    'sales_percent' => $monthTotal > 0 ? round(($total / $monthTotal) * 100, 2) : 0.0,
+                ];
+            })
+            ->sortByDesc('total')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array<int, mixed>>
+     */
+    private function staffServiceSalesCsvRows(Carbon $dateFrom, Carbon $dateTo): array
+    {
+        $serviceRows = $this->staffServiceSalesRows($dateFrom, $dateTo);
+        $staffTotalsRows = $this->staffServiceTotalsRowsFromStaffServiceRows($serviceRows);
+        $staffTotals = collect($staffTotalsRows)->keyBy('staff_name');
+        $grandTotal = $this->staffServiceGrandTotalRow($serviceRows);
+        $rows = [];
+
+        foreach ($staffTotalsRows as $row) {
+            $rows[] = $this->staffServiceCsvRow('Staff Summary', $row, 'All services');
+        }
+
+        if ($rows !== []) {
+            $rows[] = $this->staffServiceCsvRow('Grand Total', $grandTotal, 'All staff services');
+            $rows[] = array_fill(0, 11, '');
+        }
+
+        foreach (collect($serviceRows)->groupBy('staff_name') as $staffName => $staffRows) {
+            foreach ($staffRows as $row) {
+                $rows[] = $this->staffServiceCsvRow('Detail', $row, $row['service_name']);
+            }
+
+            if ($staffTotals->has((string) $staffName)) {
+                $rows[] = $this->staffServiceCsvRow('Staff Total', $staffTotals[(string) $staffName], 'All services');
+                $rows[] = array_fill(0, 11, '');
+            }
+        }
+
+        if ($rows !== []) {
+            $rows[] = $this->staffServiceCsvRow('Grand Total', $grandTotal, 'All staff services');
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{staff_name: string, service_count: int, quantity: float, subtotal: float, discount_amount: float, tax: float, total: float, avg_sale_per_line: float, sales_percent: float}
+     */
+    private function staffServiceGrandTotalRow(array $rows): array
+    {
+        $serviceCount = (int) collect($rows)->sum(fn (array $row) => (int) ($row['service_count'] ?? 0));
+        $total = (float) collect($rows)->sum(fn (array $row) => (float) ($row['total'] ?? 0));
+
+        return [
+            'staff_name' => 'Grand Total',
+            'service_count' => $serviceCount,
+            'quantity' => round((float) collect($rows)->sum(fn (array $row) => (float) ($row['quantity'] ?? 0)), 2),
+            'subtotal' => round((float) collect($rows)->sum(fn (array $row) => (float) ($row['subtotal'] ?? 0)), 2),
+            'discount_amount' => round((float) collect($rows)->sum(fn (array $row) => (float) ($row['discount_amount'] ?? 0)), 2),
+            'tax' => round((float) collect($rows)->sum(fn (array $row) => (float) ($row['tax'] ?? 0)), 2),
+            'total' => round($total, 2),
+            'avg_sale_per_line' => round($serviceCount > 0 ? $total / $serviceCount : 0, 2),
+            'sales_percent' => $total > 0 ? 100.0 : 0.0,
+        ];
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    private function staffServiceCsvRow(string $rowType, array $row, string $serviceName): array
+    {
+        return [
+            $rowType,
+            $row['staff_name'],
+            $serviceName,
+            $row['service_count'],
+            $row['quantity'],
+            $row['subtotal'],
+            $row['discount_amount'],
+            $row['tax'],
+            $row['total'],
+            $row['avg_sale_per_line'],
+            $row['sales_percent'],
+        ];
     }
 
     /**
@@ -940,6 +1047,7 @@ class ReportController extends Controller
             ->all();
 
         $staffServiceSales = $this->staffServiceSalesRowsFromServiceRows($serviceReportRows);
+        $staffServiceTotals = $this->staffServiceTotalsRowsFromStaffServiceRows($staffServiceSales);
 
         $staffPerformance = collect($serviceReportRows)
             ->groupBy(fn (array $row) => (string) ($row['staff_name'] ?: 'Unassigned'))
@@ -1024,6 +1132,7 @@ class ReportController extends Controller
             'servicePerformance' => $servicePerformance,
             'staffPerformance' => $staffPerformance,
             'staffServiceSales' => $staffServiceSales,
+            'staffServiceTotals' => $staffServiceTotals,
             'dailyRevenue' => $dailyRevenue,
             'waitingTimeByStaff' => $waitingTimeByStaff,
             'lateMinutesByStaff' => $lateMinutesByStaff,

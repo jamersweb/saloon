@@ -3,6 +3,7 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
 const toMoney = (value, currencyCode = 'AED') => new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(value || 0));
+const toPercent = (value) => `${Number(value || 0).toFixed(2)}%`;
 const isMoneyMetric = (key) => key.includes('revenue') || key.includes('payment');
 
 function HorizontalBarChart({ rows, labelKey, valueKey, colorClass, valueFormatter = (value) => value }) {
@@ -66,7 +67,7 @@ function RevenueTrendChart({ data, currencyCode }) {
     );
 }
 
-export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, staffServiceSales = [], dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, clientRevenue = [], rentalAnalytics = { summary: {}, partners: [] }, marketingSpend = [], currencyCode = 'AED' }) {
+export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, staffServiceSales = [], staffServiceTotals = [], dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, clientRevenue = [], rentalAnalytics = { summary: {}, partners: [] }, marketingSpend = [], currencyCode = 'AED' }) {
     const { auth } = usePage().props;
     const canExport = Boolean(auth?.permissions?.can_export_reports);
     const [filterForm, setFilterForm] = useState({
@@ -117,6 +118,16 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
         const params = currentParams({ report });
         window.location.href = `${route('reports.export.pdf')}?${params.toString()}`;
     };
+
+    const staffServicesGrandTotal = staffServiceTotals.reduce((total, row) => ({
+        service_count: total.service_count + Number(row.service_count || 0),
+        quantity: total.quantity + Number(row.quantity || 0),
+        total: total.total + Number(row.total || 0),
+    }), { service_count: 0, quantity: 0, total: 0 });
+
+    staffServicesGrandTotal.avg_sale_per_line = staffServicesGrandTotal.service_count > 0
+        ? staffServicesGrandTotal.total / staffServicesGrandTotal.service_count
+        : 0;
 
     const statusRows = Object.entries(statusBreakdown).map(([status, total]) => ({ status: status.replaceAll('_', ' '), total }));
 
@@ -219,7 +230,50 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                     <div className="border-b border-slate-200 px-5 py-4">
                         <h3 className="text-sm font-semibold text-slate-700">Staff Service Sales</h3>
                     </div>
-                    <div className="overflow-x-auto p-5">
+                    <div className="space-y-5 p-5">
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                                    <tr>
+                                        <th className="px-4 py-2">Staff Total</th>
+                                        <th className="px-4 py-2">Completed Lines</th>
+                                        <th className="px-4 py-2">Qty</th>
+                                        <th className="px-4 py-2">Sales</th>
+                                        <th className="px-4 py-2">Avg Sale / Line</th>
+                                        <th className="px-4 py-2">% of Month</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {staffServiceTotals.map((row, idx) => (
+                                        <tr key={`${row.staff_name}-total-${idx}`} className="border-t border-slate-100">
+                                            <td className="px-4 py-2 font-semibold text-slate-700">{row.staff_name}</td>
+                                            <td className="px-4 py-2 text-slate-600">{row.service_count}</td>
+                                            <td className="px-4 py-2 text-slate-600">{row.quantity}</td>
+                                            <td className="px-4 py-2 font-semibold text-slate-700">{toMoney(row.total, currencyCode)}</td>
+                                            <td className="px-4 py-2 text-slate-600">{toMoney(row.avg_sale_per_line, currencyCode)}</td>
+                                            <td className="px-4 py-2 text-slate-600">{toPercent(row.sales_percent)}</td>
+                                        </tr>
+                                    ))}
+                                    {staffServiceTotals.length > 0 && (
+                                        <tr className="border-t border-slate-300 bg-slate-50">
+                                            <td className="px-4 py-2 font-bold text-slate-800">Grand Total</td>
+                                            <td className="px-4 py-2 font-semibold text-slate-700">{staffServicesGrandTotal.service_count}</td>
+                                            <td className="px-4 py-2 font-semibold text-slate-700">{staffServicesGrandTotal.quantity}</td>
+                                            <td className="px-4 py-2 font-bold text-slate-800">{toMoney(staffServicesGrandTotal.total, currencyCode)}</td>
+                                            <td className="px-4 py-2 font-semibold text-slate-700">{toMoney(staffServicesGrandTotal.avg_sale_per_line, currencyCode)}</td>
+                                            <td className="px-4 py-2 font-semibold text-slate-700">100.00%</td>
+                                        </tr>
+                                    )}
+                                    {staffServiceTotals.length === 0 && (
+                                        <tr className="border-t border-slate-100">
+                                            <td colSpan="6" className="px-4 py-6 text-center text-sm text-slate-500">No staff totals found for this date range.</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                                 <tr>
@@ -231,6 +285,8 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                                     <th className="px-4 py-2">Discount</th>
                                     <th className="px-4 py-2">VAT</th>
                                     <th className="px-4 py-2">Sales</th>
+                                    <th className="px-4 py-2">Avg Sale / Line</th>
+                                    <th className="px-4 py-2">% of Month</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -244,15 +300,18 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                                         <td className="px-4 py-2 text-slate-600">{toMoney(row.discount_amount, currencyCode)}</td>
                                         <td className="px-4 py-2 text-slate-600">{toMoney(row.tax, currencyCode)}</td>
                                         <td className="px-4 py-2 font-semibold text-slate-700">{toMoney(row.total, currencyCode)}</td>
+                                        <td className="px-4 py-2 text-slate-600">{toMoney(row.avg_sale_per_line, currencyCode)}</td>
+                                        <td className="px-4 py-2 text-slate-600">{toPercent(row.sales_percent)}</td>
                                     </tr>
                                 ))}
                                 {staffServiceSales.length === 0 && (
                                     <tr className="border-t border-slate-100">
-                                        <td colSpan="8" className="px-4 py-6 text-center text-sm text-slate-500">No completed staff service sales found for this date range.</td>
+                                        <td colSpan="10" className="px-4 py-6 text-center text-sm text-slate-500">No completed staff service sales found for this date range.</td>
                                     </tr>
                                 )}
                             </tbody>
                         </table>
+                        </div>
                     </div>
                 </section>
 
