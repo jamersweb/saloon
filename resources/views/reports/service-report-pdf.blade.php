@@ -5,17 +5,18 @@
     <title>Service Reports</title>
     <style>
         body { font-family: DejaVu Sans, sans-serif; color: #0f172a; font-size: 10px; }
-        h1 { margin: 0 0 8px; font-size: 20px; }
+        .report-header { background: #111827; color: #fff; padding: 12px 14px; margin: -8px -8px 12px; }
+        h1 { margin: 0 0 5px; font-size: 20px; font-weight: 800; }
         .muted { color: #475569; }
         .filters { margin: 8px 0 14px; }
         .cards { width: 100%; border-collapse: separate; border-spacing: 8px; margin: 4px 0 14px; }
-        .card { border: 1px solid #cbd5e1; padding: 8px; }
-        .card-label { color: #64748b; font-size: 9px; text-transform: uppercase; }
-        .card-value { font-size: 14px; font-weight: 700; margin-top: 3px; }
+        .card { border: 1px solid #cbd5e1; padding: 8px; background: #f8fafc; }
+        .card-label { color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 800; }
+        .card-value { font-size: 14px; font-weight: 800; margin-top: 3px; }
         .grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .grid th, .grid td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: left; vertical-align: top; }
-        .grid th { background: #f8fafc; font-size: 9px; text-transform: uppercase; color: #475569; }
-        .grid tfoot td { background: #f8fafc; font-weight: 700; }
+        .grid th { background: #e2e8f0; font-size: 9px; text-transform: uppercase; color: #0f172a; font-weight: 800; }
+        .grid tfoot td { background: #fef3c7; font-weight: 800; }
         .date { width: 66px; }
         .customer { width: 102px; }
         .invoice { width: 78px; }
@@ -28,8 +29,10 @@
     </style>
 </head>
 <body>
-    <h1>Service Reports</h1>
-    <p class="muted">Range: {{ $dateFrom->toDateString() }} to {{ $dateTo->toDateString() }}</p>
+    <div class="report-header">
+        <h1>Service Reports</h1>
+        <div>Range: {{ $dateFrom->toDateString() }} to {{ $dateTo->toDateString() }}</div>
+    </div>
     <div class="filters muted">
         @if($filters['customer_name'] !== '')
             Customer: {{ $filters['customer_name'] }}
