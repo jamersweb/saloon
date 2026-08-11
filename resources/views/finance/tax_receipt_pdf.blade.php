@@ -168,7 +168,7 @@
 
     <div class="muted receipt-meta" style="margin-top:5px;">Customer / <span class="ar">العميل</span>: <strong>{{ $invoice->customer_display_name }}</strong></div>
     @if($settings->tax_registration_number)
-        <div class="muted">TRN: {{ $settings->tax_registration_number }}</div>
+        <div class="muted">TRN no: {{ $settings->tax_registration_number }}</div>
     @endif
     <div class="muted receipt-meta">Invoice / <span class="ar">رقم الفاتورة</span>: <strong>{{ $invoice->invoice_number }}</strong></div>
     @if($invoice->cashier_name)

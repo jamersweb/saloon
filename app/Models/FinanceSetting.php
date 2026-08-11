@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class FinanceSetting extends Model
 {
+    public const DEFAULT_TAX_REGISTRATION_NUMBER = '100483523500003';
+
     protected $fillable = [
         'business_name',
         'address_line',
@@ -44,6 +46,7 @@ class FinanceSetting extends Model
             ['id' => 1],
             [
                 'business_name' => 'Vina Luxury Beauty Salon',
+                'tax_registration_number' => self::DEFAULT_TAX_REGISTRATION_NUMBER,
                 'vat_rate_percent' => 5,
                 'invoice_prefix' => 'RCT',
                 'next_invoice_number' => 1,

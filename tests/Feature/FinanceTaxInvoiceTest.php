@@ -432,6 +432,7 @@ class FinanceTaxInvoiceTest extends TestCase
 
         $html = TaxReceiptPdfView::shapedHtml($invoice->fresh());
 
+        $this->assertStringContainsString('TRN no: 100483523500003', $html);
         $this->assertStringContainsString('Payment Method', $html);
         $this->assertStringContainsString('Discount', $html);
         $this->assertStringContainsString('10.00', $html);
