@@ -214,7 +214,7 @@ class ReportController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager');
 
         $data = $request->validate([
-            'report' => ['nullable', Rule::in(['summary', 'service'])],
+            'report' => ['nullable', Rule::in(['summary', 'service', 'staff_services'])],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
             'customer_name' => ['nullable', 'string', 'max:255'],
@@ -228,6 +228,23 @@ class ReportController extends Controller
             'invoice_number' => trim((string) ($data['invoice_number'] ?? '')),
         ];
         $reportType = $data['report'] ?? 'summary';
+
+        if ($reportType === 'staff_services') {
+            $serviceRows = $this->staffServiceSalesRows($dateFrom, $dateTo);
+            $staffTotalsRows = $this->staffServiceTotalsRowsFromStaffServiceRows($serviceRows);
+            $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
+
+            $pdf = Pdf::loadView('reports.staff-services-pdf', [
+                'dateFrom' => $dateFrom,
+                'dateTo' => $dateTo,
+                'currencyCode' => $currencyCode,
+                'staffTotalsRows' => $staffTotalsRows,
+                'serviceRows' => $serviceRows,
+                'grandTotal' => $this->staffServiceGrandTotalRow($serviceRows),
+            ])->setPaper('a4', 'landscape');
+
+            return $pdf->download(sprintf('staff-services-report-%s.pdf', now()->format('Ymd-His')));
+        }
 
         if ($reportType === 'service') {
             $serviceReports = $this->collectServiceReportRows($dateFrom, $dateTo, $serviceReportFilters, true);

@@ -553,6 +553,35 @@ class ReportServiceReportTest extends TestCase
         $this->assertStringContainsString('"Grand Total","Grand Total","All staff services",1,2,140,10,7,147,147,100', $csv);
     }
 
+    public function test_staff_services_pdf_export_downloads_pdf(): void
+    {
+        $manager = $this->managerUser();
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Staff PDF Client', 'INV-STAFF-PDF');
+
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Hair Styling',
+            'quantity' => 2,
+            'unit_price' => 75,
+            'discount_amount' => 10,
+            'line_subtotal' => 140,
+            'tax_rate_percent' => 5,
+            'line_tax' => 7,
+            'line_total' => 147,
+        ]);
+
+        $response = $this->actingAs($manager)
+            ->get(route('reports.export.pdf', [
+                'report' => 'staff_services',
+                'date_from' => '2026-05-21',
+                'date_to' => '2026-05-21',
+            ]));
+
+        $response->assertOk();
+        $this->assertStringStartsWith('%PDF-', $response->getContent());
+        $this->assertStringContainsString('staff-services-report-', (string) $response->headers->get('content-disposition'));
+    }
+
     /**
      * @return array{Appointment, TaxInvoice}
      */

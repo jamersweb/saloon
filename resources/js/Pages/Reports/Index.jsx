@@ -271,7 +271,7 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                         <ExportButton disabled={!canExport} onClick={() => exportReport('client_revenue')}>Client Revenue CSV</ExportButton>
                         <ExportButton disabled={!canExport} onClick={() => exportReport('marketing_campaigns')}>Campaign Spend CSV</ExportButton>
                         <ExportButton disabled={!canExport} onClick={() => exportReport('rentals')}>Rental CSV</ExportButton>
-                        <ExportButton disabled={!canExport} onClick={() => exportReport('staff_services')}>Staff Services CSV</ExportButton>
+                        <ExportButton variant="pdf" disabled={!canExport} onClick={() => exportPdf('staff_services')}>Staff Services PDF</ExportButton>
                         <ExportButton variant="pdf" disabled={!canExport} onClick={() => exportPdf('summary')}>Summary PDF</ExportButton>
                         <ExportButton variant="pdf" disabled={!canExport} onClick={() => exportPdf('service')}>Service Report PDF</ExportButton>
                     </div>
