@@ -656,7 +656,7 @@ class ReportController extends Controller
         }
 
         $invoices = TaxInvoice::query()
-            ->with('items.staffProfile.user:id,name')
+            ->with(['customer:id,name', 'items.staffProfile.user:id,name'])
             ->where('status', '!=', TaxInvoice::STATUS_VOID)
             ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
             ->orderByRaw('invoice_number IS NULL')
@@ -685,6 +685,8 @@ class ReportController extends Controller
             if ($invoiceAppointments->isEmpty()) {
                 continue;
             }
+
+            $invoice->items->each(fn (TaxInvoiceItem $item) => $item->setRelation('taxInvoice', $invoice));
 
             foreach ($this->assignInvoiceItemsToAppointments($invoiceAppointments, $invoice->items) as $appointmentId => $appointmentItems) {
                 $items[$appointmentId] = ($items[$appointmentId] ?? collect())->concat($appointmentItems);
@@ -832,10 +834,10 @@ class ReportController extends Controller
             'id' => sprintf('%d-%d-%d', $appointment->id, $item->tax_invoice_id, $item->id ?: $index),
             'appointment_id' => $appointment->id,
             'date' => optional($appointment->scheduled_start)->format('Y-m-d H:i'),
-            'customer_name' => $appointment->customer?->name ?: $appointment->customer_name,
+            'customer_name' => $this->serviceReportCustomerName($appointment, $item),
             'customer_phone' => $appointment->customer_phone,
-            'invoice_number' => $invoiceNumber,
-            'invoice_ids' => $invoiceIds,
+            'invoice_number' => $this->serviceReportInvoiceNumber($item, $invoiceNumber),
+            'invoice_ids' => $item->tax_invoice_id ? [(int) $item->tax_invoice_id] : $invoiceIds,
             'service_name' => $item->description ?: $appointment->service?->name,
             'quantity' => round((float) $item->quantity, 2),
             'unit_price' => round((float) $item->unit_price, 2),
@@ -846,6 +848,24 @@ class ReportController extends Controller
             'staff_name' => $item->staffProfile?->user?->name ?: $appointment->staffProfile?->user?->name,
             'service_report' => $appointment->notes,
         ];
+    }
+
+    private function serviceReportCustomerName(Appointment $appointment, TaxInvoiceItem $item): string
+    {
+        $invoice = $item->relationLoaded('taxInvoice') ? $item->taxInvoice : null;
+        $invoiceCustomerName = trim((string) ($invoice?->customer_display_name ?: $invoice?->customer?->name));
+
+        return $invoiceCustomerName !== ''
+            ? $invoiceCustomerName
+            : (string) ($appointment->customer?->name ?: $appointment->customer_name);
+    }
+
+    private function serviceReportInvoiceNumber(TaxInvoiceItem $item, string $fallbackInvoiceNumber): string
+    {
+        $invoice = $item->relationLoaded('taxInvoice') ? $item->taxInvoice : null;
+        $invoiceNumber = trim((string) $invoice?->invoice_number);
+
+        return $invoiceNumber !== '' ? $invoiceNumber : $fallbackInvoiceNumber;
     }
 
     /**

@@ -282,6 +282,39 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(784.88, $rows->firstWhere('service_name', 'Hair Extension coloring Large')['total']);
     }
 
+    public function test_service_report_invoice_item_rows_use_billed_customer_name(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Bhakita / Debbie', 'RCT00192');
+
+        $invoice->update([
+            'customer_display_name' => 'Ayat / Debbie',
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Micro Blading Eyebrow Touchup (First 3 months)',
+            'quantity' => 1,
+            'unit_price' => 0,
+            'discount_amount' => 0,
+            'line_subtotal' => 0,
+            'tax_rate_percent' => 5,
+            'line_tax' => 0,
+            'line_total' => 0,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = $method->invoke(app(ReportController::class), Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(), [
+            'customer_name' => '',
+            'invoice_number' => 'RCT00192',
+        ]);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Ayat / Debbie', $rows[0]['customer_name']);
+        $this->assertSame('RCT00192', $rows[0]['invoice_number']);
+        $this->assertSame([$invoice->id], $rows[0]['invoice_ids']);
+    }
+
     public function test_appointments_csv_export_includes_invoice_number_and_service_report(): void
     {
         $manager = $this->managerUser();
