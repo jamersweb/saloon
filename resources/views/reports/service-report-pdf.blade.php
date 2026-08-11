@@ -9,10 +9,11 @@
         h1 { margin: 0 0 5px; font-size: 20px; font-weight: 800; }
         .muted { color: #475569; }
         .filters { margin: 8px 0 14px; }
-        .cards { width: 100%; border-collapse: separate; border-spacing: 8px; margin: 4px 0 14px; }
-        .card { border: 1px solid #cbd5e1; padding: 8px; background: #f8fafc; }
-        .card-label { color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 800; }
-        .card-value { font-size: 14px; font-weight: 800; margin-top: 3px; }
+        .cards { width: 100%; border-collapse: separate; border-spacing: 8px; margin: 4px 0 14px; table-layout: fixed; }
+        .card { width: 25%; border: 1px solid #cbd5e1; padding: 8px; background: #f8fafc; }
+        .card-label { color: #64748b; font-size: 9px; line-height: 1.25; text-transform: uppercase; font-weight: 800; }
+        .card-value { font-size: 13px; line-height: 1.2; font-weight: 800; margin-top: 3px; white-space: normal; word-break: break-word; }
+        .card-spacer { width: 25%; }
         .grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .grid th, .grid td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: left; vertical-align: top; }
         .grid th { background: #e2e8f0; font-size: 9px; text-transform: uppercase; color: #0f172a; font-weight: 800; }
@@ -61,6 +62,8 @@
                 <div class="card-label">Tax</div>
                 <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['tax'], 2) }}</div>
             </td>
+        </tr>
+        <tr>
             <td class="card">
                 <div class="card-label">Final Earning</div>
                 <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['total'], 2) }}</div>
@@ -73,6 +76,7 @@
                 <div class="card-label">Card Total Payment</div>
                 <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['card_total_payment'], 2) }}</div>
             </td>
+            <td class="card-spacer"></td>
         </tr>
     </table>
 

@@ -28,6 +28,7 @@ final class TaxReceiptPdfView
             'invoice' => $invoice,
             'settlement_summary' => self::settlementSummary($invoice),
             'logo_placeholder' => self::LOGO_PLACEHOLDER,
+            'receipt_trn' => $settings->tax_registration_number ?: FinanceSetting::DEFAULT_TAX_REGISTRATION_NUMBER,
         ];
     }
 

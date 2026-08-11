@@ -13,10 +13,11 @@
         .grid th, .grid td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
         .grid th { background: #e2e8f0; color: #0f172a; font-size: 10px; font-weight: 800; text-transform: uppercase; }
         .grid tfoot td { background: #fef3c7; font-weight: 800; }
-        .cards { width: 100%; border-collapse: separate; border-spacing: 8px; margin-top: 6px; }
-        .card { border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; background: #f8fafc; }
-        .card-label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 800; }
-        .card-value { font-size: 16px; font-weight: 800; margin-top: 4px; }
+        .cards { width: 100%; border-collapse: separate; border-spacing: 8px; margin-top: 6px; table-layout: fixed; }
+        .card { width: 25%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; background: #f8fafc; }
+        .card-label { font-size: 9px; line-height: 1.25; text-transform: uppercase; color: #64748b; font-weight: 800; }
+        .card-value { font-size: 14px; line-height: 1.2; font-weight: 800; margin-top: 4px; white-space: normal; word-break: break-word; }
+        .card-spacer { width: 25%; }
         .right { text-align: right; }
     </style>
 </head>
@@ -37,14 +38,19 @@
 
     <h2>Overview</h2>
     <table class="cards">
-        <tr>
-            @foreach($overview as $key => $value)
-                <td class="card">
-                    <div class="card-label">{{ str_replace('_', ' ', $key) }}</div>
-                    <div class="card-value">{{ str_contains($key, 'revenue') || str_contains($key, 'payment') ? $currencyCode . ' ' . number_format((float) $value, 2) : $value }}</div>
-                </td>
-            @endforeach
-        </tr>
+        @foreach(collect($overview)->chunk(4) as $row)
+            <tr>
+                @foreach($row as $key => $value)
+                    <td class="card">
+                        <div class="card-label">{{ str_replace('_', ' ', $key) }}</div>
+                        <div class="card-value">{{ str_contains($key, 'revenue') || str_contains($key, 'payment') ? $currencyCode . ' ' . number_format((float) $value, 2) : $value }}</div>
+                    </td>
+                @endforeach
+                @for($i = $row->count(); $i < 4; $i++)
+                    <td class="card-spacer"></td>
+                @endfor
+            </tr>
+        @endforeach
     </table>
 
     <h2>Appointment Status</h2>
