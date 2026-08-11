@@ -5,20 +5,19 @@
     <title>Staff Services Report</title>
     <style>
         @page { margin: 18px 20px 28px; }
-        body { font-family: DejaVu Sans, sans-serif; color: #0f172a; font-size: 8px; }
-        .report-header { background: #0f766e; color: #fff; padding: 14px 16px; margin: -6px -6px 12px; text-align: center; }
-        h1 { margin: 0 0 6px; font-size: 22px; font-weight: 800; }
-        .subtitle { font-size: 10px; font-weight: 700; color: #d1fae5; }
-        h2 { margin: 14px 0 0; font-size: 12px; background: #111827; color: #fff; padding: 7px 9px; font-weight: 800; }
+        body { font-family: DejaVu Sans, sans-serif; color: #000; font-size: 8px; }
+        .report-header { margin-bottom: 12px; text-align: center; }
+        h1 { margin: 0 0 6px; font-size: 18px; font-weight: 700; }
+        .subtitle { font-size: 10px; }
+        h2 { margin: 14px 0 0; font-size: 12px; font-weight: 700; }
         .grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .grid th, .grid td { border: 1px solid #cbd5e1; padding: 4px 4px; vertical-align: top; word-wrap: break-word; overflow-wrap: anywhere; }
-        .grid th { background: #164e63; color: #fff; font-size: 7px; text-transform: uppercase; font-weight: 800; text-align: center; }
-        .summary-row td { background: #eff6ff; color: #1e3a8a; }
-        .staff-total td { background: #ecfdf5; color: #065f46; font-weight: 800; }
-        .grand-total td { background: #0f766e; color: #fff; font-weight: 800; }
+        .grid th, .grid td { border: 1px solid #000; padding: 4px 4px; vertical-align: top; word-wrap: break-word; overflow-wrap: anywhere; }
+        .grid th { font-size: 7px; text-transform: uppercase; font-weight: 700; text-align: center; }
+        .staff-total td,
+        .grand-total td { font-weight: 700; }
         .right { text-align: right; white-space: nowrap; }
         .center { text-align: center; }
-        .footer { position: fixed; bottom: -20px; left: -20px; right: -20px; background: #111827; color: #fff; padding: 7px 0; text-align: center; font-size: 8px; font-weight: 800; }
+        .footer { position: fixed; bottom: -20px; left: 0; right: 0; text-align: center; font-size: 8px; }
         .page-break { page-break-before: always; }
         .row-type { width: 58px; }
         .staff { width: 100px; }
