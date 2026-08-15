@@ -8,6 +8,8 @@ use App\Models\Customer;
 use App\Models\CustomerMembershipCard;
 use App\Models\FinanceSetting;
 use App\Models\GiftCard;
+use App\Models\InventoryItem;
+use App\Models\InventoryTransaction;
 use App\Models\InvoicePayment;
 use App\Models\MembershipCardType;
 use App\Models\Role;
@@ -565,6 +567,126 @@ class FinanceTaxInvoiceTest extends TestCase
             ->assertSessionHasErrors(['items.0.cost_center']);
 
         $this->assertDatabaseCount('tax_invoices', 0);
+    }
+
+    public function test_finalizing_inventory_product_invoice_deducts_stock_once(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $item = InventoryItem::create([
+            'sku' => 'RET-SHAMPOO-01',
+            'name' => 'Retail Shampoo',
+            'category' => 'Retail',
+            'unit' => 'bottle',
+            'cost_price' => 40,
+            'selling_price' => 120,
+            'stock_quantity' => 5,
+            'reorder_level' => 2,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.store'), [
+                'customer_display_name' => 'Retail Product Customer',
+                'items' => [
+                    [
+                        'inventory_item_id' => $item->id,
+                        'revenue_category' => 'retail_product_sales',
+                        'cost_center' => 'general_salon',
+                        'description' => 'Retail Shampoo',
+                        'quantity' => 2,
+                        'unit_price' => 120,
+                        'discount_amount' => 0,
+                    ],
+                ],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->latest()->firstOrFail();
+        $line = $invoice->items()->firstOrFail();
+
+        $this->assertSame($item->id, $line->inventory_item_id);
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.finalize', $invoice))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(3, $item->fresh()->stock_quantity);
+
+        $transaction = InventoryTransaction::query()->where('inventory_item_id', $item->id)->firstOrFail();
+        $this->assertSame('out', $transaction->type);
+        $this->assertSame('retail_products', $transaction->classification);
+        $this->assertSame(-2, $transaction->quantity);
+        $this->assertSame($line->id, $transaction->source_id);
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.finalize', $invoice->fresh()))
+            ->assertSessionHasErrors(['invoice']);
+
+        $this->assertSame(3, $item->fresh()->stock_quantity);
+        $this->assertSame(1, InventoryTransaction::query()->where('inventory_item_id', $item->id)->count());
+    }
+
+    public function test_finalizing_product_invoice_fails_when_stock_is_insufficient(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $item = InventoryItem::create([
+            'sku' => 'RET-CONDITIONER-01',
+            'name' => 'Retail Conditioner',
+            'category' => 'Retail',
+            'unit' => 'bottle',
+            'cost_price' => 35,
+            'selling_price' => 110,
+            'stock_quantity' => 1,
+            'reorder_level' => 2,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.store'), [
+                'customer_display_name' => 'Retail Product Customer',
+                'items' => [
+                    [
+                        'inventory_item_id' => $item->id,
+                        'revenue_category' => 'retail_product_sales',
+                        'cost_center' => 'general_salon',
+                        'description' => 'Retail Conditioner',
+                        'quantity' => 2,
+                        'unit_price' => 110,
+                        'discount_amount' => 0,
+                    ],
+                ],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->latest()->firstOrFail();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.finalize', $invoice))
+            ->assertSessionHasErrors(['invoice']);
+
+        $this->assertSame(TaxInvoice::STATUS_DRAFT, $invoice->fresh()->status);
+        $this->assertSame(1, $item->fresh()->stock_quantity);
+        $this->assertSame(0, InventoryTransaction::query()->where('inventory_item_id', $item->id)->count());
     }
 
     public function test_owner_can_record_refund_adjustment_as_linked_negative_invoice(): void

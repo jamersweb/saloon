@@ -133,6 +133,7 @@ class TaxInvoiceDraftFromAppointmentService
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => null,
+                    'inventory_item_id' => $item->id,
                     'revenue_category' => 'retail_product_sales',
                     'cost_center' => FinanceStructure::DEFAULT_COST_CENTER,
                     'description' => $description,

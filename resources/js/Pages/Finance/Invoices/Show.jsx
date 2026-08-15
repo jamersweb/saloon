@@ -24,6 +24,7 @@ const lineTotals = (row, vatRatePercent = 0) => {
 
 const blankItem = () => ({
     salon_service_id: '',
+    inventory_item_id: '',
     staff_profile_id: '',
     revenue_category: 'service_income',
     cost_center: 'general_salon',
@@ -79,6 +80,7 @@ export default function FinanceInvoicesShow({
         items: invoice.items.length
             ? invoice.items.map((r) => ({
                   salon_service_id: r.salon_service_id ? String(r.salon_service_id) : '',
+                  inventory_item_id: r.inventory_item_id ? String(r.inventory_item_id) : '',
                   staff_profile_id: r.staff_profile_id ? String(r.staff_profile_id) : '',
                   revenue_category: r.revenue_category || 'service_income',
                   cost_center: r.cost_center || 'general_salon',
@@ -161,6 +163,7 @@ export default function FinanceInvoicesShow({
             next[idx] = {
                 ...next[idx],
                 salon_service_id: '',
+                inventory_item_id: '',
                 revenue_category: 'service_income',
             };
             editForm.setData('items', next);
@@ -172,6 +175,7 @@ export default function FinanceInvoicesShow({
         next[idx] = {
             ...next[idx],
             salon_service_id: s ? String(s.id) : '',
+            inventory_item_id: item ? String(item.id) : '',
             revenue_category: s ? 'service_income' : 'retail_product_sales',
             cost_center: s?.cost_center || 'general_salon',
             description: s
@@ -367,6 +371,7 @@ export default function FinanceInvoicesShow({
                                     appointment_id: data.appointment_id ? data.appointment_id : null,
                                     items: data.items.map((row) => ({
                                         salon_service_id: row.salon_service_id || null,
+                                        inventory_item_id: row.inventory_item_id || null,
                                         staff_profile_id: row.staff_profile_id || null,
                                         revenue_category: row.revenue_category || null,
                                         cost_center: row.cost_center || null,
@@ -437,7 +442,7 @@ export default function FinanceInvoicesShow({
                                                 <div className="lg:col-span-2">
                                                     <SearchableSelect
                                                         label="Choose service or product"
-                                                        value={row.salon_service_id ? `service:${row.salon_service_id}` : ''}
+                                                        value={row.salon_service_id ? `service:${row.salon_service_id}` : (row.inventory_item_id ? `inventory:${row.inventory_item_id}` : '')}
                                                         onChange={(serviceId) => applyService(idx, serviceId)}
                                                         options={serviceOptions}
                                                         placeholder="Search service or product"

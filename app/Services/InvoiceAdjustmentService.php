@@ -79,7 +79,7 @@ class InvoiceAdjustmentService
                 'total' => -$amount,
             ]);
 
-            return $this->finalizeService->finalize($adjustment);
+            return $this->finalizeService->finalize($adjustment, $createdById);
         });
     }
 }

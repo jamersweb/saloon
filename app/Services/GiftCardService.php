@@ -338,13 +338,14 @@ class GiftCardService
 
             $invoiceAppointmentId = null;
             if ($taxInvoiceId !== null) {
-                $invoice = TaxInvoice::query()->find($taxInvoiceId);
-                if ($invoice === null || $invoice->customer_id === null) {
+                $invoice = TaxInvoice::query()->with('appointment:id,customer_id')->find($taxInvoiceId);
+                $invoiceCustomerId = $invoice?->customer_id ?? $invoice?->appointment?->customer_id;
+                if ($invoice === null || $invoiceCustomerId === null) {
                     throw ValidationException::withMessages([
                         'tax_invoice_id' => 'Select a valid invoice with a customer.',
                     ]);
                 }
-                if ((int) $giftCard->assigned_customer_id !== (int) $invoice->customer_id) {
+                if ((int) $giftCard->assigned_customer_id !== (int) $invoiceCustomerId) {
                     throw ValidationException::withMessages([
                         'tax_invoice_id' => 'Assign this gift card to the invoice customer before using it.',
                     ]);

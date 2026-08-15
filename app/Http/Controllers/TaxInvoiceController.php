@@ -169,6 +169,7 @@ class TaxInvoiceController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.salon_service_id' => ['nullable', 'exists:salon_services,id'],
+            'items.*.inventory_item_id' => ['nullable', 'exists:inventory_items,id'],
             'items.*.staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'items.*.revenue_category' => ['nullable', Rule::in(array_keys(FinanceStructure::revenueCategories()))],
             'items.*.cost_center' => ['nullable', Rule::in(array_keys(FinanceStructure::costCenters()))],
@@ -204,6 +205,7 @@ class TaxInvoiceController extends Controller
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => $row['salon_service_id'] ?? null,
+                    'inventory_item_id' => $row['inventory_item_id'] ?? null,
                     'revenue_category' => $row['revenue_category'],
                     'cost_center' => $row['cost_center'],
                     'staff_profile_id' => $row['staff_profile_id'] ?? null,
@@ -235,7 +237,7 @@ class TaxInvoiceController extends Controller
 
         $invoice = $this->refreshDraftIfMissingVisitItems($invoice, $request);
 
-        $invoice->load(['items.salonService:id,name', 'items.staffProfile.user:id,name', 'customer.membershipCards.type:id,name', 'customer:id,name,phone,email', 'appointment.service:id,name', 'payments.createdBy:id,name']);
+        $invoice->load(['items.salonService:id,name', 'items.inventoryItem:id,name,sku', 'items.staffProfile.user:id,name', 'customer.membershipCards.type:id,name', 'customer:id,name,phone,email', 'appointment.service:id,name', 'payments.createdBy:id,name']);
         $invoice->load(['adjustments' => fn ($query) => $query->orderByDesc('issued_at')]);
 
         $settings = FinanceSetting::current();
@@ -287,6 +289,7 @@ class TaxInvoiceController extends Controller
                 'items' => $invoice->items->map(fn (TaxInvoiceItem $item) => [
                     'id' => $item->id,
                     'salon_service_id' => $item->salon_service_id,
+                    'inventory_item_id' => $item->inventory_item_id,
                     'revenue_category' => $item->revenue_category,
                     'cost_center' => $item->cost_center,
                     'staff_profile_id' => $item->staff_profile_id,
@@ -362,6 +365,7 @@ class TaxInvoiceController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.salon_service_id' => ['nullable', 'exists:salon_services,id'],
+            'items.*.inventory_item_id' => ['nullable', 'exists:inventory_items,id'],
             'items.*.staff_profile_id' => ['nullable', 'exists:staff_profiles,id'],
             'items.*.revenue_category' => ['nullable', Rule::in(array_keys(FinanceStructure::revenueCategories()))],
             'items.*.cost_center' => ['nullable', Rule::in(array_keys(FinanceStructure::costCenters()))],
@@ -394,6 +398,7 @@ class TaxInvoiceController extends Controller
                 TaxInvoiceItem::query()->create([
                     'tax_invoice_id' => $invoice->id,
                     'salon_service_id' => $row['salon_service_id'] ?? null,
+                    'inventory_item_id' => $row['inventory_item_id'] ?? null,
                     'revenue_category' => $row['revenue_category'],
                     'cost_center' => $row['cost_center'],
                     'staff_profile_id' => $row['staff_profile_id'] ?? null,
@@ -441,7 +446,7 @@ class TaxInvoiceController extends Controller
             return back()->withErrors(['invoice' => 'Invoice is already finalized or void.']);
         }
 
-        app(TaxInvoiceFinalizeService::class)->finalize($invoice);
+        app(TaxInvoiceFinalizeService::class)->finalize($invoice, $request->user()->id);
 
         Audit::log($request->user()->id, 'finance.invoice.finalized', 'TaxInvoice', $invoice->id, [
             'invoice_number' => $invoice->fresh()->invoice_number,
@@ -669,12 +674,19 @@ class TaxInvoiceController extends Controller
      */
     private function serializeInvoiceAppointmentOption(Appointment $appointment): array
     {
-        $visitItems = $this->appointmentVisitService
+        $visitAppointments = $this->appointmentVisitService
             ->forAppointment($appointment)
-            ->loadMissing('service:id,name,price')
+            ->loadMissing([
+                'service:id,name,price',
+                'productUsages:id,appointment_id,inventory_item_id,quantity,notes',
+                'productUsages.item:id,name,sku,selling_price,cost_price',
+            ]);
+
+        $serviceItems = $visitAppointments
             ->filter(fn (Appointment $item) => $item->service !== null)
             ->map(fn (Appointment $item) => [
                 'salon_service_id' => $item->service_id ? (string) $item->service_id : '',
+                'inventory_item_id' => '',
                 'staff_profile_id' => $item->staff_profile_id ? (string) $item->staff_profile_id : '',
                 'revenue_category' => $item->customer_package_id ? 'package_sales' : 'service_income',
                 'cost_center' => FinanceStructure::inferCostCenterFromService($item->service),
@@ -684,9 +696,32 @@ class TaxInvoiceController extends Controller
                 'quantity' => (string) max(1, (int) ($item->service_quantity ?? 1)),
                 'unit_price' => (string) ($item->customer_package_id ? 0 : $item->service->price),
                 'discount_amount' => '0',
-            ])
-            ->values()
-            ->all();
+            ]);
+
+        $productItems = $visitAppointments
+            ->flatMap(fn (Appointment $item) => $item->productUsages)
+            ->filter(fn ($usage) => $usage->item !== null)
+            ->map(function ($usage): array {
+                $item = $usage->item;
+                $description = $item->name;
+                if (! empty($item->sku)) {
+                    $description .= ' ('.$item->sku.')';
+                }
+
+                return [
+                    'salon_service_id' => '',
+                    'inventory_item_id' => (string) $item->id,
+                    'staff_profile_id' => '',
+                    'revenue_category' => 'retail_product_sales',
+                    'cost_center' => FinanceStructure::DEFAULT_COST_CENTER,
+                    'description' => $description,
+                    'quantity' => (string) max(1, (int) $usage->quantity),
+                    'unit_price' => (string) ($item->selling_price ?? $item->cost_price ?? 0),
+                    'discount_amount' => '0',
+                ];
+            });
+
+        $visitItems = $serviceItems->concat($productItems)->values()->all();
 
         return [
             'id' => $appointment->id,
@@ -794,12 +829,48 @@ class TaxInvoiceController extends Controller
             ->get()
             ->keyBy('id');
 
+        $inventoryIds = collect($rows)
+            ->pluck('inventory_item_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $inventoryItems = InventoryItem::query()
+            ->whereIn('id', $inventoryIds)
+            ->get()
+            ->keyBy('id');
+
         return collect($rows)
-            ->map(function (array $row, int $index) use ($services): array {
+            ->map(function (array $row, int $index) use ($services, $inventoryItems): array {
                 $serviceId = isset($row['salon_service_id']) && $row['salon_service_id'] !== ''
                     ? (int) $row['salon_service_id']
                     : null;
+                $inventoryItemId = isset($row['inventory_item_id']) && $row['inventory_item_id'] !== ''
+                    ? (int) $row['inventory_item_id']
+                    : null;
                 $service = $serviceId ? $services->get($serviceId) : null;
+                $inventoryItem = $inventoryItemId ? $inventoryItems->get($inventoryItemId) : null;
+
+                if ($inventoryItem) {
+                    $quantity = (float) ($row['quantity'] ?? 0);
+                    if ($quantity < 1 || floor($quantity) !== $quantity) {
+                        throw ValidationException::withMessages([
+                            "items.{$index}.quantity" => 'Inventory product quantities must be whole units.',
+                        ]);
+                    }
+
+                    $serviceId = null;
+                    $service = null;
+                    $row['salon_service_id'] = null;
+                    $row['inventory_item_id'] = $inventoryItem->id;
+                    $row['revenue_category'] = filled($row['revenue_category'] ?? null) ? $row['revenue_category'] : 'retail_product_sales';
+                    $row['cost_center'] = filled($row['cost_center'] ?? null) ? $row['cost_center'] : FinanceStructure::DEFAULT_COST_CENTER;
+                } else {
+                    $row['inventory_item_id'] = null;
+                }
+
                 $revenueCategory = FinanceStructure::resolveRevenueCategory(
                     $row['revenue_category'] ?? null,
                     $serviceId,

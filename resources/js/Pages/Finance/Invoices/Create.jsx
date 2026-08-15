@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 
 const blankItem = () => ({
     salon_service_id: '',
+    inventory_item_id: '',
     staff_profile_id: '',
     revenue_category: 'service_income',
     cost_center: 'general_salon',
@@ -60,6 +61,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
             next[idx] = {
                 ...next[idx],
                 salon_service_id: '',
+                inventory_item_id: '',
                 revenue_category: 'service_income',
             };
             form.setData('items', next);
@@ -71,6 +73,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
         next[idx] = {
             ...next[idx],
             salon_service_id: s ? String(s.id) : '',
+            inventory_item_id: item ? String(item.id) : '',
             revenue_category: s ? 'service_income' : 'retail_product_sales',
             cost_center: s?.cost_center || 'general_salon',
             description: s
@@ -144,6 +147,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                                 appointment_id: data.appointment_id || null,
                                 items: data.items.map((row) => ({
                                     salon_service_id: row.salon_service_id || null,
+                                    inventory_item_id: row.inventory_item_id || null,
                                     staff_profile_id: row.staff_profile_id || null,
                                     revenue_category: row.revenue_category || null,
                                     cost_center: row.cost_center || null,
@@ -205,7 +209,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                                             <label className="text-xs text-slate-500">Service</label>
                                             <SearchableSelect
                                                 className="mt-1"
-                                                value={row.salon_service_id ? `service:${row.salon_service_id}` : ''}
+                                                value={row.salon_service_id ? `service:${row.salon_service_id}` : (row.inventory_item_id ? `inventory:${row.inventory_item_id}` : '')}
                                                 onChange={(serviceId) => applyService(idx, serviceId)}
                                                 options={serviceOptions}
                                                 placeholder="Search service or product"

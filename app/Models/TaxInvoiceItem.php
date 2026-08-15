@@ -10,6 +10,7 @@ class TaxInvoiceItem extends Model
     protected $fillable = [
         'tax_invoice_id',
         'salon_service_id',
+        'inventory_item_id',
         'revenue_category',
         'cost_center',
         'staff_profile_id',
@@ -44,6 +45,11 @@ class TaxInvoiceItem extends Model
     public function salonService(): BelongsTo
     {
         return $this->belongsTo(SalonService::class);
+    }
+
+    public function inventoryItem(): BelongsTo
+    {
+        return $this->belongsTo(InventoryItem::class);
     }
 
     public function staffProfile(): BelongsTo

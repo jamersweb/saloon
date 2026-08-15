@@ -277,13 +277,19 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                     </div>
                 </section>
 
-                <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-                    {Object.entries(overview).map(([key, value]) => (
-                        <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{key.replaceAll('_', ' ')}</p>
-                            <p className="mt-2 text-2xl font-black text-slate-900">{isMoneyMetric(key) ? toMoney(value, currencyCode) : value}</p>
-                        </div>
-                    ))}
+                <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+                    {Object.entries(overview).map(([key, value]) => {
+                        const isMoney = isMoneyMetric(key);
+
+                        return (
+                            <div key={key} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{key.replaceAll('_', ' ')}</p>
+                                <p className={`mt-2 font-black tabular-nums text-slate-900 ${isMoney ? 'whitespace-nowrap text-xl' : 'text-2xl'}`}>
+                                    {isMoney ? toMoney(value, currencyCode) : value}
+                                </p>
+                            </div>
+                        );
+                    })}
                 </section>
 
                 <section className="grid gap-6 lg:grid-cols-2">

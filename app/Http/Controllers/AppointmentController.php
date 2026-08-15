@@ -870,7 +870,7 @@ class AppointmentController extends Controller
                     return;
                 }
 
-                $invoice = app(TaxInvoiceFinalizeService::class)->finalize($invoice);
+                $invoice = app(TaxInvoiceFinalizeService::class)->finalize($invoice, $user->id);
                 $invoice->refresh();
 
                 $method = (string) $data['checkout_payment_method'];

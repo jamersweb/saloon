@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\Appointment;
 use App\Models\Customer;
 use App\Models\FinanceSetting;
+use App\Models\InventoryItem;
+use App\Models\InventoryTransaction;
 use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\StaffProfile;
@@ -155,6 +157,96 @@ class FinanceAppointmentInvoiceDraftTest extends TestCase
         $this->assertSame('275.00', $serviceLine->unit_price);
         $this->assertSame('25.00', $serviceLine->discount_amount);
         $this->assertSame('250.00', $serviceLine->line_subtotal);
+    }
+
+    public function test_finishing_and_paying_visit_with_products_deducts_inventory_stock(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => ['can_manage_finance', 'can_collect_payments'],
+        ]);
+
+        $manager = User::factory()->create([
+            'role_id' => $managerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $staffProfile = StaffProfile::create([
+            'user_id' => $manager->id,
+            'employee_code' => 'OWN-FIN-PRODUCT',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-APT-PRODUCT',
+            'name' => 'Product Client',
+            'phone' => '5559990444',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Blowdry',
+            'category' => 'Hair',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 150,
+            'is_active' => true,
+        ]);
+
+        $item = InventoryItem::create([
+            'sku' => 'RET-SERUM-01',
+            'name' => 'Finishing Serum',
+            'category' => 'Retail',
+            'unit' => 'bottle',
+            'cost_price' => 25,
+            'selling_price' => 75,
+            'stock_quantity' => 4,
+            'reorder_level' => 1,
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_IN_PROGRESS,
+            'scheduled_start' => now()->subHour(),
+            'scheduled_end' => now(),
+            'arrival_time' => now()->subHour(),
+            'service_start_time' => now()->subMinutes(30),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $this->actingAs($manager)
+            ->post(route('appointments.service-complete', $appointment), [
+                'service_report' => 'Service done with retail sale.',
+                'products' => [
+                    [
+                        'inventory_item_id' => $item->id,
+                        'quantity' => 2,
+                        'notes' => 'Sold at checkout.',
+                    ],
+                ],
+                'finish_and_pay' => true,
+                'checkout_payment_method' => 'cash',
+                'checkout_paid_at' => now()->format('Y-m-d H:i:s'),
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->where('appointment_id', $appointment->id)->firstOrFail();
+        $productLine = $invoice->items()->where('inventory_item_id', $item->id)->firstOrFail();
+
+        $this->assertSame(TaxInvoice::STATUS_FINALIZED, $invoice->status);
+        $this->assertSame(2, $item->fresh()->stock_quantity);
+        $this->assertSame(1, InventoryTransaction::query()
+            ->where('inventory_item_id', $item->id)
+            ->where('source_id', $productLine->id)
+            ->where('quantity', -2)
+            ->count());
     }
 
     public function test_package_covered_appointment_creates_zero_priced_service_line_and_consumes_session(): void
