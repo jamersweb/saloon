@@ -78,6 +78,46 @@ class ExpenseEntryPhaseOneTest extends TestCase
         Storage::disk('public')->assertExists($expense->receipt_image_path);
     }
 
+    public function test_owner_can_record_expense_with_pdf_receipt_document(): void
+    {
+        Storage::fake('public');
+
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $owner = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('finance.expenses.store'), [
+                'category' => 'inventory_purchase',
+                'expense_type' => 'inventory_related',
+                'expense_subcategory' => 'retail_stock',
+                'vendor_name' => 'Supplier LLC',
+                'expense_date' => now()->toDateString(),
+                'amount_subtotal' => 250,
+                'vat_amount' => 12.5,
+                'payment_status' => ExpenseEntry::STATUS_UNPAID,
+                'payment_method' => 'bank_transfer',
+                'receipt_number' => 'PO-PDF-100',
+                'receipt_image' => UploadedFile::fake()->create('purchase-order.pdf', 100, 'application/pdf'),
+                'notes' => 'Purchase order document.',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $expense = ExpenseEntry::query()->latest()->first();
+
+        $this->assertNotNull($expense);
+        $this->assertNotNull($expense->receipt_image_path);
+        $this->assertStringEndsWith('.pdf', $expense->receipt_image_path);
+        $this->assertNotNull($expense->receipt_image_url);
+        Storage::disk('public')->assertExists($expense->receipt_image_path);
+    }
+
     public function test_owner_can_approve_pending_expense(): void
     {
         $ownerRole = Role::create([

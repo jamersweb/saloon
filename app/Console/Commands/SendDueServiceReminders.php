@@ -92,6 +92,8 @@ class SendDueServiceReminders extends Command
                     continue;
                 }
 
+                $dueService->update(['reminder_sent_at' => now()]);
+
                 $sent++;
                 $sentForCustomer = true;
                 break;

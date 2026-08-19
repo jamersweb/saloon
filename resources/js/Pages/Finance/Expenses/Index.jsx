@@ -747,12 +747,12 @@ export default function FinanceExpensesIndex({
                             </select>
                         </div>
                         <div className="md:col-span-2">
-                            <label className="ta-field-label">Receipt image</label>
-                            <input type="file" accept="image/*" className="ta-input" onChange={(e) => form.setData('receipt_image', e.target.files?.[0] || null)} />
+                            <label className="ta-field-label">Receipt document</label>
+                            <input type="file" accept="image/*,application/pdf" className="ta-input" onChange={(e) => form.setData('receipt_image', e.target.files?.[0] || null)} />
                             {editingExpense?.receipt_image_url && (
                                 <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
                                     <input type="checkbox" checked={form.data.remove_receipt_image} onChange={(e) => form.setData('remove_receipt_image', e.target.checked)} />
-                                    Remove current receipt image
+                                    Remove current receipt document
                                 </label>
                             )}
                         </div>
@@ -818,7 +818,7 @@ export default function FinanceExpensesIndex({
                                             <div className="mt-1 text-xs text-slate-500">{paymentMethods[row.payment_method] || row.payment_method}</div>
                                         </td>
                                         <td className="px-5 py-3 text-xs text-slate-600">
-                                            {row.receipt_image_url ? <a href={row.receipt_image_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">View receipt</a> : '-'}
+                                            {row.receipt_image_url ? <a href={row.receipt_image_url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">View document</a> : '-'}
                                             {row.receipt_number && <div className="mt-1 text-slate-500">{row.receipt_number}</div>}
                                         </td>
                                         <td className="px-5 py-3">

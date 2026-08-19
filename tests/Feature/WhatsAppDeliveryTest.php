@@ -73,6 +73,7 @@ class WhatsAppDeliveryTest extends TestCase
             'provider_status' => 'queued',
             'message_type' => 'text',
         ]);
+        $this->assertNotNull($dueService->fresh()->reminder_sent_at);
     }
 
     public function test_campaign_dispatch_queues_whatsapp_delivery_jobs_in_batches(): void

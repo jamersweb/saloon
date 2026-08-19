@@ -611,6 +611,8 @@ class CrmAutomationController extends Controller
             return back()->withErrors(['channel' => $log->error_message ?? 'Message delivery failed.']);
         }
 
+        $dueService->update(['reminder_sent_at' => now()]);
+
         Audit::log($request->user()?->id, 'due_service.reminder_sent', 'CustomerDueService', $dueService->id, ['channel' => $channel, 'policy' => $policy]);
 
         return back()->with('status', $log->status === 'queued' ? 'Reminder queued for delivery.' : 'Reminder logged as sent.');

@@ -109,4 +109,37 @@ class DueServiceAutomationTest extends TestCase
 
         $this->assertSame(810, CustomerDueService::query()->count());
     }
+
+    public function test_due_service_reminder_command_marks_successful_reminders_as_sent(): void
+    {
+        $customer = Customer::create([
+            'customer_code' => 'CUST-DUE-SMS',
+            'name' => 'Due Reminder Customer',
+            'phone' => '5551100999',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Nail Maintenance',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'repeat_after_days' => 21,
+            'price' => 90,
+            'is_active' => true,
+        ]);
+
+        $dueService = CustomerDueService::create([
+            'customer_id' => $customer->id,
+            'salon_service_id' => $service->id,
+            'due_date' => now()->subDay()->toDateString(),
+            'status' => 'pending',
+        ]);
+
+        $this->artisan('app:send-due-service-reminders', [
+            '--channel' => 'sms',
+            '--limit' => 10,
+        ])->assertSuccessful();
+
+        $this->assertNotNull($dueService->fresh()->reminder_sent_at);
+    }
 }

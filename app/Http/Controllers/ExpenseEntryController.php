@@ -260,7 +260,7 @@ class ExpenseEntryController extends Controller
         $data['approved_by'] = null;
         $data['approved_at'] = null;
         $data['total_amount'] = round($data['amount_subtotal'] + $data['vat_amount'], 2);
-        $data['receipt_image_path'] = $this->storeReceiptImage($request);
+        $data['receipt_image_path'] = $this->storeReceiptDocument($request);
 
         if ($data['payment_status'] === ExpenseEntry::STATUS_PAID && empty($data['paid_at'])) {
             $data['paid_at'] = now();
@@ -289,7 +289,7 @@ class ExpenseEntryController extends Controller
             $data['receipt_image_path'] = null;
         } elseif ($request->hasFile('receipt_image')) {
             $this->deleteReceiptImage($expense->receipt_image_path);
-            $data['receipt_image_path'] = $this->storeReceiptImage($request);
+            $data['receipt_image_path'] = $this->storeReceiptDocument($request);
         }
 
         if ($data['payment_status'] === ExpenseEntry::STATUS_PAID && empty($data['paid_at'])) {
@@ -651,7 +651,7 @@ class ExpenseEntryController extends Controller
             'payment_status' => ['required', Rule::in([ExpenseEntry::STATUS_UNPAID, ExpenseEntry::STATUS_PAID])],
             'payment_method' => ['required', Rule::in($paymentMethods)],
             'receipt_number' => ['nullable', 'string', 'max:255'],
-            'receipt_image' => ['nullable', 'image', 'max:5120'],
+            'receipt_image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'paid_at' => ['nullable', 'date'],
             'purchase_order_id' => ['nullable', 'exists:purchase_orders,id'],
             'campaign_id' => ['nullable', 'exists:campaigns,id'],
@@ -673,7 +673,7 @@ class ExpenseEntryController extends Controller
         return $data;
     }
 
-    private function storeReceiptImage(Request $request): ?string
+    private function storeReceiptDocument(Request $request): ?string
     {
         if (! $request->hasFile('receipt_image')) {
             return null;

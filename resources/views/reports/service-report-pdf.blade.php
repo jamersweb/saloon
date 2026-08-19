@@ -47,7 +47,7 @@
     <table class="cards">
         <tr>
             <td class="card">
-                <div class="card-label">Sales Items</div>
+                <div class="card-label">Appointments</div>
                 <div class="card-value">{{ number_format((int) $totals['service_count']) }}</div>
             </td>
             <td class="card">
@@ -86,7 +86,7 @@
                 <th class="date">Date</th>
                 <th class="customer">Customer</th>
                 <th class="invoice">Invoice No.</th>
-                <th class="service">Item</th>
+                <th class="service">Items</th>
                 <th class="qty">Qty</th>
                 <th class="money">Amount</th>
                 <th class="money">Subtotal</th>

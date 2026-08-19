@@ -247,7 +247,7 @@ class ReportController extends Controller
         }
 
         if ($reportType === 'service') {
-            $serviceReports = $this->collectServiceReportRows($dateFrom, $dateTo, $serviceReportFilters, true);
+            $serviceReports = $this->collectAppointmentServiceReportRows($dateFrom, $dateTo, $serviceReportFilters);
             $servicePaymentTotals = $this->paymentTotalsForServiceRows($dateFrom, $dateTo, $serviceReports);
             $currencyCode = FinanceSetting::current()->currency_code ?: 'AED';
 
@@ -352,6 +352,79 @@ class ReportController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * The service PDF is appointment-facing, so one appointment should print
+     * once even when checkout has several invoice service lines for it.
+     *
+     * @param  array{customer_name: string, invoice_number: string}  $filters
+     * @return list<array<string, mixed>>
+     */
+    private function collectAppointmentServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters): array
+    {
+        return collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters, true))
+            ->groupBy(fn (array $row): string => isset($row['appointment_id'])
+                ? 'appointment-'.$row['appointment_id']
+                : 'row-'.$row['id'])
+            ->map(fn (Collection $group): array => $this->appointmentServiceReportRow($group))
+            ->sortBy([
+                ['date', 'asc'],
+                ['id', 'asc'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $rows
+     * @return array<string, mixed>
+     */
+    private function appointmentServiceReportRow(Collection $rows): array
+    {
+        $first = $rows->first();
+        $invoiceNumbers = $rows
+            ->flatMap(fn (array $row): array => array_filter(array_map('trim', explode(',', (string) ($row['invoice_number'] ?? '')))))
+            ->unique()
+            ->values();
+        $invoiceIds = $rows
+            ->flatMap(fn (array $row): array => $row['invoice_ids'] ?? [])
+            ->filter()
+            ->map(fn ($id): int => (int) $id)
+            ->unique()
+            ->values();
+        $serviceNames = $rows
+            ->pluck('service_name')
+            ->filter(fn ($value): bool => trim((string) $value) !== '')
+            ->unique()
+            ->values();
+        $staffNames = $rows
+            ->pluck('staff_name')
+            ->filter(fn ($value): bool => trim((string) $value) !== '')
+            ->unique()
+            ->values();
+        $serviceReports = $rows
+            ->pluck('service_report')
+            ->filter(fn ($value): bool => trim((string) $value) !== '')
+            ->unique()
+            ->values();
+
+        return array_replace($first, [
+            'id' => isset($first['appointment_id']) ? (string) $first['appointment_id'] : (string) $first['id'],
+            'invoice_number' => $invoiceNumbers->implode(', '),
+            'invoice_ids' => $invoiceIds->all(),
+            'service_name' => $serviceNames->implode(', '),
+            'quantity' => round((float) $rows->sum(fn (array $row) => (float) ($row['quantity'] ?? 0)), 2),
+            'unit_price' => $rows->count() === 1
+                ? round((float) ($first['unit_price'] ?? 0), 2)
+                : round((float) $rows->sum(fn (array $row) => (float) ($row['quantity'] ?? 0) * (float) ($row['unit_price'] ?? 0)), 2),
+            'discount_amount' => round((float) $rows->sum(fn (array $row) => (float) ($row['discount_amount'] ?? 0)), 2),
+            'subtotal' => round((float) $rows->sum(fn (array $row) => (float) ($row['subtotal'] ?? 0)), 2),
+            'tax' => round((float) $rows->sum(fn (array $row) => (float) ($row['tax'] ?? 0)), 2),
+            'total' => round((float) $rows->sum(fn (array $row) => (float) ($row['total'] ?? 0)), 2),
+            'staff_name' => $staffNames->implode(', '),
+            'service_report' => $serviceReports->implode("\n"),
+        ]);
     }
 
     /**
