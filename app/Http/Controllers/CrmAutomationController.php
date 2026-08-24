@@ -8,9 +8,10 @@ use App\Models\CampaignTemplate;
 use App\Models\CommunicationLog;
 use App\Models\Customer;
 use App\Models\CustomerDueService;
-use App\Models\FinanceSetting;
 use App\Models\CustomerSegmentRule;
 use App\Models\CustomerTag;
+use App\Models\FinanceSetting;
+use App\Models\SalonService;
 use App\Models\WhatsAppMessageTemplate;
 use App\Services\CampaignDispatchService;
 use App\Services\CommunicationDeliveryService;
@@ -18,10 +19,9 @@ use App\Services\DueServiceManager;
 use App\Services\WhatsAppService;
 use App\Services\WhatsAppTemplateManagerService;
 use App\Support\Audit;
-use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -29,8 +29,7 @@ class CrmAutomationController extends Controller
 {
     public function __construct(
         private readonly WhatsAppService $whatsAppService,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -81,7 +80,7 @@ class CrmAutomationController extends Controller
         $customers = Customer::query()
             ->with('tags:id,name,color')
             ->when($filters['search'] !== '', function ($query) use ($filters): void {
-                $needle = '%' . $filters['search'] . '%';
+                $needle = '%'.$filters['search'].'%';
                 $query->where(function ($customerQuery) use ($needle): void {
                     $customerQuery
                         ->where('name', 'like', $needle)
@@ -105,7 +104,7 @@ class CrmAutomationController extends Controller
         $contacts = Customer::query()
             ->with('tags:id,name,color')
             ->when($contactFilters['search'] !== '', function ($query) use ($contactFilters): void {
-                $needle = '%' . $contactFilters['search'] . '%';
+                $needle = '%'.$contactFilters['search'].'%';
                 $query->where(function ($customerQuery) use ($needle): void {
                     $customerQuery
                         ->where('name', 'like', $needle)
@@ -131,6 +130,35 @@ class CrmAutomationController extends Controller
                     'id' => $customer->id,
                     'name' => $customer->name,
                 ]),
+            'serviceOptions' => SalonService::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->limit(500)
+                ->get(['id', 'name', 'repeat_after_days'])
+                ->map(fn (SalonService $service) => [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'repeat_after_days' => $service->repeat_after_days,
+                ]),
+            'campaignTemplateOptions' => CampaignTemplate::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->limit(500)
+                ->get(['id', 'name', 'channel'])
+                ->map(fn (CampaignTemplate $template) => [
+                    'id' => $template->id,
+                    'name' => $template->name,
+                    'channel' => $template->channel,
+                ]),
+            'whatsappTemplateOptions' => WhatsAppMessageTemplate::query()
+                ->orderBy('name')
+                ->limit(500)
+                ->get(['id', 'name', 'language'])
+                ->map(fn (WhatsAppMessageTemplate $template) => [
+                    'id' => $template->id,
+                    'name' => $template->name,
+                    'language' => $template->language,
+                ]),
             'customers' => $customers
                 ->paginate($filters['per_page'])
                 ->withQueryString()
@@ -153,9 +181,9 @@ class CrmAutomationController extends Controller
                 ->with(['customer:id,name,phone,email', 'service:id,name'])
                 ->where('status', 'pending')
                 ->orderBy('due_date')
-                ->limit(250)
-                ->get()
-                ->map(fn (CustomerDueService $due) => [
+                ->paginate(10, ['*'], 'due_page')
+                ->withQueryString()
+                ->through(fn (CustomerDueService $due) => [
                     'id' => $due->id,
                     'customer_id' => $due->customer_id,
                     'customer_name' => $due->customer?->name,
@@ -169,9 +197,9 @@ class CrmAutomationController extends Controller
             'recentLogs' => CommunicationLog::query()
                 ->with('customer:id,name')
                 ->latest()
-                ->limit(120)
-                ->get()
-                ->map(fn (CommunicationLog $log) => [
+                ->paginate(10, ['*'], 'log_page')
+                ->withQueryString()
+                ->through(fn (CommunicationLog $log) => [
                     'id' => $log->id,
                     'customer_name' => $log->customer?->name,
                     'channel' => $log->channel,
@@ -219,8 +247,9 @@ class CrmAutomationController extends Controller
             'segmentRules' => CustomerSegmentRule::query()
                 ->with('tag:id,name,color')
                 ->latest()
-                ->get()
-                ->map(fn (CustomerSegmentRule $rule) => [
+                ->paginate(10, ['*'], 'rule_page')
+                ->withQueryString()
+                ->through(fn (CustomerSegmentRule $rule) => [
                     'id' => $rule->id,
                     'name' => $rule->name,
                     'criteria' => $rule->criteria,
@@ -236,11 +265,12 @@ class CrmAutomationController extends Controller
                 ->orderByDesc('is_active')
                 ->orderBy('name')
                 ->get(),
+            'whatsappProvider' => $this->whatsappTemplateProvider(),
             'metaTemplates' => WhatsAppMessageTemplate::query()
                 ->latest('updated_at')
-                ->limit(200)
-                ->get()
-                ->map(fn (WhatsAppMessageTemplate $template) => [
+                ->paginate(10, ['*'], 'whatsapp_template_page')
+                ->withQueryString()
+                ->through(fn (WhatsAppMessageTemplate $template) => [
                     'id' => $template->id,
                     'template_uid' => $template->template_uid,
                     'name' => $template->name,
@@ -257,9 +287,9 @@ class CrmAutomationController extends Controller
                 ->with(['template:id,name', 'tag:id,name'])
                 ->withSum('expenseEntries as spend_total', 'total_amount')
                 ->latest()
-                ->limit(120)
-                ->get()
-                ->map(fn (Campaign $campaign) => [
+                ->paginate(10, ['*'], 'campaign_page')
+                ->withQueryString()
+                ->through(fn (Campaign $campaign) => [
                     'id' => $campaign->id,
                     'name' => $campaign->name,
                     'channel' => $campaign->channel,
@@ -375,13 +405,14 @@ class CrmAutomationController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
-        $templates = $templateManagerService->syncFromMeta();
+        $templates = $templateManagerService->syncTemplates();
+        $providerLabel = $this->whatsappTemplateProviderLabel();
 
         Audit::log($request->user()?->id, 'whatsapp.templates.synced', 'WhatsAppMessageTemplate', null, [
             'count' => count($templates),
         ]);
 
-        return back()->with('status', 'Meta templates synced.');
+        return back()->with('status', "{$providerLabel} templates synced.");
     }
 
     public function storeMetaTemplate(Request $request, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
@@ -389,7 +420,7 @@ class CrmAutomationController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager');
 
         $data = $this->validateMetaTemplatePayload($request);
-        $components = $this->buildMetaTemplateComponents($data);
+        $components = $this->buildWhatsAppTemplateComponents($data);
 
         $template = $templateManagerService->createTemplate(
             strtolower((string) $data['name']),
@@ -403,7 +434,7 @@ class CrmAutomationController extends Controller
             'language' => $template['language'] ?? $data['language'],
         ]);
 
-        return back()->with('status', 'Meta template submitted.');
+        return back()->with('status', $this->whatsappTemplateProviderLabel().' template submitted.');
     }
 
     public function updateMetaTemplate(Request $request, WhatsAppMessageTemplate $template, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
@@ -411,7 +442,7 @@ class CrmAutomationController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager');
 
         $data = $this->validateMetaTemplatePayload($request);
-        $components = $this->buildMetaTemplateComponents($data);
+        $components = $this->buildWhatsAppTemplateComponents($data);
 
         $updated = $templateManagerService->replaceTemplate(
             $template,
@@ -426,12 +457,18 @@ class CrmAutomationController extends Controller
             'language' => $updated['language'] ?? $data['language'],
         ]);
 
-        return back()->with('status', 'Meta template replaced.');
+        return back()->with('status', $this->whatsappTemplateProviderLabel().' template replaced.');
     }
 
     public function uploadMetaTemplateHeaderMedia(Request $request, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
+
+        if ($this->whatsappTemplateProvider() === 'ycloud') {
+            return back()->withErrors([
+                'header_media_file' => 'YCloud template media samples must use a public HTTPS sample URL.',
+            ]);
+        }
 
         $data = $request->validate([
             'header_type' => ['required', 'in:image,video,document'],
@@ -461,7 +498,7 @@ class CrmAutomationController extends Controller
             'language' => $template->language,
         ]);
 
-        return back()->with('status', 'Meta template deleted.');
+        return back()->with('status', $this->whatsappTemplateProviderLabel().' template deleted.');
     }
 
     public function dispatchCampaign(Request $request, Campaign $campaign, CampaignDispatchService $dispatcher): RedirectResponse
@@ -574,6 +611,39 @@ class CrmAutomationController extends Controller
         return back()->with('status', 'Due services generated/refreshed.');
     }
 
+    public function storeDueService(Request $request): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'customer_id' => ['required', 'exists:customers,id'],
+            'salon_service_id' => ['required', 'exists:salon_services,id'],
+            'due_date' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $dueService = CustomerDueService::query()->updateOrCreate(
+            [
+                'customer_id' => (int) $data['customer_id'],
+                'salon_service_id' => (int) $data['salon_service_id'],
+                'due_date' => $data['due_date'],
+            ],
+            [
+                'last_appointment_id' => null,
+                'status' => 'pending',
+                'notes' => $data['notes'] ?? null,
+            ],
+        );
+
+        Audit::log($request->user()?->id, 'due_service.created', 'CustomerDueService', $dueService->id, [
+            'customer_id' => (int) $data['customer_id'],
+            'salon_service_id' => (int) $data['salon_service_id'],
+            'due_date' => $data['due_date'],
+        ]);
+
+        return back()->with('status', 'Due service created/refreshed.');
+    }
+
     public function sendReminder(Request $request, CustomerDueService $dueService, CommunicationDeliveryService $communicationDeliveryService): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
@@ -603,7 +673,7 @@ class CrmAutomationController extends Controller
             $channel,
             $recipient,
             sprintf('Hi %s, your %s service is due on %s.', $dueService->customer?->name ?? 'Customer', $dueService->service?->name ?? 'service', $dueService->due_date?->toDateString()),
-            'due_service_reminder:' . $dueService->id,
+            'due_service_reminder:'.$dueService->id,
             $this->deliveryOptionsForReminder($channel, $dueService),
         );
 
@@ -652,7 +722,7 @@ class CrmAutomationController extends Controller
             $channel,
             $recipient,
             (string) ($data['message'] ?? ($messageType === 'template' ? 'WhatsApp template message' : '')),
-            'single_message:' . $customer->id,
+            'single_message:'.$customer->id,
             $deliveryOptions,
         );
 
@@ -754,6 +824,7 @@ class CrmAutomationController extends Controller
             $matches = $this->resolveRuleCustomerIds($rule);
             if ($matches->isEmpty()) {
                 $rule->update(['last_run_at' => now()]);
+
                 continue;
             }
 
@@ -874,7 +945,7 @@ class CrmAutomationController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     private function deliveryOptionsForSingleMessage(string $channel, string $messageType, array $data): array
@@ -928,7 +999,7 @@ class CrmAutomationController extends Controller
 
     private function validateMetaTemplatePayload(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'name' => ['required', 'string', 'max:512', 'regex:/^[a-z0-9_]+$/'],
             'language' => ['required', 'string', 'max:16'],
             'category' => ['required', 'in:MARKETING,UTILITY,AUTHENTICATION'],
@@ -945,13 +1016,25 @@ class CrmAutomationController extends Controller
             'buttons.*.url' => ['nullable', 'string', 'max:2000'],
             'buttons.*.phone_number' => ['nullable', 'string', 'max:30'],
         ]);
+
+        if (
+            $this->whatsappTemplateProvider() === 'ycloud'
+            && in_array(($data['header_type'] ?? 'none'), ['image', 'video', 'document'], true)
+            && ! filter_var((string) ($data['header_media_handle'] ?? ''), FILTER_VALIDATE_URL)
+        ) {
+            throw ValidationException::withMessages([
+                'header_media_handle' => 'YCloud media header samples must be public HTTPS URLs.',
+            ]);
+        }
+
+        return $data;
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      * @return array<int, array<string, mixed>>
      */
-    private function buildMetaTemplateComponents(array $data): array
+    private function buildWhatsAppTemplateComponents(array $data): array
     {
         $exampleValues = collect(explode(',', (string) ($data['example_values'] ?? '')))
             ->map(fn (string $value) => trim($value))
@@ -978,11 +1061,15 @@ class CrmAutomationController extends Controller
         }
 
         if (in_array(($data['header_type'] ?? 'none'), ['image', 'video', 'document'], true)) {
+            $exampleKey = $this->whatsappTemplateProvider() === 'ycloud'
+                ? 'header_url'
+                : 'header_handle';
+
             $components[] = [
                 'type' => 'HEADER',
                 'format' => strtoupper((string) $data['header_type']),
                 'example' => [
-                    'header_handle' => [(string) $data['header_media_handle']],
+                    $exampleKey => [(string) $data['header_media_handle']],
                 ],
             ];
         }
@@ -1036,5 +1123,26 @@ class CrmAutomationController extends Controller
         }
 
         return $components;
+    }
+
+    private function whatsappTemplateProvider(): string
+    {
+        $settings = FinanceSetting::current();
+        $driver = (string) ($settings->whatsapp_driver ?: config('services.whatsapp.driver', 'log'));
+        $baseUrl = (string) ($settings->whatsapp_base_url ?: config('services.whatsapp.base_url', ''));
+
+        return $driver === 'ycloud' || $this->isYCloudBaseUrl($baseUrl) ? 'ycloud' : 'meta';
+    }
+
+    private function whatsappTemplateProviderLabel(): string
+    {
+        return $this->whatsappTemplateProvider() === 'ycloud' ? 'YCloud' : 'Meta';
+    }
+
+    private function isYCloudBaseUrl(string $baseUrl): bool
+    {
+        $host = parse_url($baseUrl, PHP_URL_HOST);
+
+        return is_string($host) && str_ends_with(strtolower($host), 'ycloud.com');
     }
 }

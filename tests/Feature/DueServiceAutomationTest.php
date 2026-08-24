@@ -84,9 +84,9 @@ class DueServiceAutomationTest extends TestCase
 
         for ($i = 1; $i <= 810; $i++) {
             $customer = Customer::create([
-                'customer_code' => 'CUST-BF-' . str_pad((string) $i, 4, '0', STR_PAD_LEFT),
-                'name' => 'Backfill Customer ' . $i,
-                'phone' => '7000' . str_pad((string) $i, 6, '0', STR_PAD_LEFT),
+                'customer_code' => 'CUST-BF-'.str_pad((string) $i, 4, '0', STR_PAD_LEFT),
+                'name' => 'Backfill Customer '.$i,
+                'phone' => '7000'.str_pad((string) $i, 6, '0', STR_PAD_LEFT),
                 'is_active' => true,
             ]);
 
@@ -108,6 +108,54 @@ class DueServiceAutomationTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame(810, CustomerDueService::query()->count());
+    }
+
+    public function test_manager_can_create_due_service_from_customer_and_service(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-MANUAL-DUE',
+            'name' => 'Manual Due Customer',
+            'phone' => '5551100888',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Color Follow Up',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'repeat_after_days' => 45,
+            'price' => 180,
+            'is_active' => true,
+        ]);
+
+        $dueDate = now()->addDays(45)->toDateString();
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.due-services.store'), [
+                'customer_id' => $customer->id,
+                'salon_service_id' => $service->id,
+                'due_date' => $dueDate,
+                'notes' => 'Created from service profile.',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'Due service created/refreshed.');
+
+        $dueService = CustomerDueService::query()
+            ->where('customer_id', $customer->id)
+            ->where('salon_service_id', $service->id)
+            ->first();
+
+        $this->assertNotNull($dueService);
+        $this->assertSame($dueDate, $dueService->due_date->toDateString());
+        $this->assertSame('pending', $dueService->status);
+        $this->assertSame('Created from service profile.', $dueService->notes);
     }
 
     public function test_due_service_reminder_command_marks_successful_reminders_as_sent(): void

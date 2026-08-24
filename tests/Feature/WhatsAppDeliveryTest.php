@@ -13,8 +13,8 @@ use App\Models\Role;
 use App\Models\SalonService;
 use App\Models\User;
 use App\Models\WhatsAppMessageTemplate;
-use App\Support\Permissions;
 use App\Services\WhatsAppService;
+use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -230,6 +230,36 @@ class WhatsAppDeliveryTest extends TestCase
         });
     }
 
+    public function test_ycloud_base_url_uses_api_key_header_even_when_driver_is_meta(): void
+    {
+        FinanceSetting::current()->update([
+            'whatsapp_driver' => 'meta',
+            'whatsapp_base_url' => 'https://api.ycloud.com',
+            'whatsapp_phone_number_id' => '+971501111111',
+            'whatsapp_access_token' => 'ycloud-secret-key',
+        ]);
+
+        Http::fake([
+            'https://api.ycloud.com/*' => Http::response([
+                'id' => 'ycloud-text-mixed-config',
+                'status' => 'accepted',
+            ], 200),
+        ]);
+
+        $result = app(WhatsAppService::class)->sendText('+971 50 222 2222', 'Hello from Vina');
+
+        $this->assertTrue($result['successful']);
+        $this->assertSame('whatsapp-ycloud', $result['provider']);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'https://api.ycloud.com/v2/whatsapp/messages'
+                && $request->hasHeader('X-API-Key', 'ycloud-secret-key')
+                && $request['from'] === '+971501111111'
+                && $request['to'] === '+971502222222'
+                && $request['type'] === 'text';
+        });
+    }
+
     public function test_ycloud_configuration_errors_return_failed_result_without_throwing(): void
     {
         config()->set('services.whatsapp.phone_number_id', null);
@@ -357,7 +387,7 @@ class WhatsAppDeliveryTest extends TestCase
             'status' => 'queued',
             'provider_status' => 'queued',
             'message_type' => 'template',
-            'context' => 'single_message:' . $customer->id,
+            'context' => 'single_message:'.$customer->id,
         ]);
     }
 }

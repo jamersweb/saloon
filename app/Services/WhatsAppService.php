@@ -13,8 +13,7 @@ class WhatsAppService
 {
     public function __construct(
         private readonly HttpFactory $http,
-    ) {
-    }
+    ) {}
 
     public function sendText(string $recipient, string $message): array
     {
@@ -49,7 +48,7 @@ class WhatsAppService
         return [
             'successful' => true,
             'provider' => 'whatsapp-log',
-            'provider_message_id' => 'log-' . Str::uuid()->toString(),
+            'provider_message_id' => 'log-'.Str::uuid()->toString(),
             'recipient' => $this->normalizeRecipient($recipient),
             'message' => $message,
             'error_message' => null,
@@ -61,7 +60,7 @@ class WhatsAppService
         return [
             'successful' => true,
             'provider' => 'whatsapp-log',
-            'provider_message_id' => 'log-' . Str::uuid()->toString(),
+            'provider_message_id' => 'log-'.Str::uuid()->toString(),
             'recipient' => $this->normalizeRecipient($recipient),
             'message' => json_encode([
                 'type' => 'template',
@@ -303,8 +302,8 @@ class WhatsAppService
     private function ycloudConfiguration(string $normalizedRecipient, string $message): array
     {
         $settings = FinanceSetting::current();
-        $apiKey = (string) ($settings->whatsapp_access_token ?: config('services.whatsapp.ycloud_api_key') ?: config('services.whatsapp.token'));
-        $rawSender = (string) ($settings->whatsapp_phone_number_id ?: config('services.whatsapp.ycloud_sender') ?: config('services.whatsapp.phone_number_id'));
+        $apiKey = trim((string) ($settings->whatsapp_access_token ?: config('services.whatsapp.ycloud_api_key') ?: config('services.whatsapp.token')));
+        $rawSender = trim((string) ($settings->whatsapp_phone_number_id ?: config('services.whatsapp.ycloud_sender') ?: config('services.whatsapp.phone_number_id')));
         $configuredBaseUrl = (string) ($settings->whatsapp_base_url ?: config('services.whatsapp.base_url'));
         $baseUrl = str_contains($configuredBaseUrl, 'graph.facebook.com')
             ? (string) config('services.whatsapp.ycloud_base_url', 'https://api.ycloud.com')
@@ -372,7 +371,7 @@ class WhatsAppService
     {
         $normalized = $this->normalizeRecipient($recipient);
 
-        return '+' . $normalized;
+        return '+'.$normalized;
     }
 
     private function providerErrorMessage(RequestException $exception): string
@@ -399,10 +398,25 @@ class WhatsAppService
             default => null,
         };
 
+        if ($key === 'driver') {
+            $baseUrl = (string) ($settings->whatsapp_base_url ?: config('services.whatsapp.base_url', ''));
+
+            if ($this->isYCloudBaseUrl($baseUrl)) {
+                return 'ycloud';
+            }
+        }
+
         if (filled($mappedValue)) {
             return (string) $mappedValue;
         }
 
         return (string) config("services.whatsapp.{$key}", $default ?? '');
+    }
+
+    private function isYCloudBaseUrl(string $baseUrl): bool
+    {
+        $host = parse_url($baseUrl, PHP_URL_HOST);
+
+        return is_string($host) && str_ends_with(strtolower($host), 'ycloud.com');
     }
 }

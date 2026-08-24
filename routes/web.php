@@ -7,8 +7,8 @@ use App\Http\Controllers\BookingRuleController;
 use App\Http\Controllers\CrmAutomationController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerPortalController;
-use App\Http\Controllers\DataTransferController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DataTransferController;
 use App\Http\Controllers\ExpenseEntryController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\FinanceDashboardController;
@@ -191,6 +191,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/customers/automation/segment-rules/{rule}/deactivate', [CrmAutomationController::class, 'deactivateSegmentRule'])->name('customers.automation.segment-rules.deactivate');
         Route::post('/customers/automation/segment-rules/{rule}/preview', [CrmAutomationController::class, 'previewSegmentRule'])->name('customers.automation.segment-rules.preview');
         Route::post('/customers/automation/segment-rules/run', [CrmAutomationController::class, 'runSegmentRules'])->name('customers.automation.segment-rules.run');
+        Route::post('/customers/automation/due-services', [CrmAutomationController::class, 'storeDueService'])->name('customers.automation.due-services.store');
         Route::post('/customers/automation/due-services/generate', [CrmAutomationController::class, 'generateDueServices'])->name('customers.automation.due-services.generate');
         Route::post('/customers/automation/due-services/{dueService}/remind', [CrmAutomationController::class, 'sendReminder'])->name('customers.automation.due-services.remind');
         Route::patch('/customers/automation/due-services/{dueService}/status', [CrmAutomationController::class, 'updateDueStatus'])->name('customers.automation.due-services.status');

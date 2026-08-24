@@ -1,4 +1,5 @@
 ﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import SearchableSelect from '@/Components/SearchableSelect';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 
@@ -47,11 +48,47 @@ const formatDateTimeInZone = (value, timeZone) => {
     return `${parts.year}-${parts.month}-${parts.day}, ${String(hour12).padStart(2, '0')}:${parts.minute} ${suffix}`;
 };
 
-export default function Automation({ tags, customerOptions, customers, customerFilters, contacts, contactFilters, dueServices, recentLogs, segmentRules, campaignTemplates, metaTemplates, campaigns }) {
+const dateAfterDays = (days) => {
+    const date = new Date();
+    date.setDate(date.getDate() + Number(days || 0));
+
+    return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, '0'),
+        String(date.getDate()).padStart(2, '0'),
+    ].join('-');
+};
+
+const PaginationLinks = ({ paginator }) => {
+    if (!paginator?.links || paginator.links.length <= 3) {
+        return null;
+    }
+
+    return (
+        <div className="flex flex-wrap gap-2 border-t border-slate-100 px-5 py-3 text-sm">
+            {paginator.links.map((link, i) =>
+                link.url ? (
+                    <Link key={i} href={link.url} className={`rounded-lg px-3 py-1 ${link.active ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'}`} preserveScroll preserveState dangerouslySetInnerHTML={{ __html: link.label }} />
+                ) : (
+                    <span key={i} className="px-3 py-1 text-slate-400" dangerouslySetInnerHTML={{ __html: link.label }} />
+                ),
+            )}
+        </div>
+    );
+};
+
+export default function Automation({ tags, customerOptions, serviceOptions = [], campaignTemplateOptions = [], whatsappTemplateOptions = [], customers, customerFilters, contacts, contactFilters, dueServices, recentLogs, segmentRules, campaignTemplates, whatsappProvider = 'meta', metaTemplates, campaigns }) {
     const { flash, auth, app_timezone: appTimezone = 'Asia/Dubai' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_crm_automation);
     const [editingRuleId, setEditingRuleId] = useState(null);
     const [editingMetaTemplateId, setEditingMetaTemplateId] = useState(null);
+    const templateProviderLabel = whatsappProvider === 'ycloud' ? 'YCloud' : 'Meta';
+    const customerSelectOptions = customerOptions.map((customer) => ({ value: customer.id, label: customer.name }));
+    const serviceSelectOptions = serviceOptions.map((service) => ({ value: service.id, label: `${service.name}${service.repeat_after_days ? ` (${service.repeat_after_days}d)` : ''}` }));
+    const tagSelectOptions = tags.map((tag) => ({ value: tag.id, label: tag.name }));
+    const activeTagSelectOptions = tags.filter((tag) => tag.is_active).map((tag) => ({ value: tag.id, label: tag.name }));
+    const campaignTemplateSelectOptions = campaignTemplateOptions.map((template) => ({ value: template.id, label: `${template.name} (${template.channel})` }));
+    const whatsappTemplateSelectOptions = whatsappTemplateOptions.map((template) => ({ value: template.id, label: `${template.name} (${template.language})` }));
 
     const tagForm = useForm({ name: '', color: '#4f46e5', is_active: true });
     const assignForm = useForm({ customer_id: '', customer_tag_id: '' });
@@ -80,6 +117,7 @@ export default function Automation({ tags, customerOptions, customers, customerF
     });
     const ruleForm = useForm({ name: '', customer_tag_id: '', criteria: 'inactivity_days', threshold_value: '', lookback_days: '', is_active: true });
     const editRuleForm = useForm({ name: '', customer_tag_id: '', criteria: 'inactivity_days', threshold_value: '', lookback_days: '', is_active: true });
+    const dueServiceForm = useForm({ customer_id: '', salon_service_id: '', due_date: '', notes: '' });
     const templateForm = useForm({
         name: '',
         channel: 'sms',
@@ -312,6 +350,16 @@ export default function Automation({ tags, customerOptions, customers, customerF
         campaignForm.setData('scheduled_at', `${scheduledDate}T${value}`);
     };
 
+    const selectDueService = (serviceId) => {
+        const service = serviceOptions.find((item) => String(item.id) === String(serviceId));
+
+        dueServiceForm.setData((data) => ({
+            ...data,
+            salon_service_id: serviceId,
+            due_date: data.due_date || (service?.repeat_after_days ? dateAfterDays(service.repeat_after_days) : ''),
+        }));
+    };
+
     const selectedSingleMessageCustomer = customerOptions.find((customer) => String(customer.id) === String(singleMessageForm.data.customer_id));
 
     return (
@@ -346,9 +394,9 @@ export default function Automation({ tags, customerOptions, customers, customerF
 
                     <div className="mb-4 flex flex-wrap gap-2">{tags.map((tag) => <span key={tag.id} className="rounded-full px-2.5 py-1 text-xs font-semibold text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span>)}</div>
 
-                    <form className="grid gap-3 md:grid-cols-4" onSubmit={(e) => { e.preventDefault(); assignForm.post(route('customers.automation.tags.assign')); }}>
-                        <label className="ta-field-label">Customer</label><select className="ta-input" value={assignForm.data.customer_id} onChange={(e) => assignForm.setData('customer_id', e.target.value)} required><option value="">Select customer</option>{customerOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-                        <label className="ta-field-label">Customer Tag</label><select className="ta-input" value={assignForm.data.customer_tag_id} onChange={(e) => assignForm.setData('customer_tag_id', e.target.value)} required><option value="">Select tag</option>{tags.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+                    <form className="grid gap-3 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); assignForm.post(route('customers.automation.tags.assign')); }}>
+                        <SearchableSelect label="Customer" value={assignForm.data.customer_id} onChange={(id) => assignForm.setData('customer_id', id)} options={customerSelectOptions} placeholder="Search customer" />
+                        <SearchableSelect label="Customer Tag" value={assignForm.data.customer_tag_id} onChange={(id) => assignForm.setData('customer_tag_id', id)} options={activeTagSelectOptions} placeholder="Search tag" />
                         <button className="ta-btn-primary" disabled={assignForm.processing || !canManage}>Assign Tag</button>
                     </form>
                 </section>
@@ -361,7 +409,7 @@ export default function Automation({ tags, customerOptions, customers, customerF
 
                     <form className="mb-4 grid gap-3 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); ruleForm.post(route('customers.automation.segment-rules.store'), { onSuccess: () => ruleForm.reset('name', 'threshold_value', 'lookback_days') }); }}>
                         <input className="ta-input" placeholder="Rule name" value={ruleForm.data.name} onChange={(e) => ruleForm.setData('name', e.target.value)} required />
-                        <label className="ta-field-label">Customer Tag</label><select className="ta-input" value={ruleForm.data.customer_tag_id} onChange={(e) => ruleForm.setData('customer_tag_id', e.target.value)} required><option value="">Target tag</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
+                        <SearchableSelect label="Customer Tag" value={ruleForm.data.customer_tag_id} onChange={(id) => ruleForm.setData('customer_tag_id', id)} options={tagSelectOptions} placeholder="Search target tag" />
                         <label className="ta-field-label">Criteria</label><select className="ta-input" value={ruleForm.data.criteria} onChange={(e) => ruleForm.setData('criteria', e.target.value)}><option value="inactivity_days">Inactivity Days</option><option value="min_spend">Min Spend</option><option value="min_visits">Min Visits</option></select>
                         <input className="ta-input" type="number" min="1" placeholder="Threshold" value={ruleForm.data.threshold_value} onChange={(e) => ruleForm.setData('threshold_value', e.target.value)} required />
                         <input className="ta-input" type="number" min="1" placeholder="Lookback days (opt)" value={ruleForm.data.lookback_days} onChange={(e) => ruleForm.setData('lookback_days', e.target.value)} />
@@ -371,7 +419,7 @@ export default function Automation({ tags, customerOptions, customers, customerF
                     {editingRuleId && (
                         <form className="mb-4 grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); editRuleForm.put(route('customers.automation.segment-rules.update', editingRuleId), { onSuccess: () => setEditingRuleId(null) }); }}>
                             <input className="ta-input" value={editRuleForm.data.name} onChange={(e) => editRuleForm.setData('name', e.target.value)} required />
-                            <label className="ta-field-label">Customer Tag</label><select className="ta-input" value={editRuleForm.data.customer_tag_id} onChange={(e) => editRuleForm.setData('customer_tag_id', e.target.value)} required><option value="">Target tag</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
+                            <SearchableSelect label="Customer Tag" value={editRuleForm.data.customer_tag_id} onChange={(id) => editRuleForm.setData('customer_tag_id', id)} options={tagSelectOptions} placeholder="Search target tag" />
                             <label className="ta-field-label">Criteria</label><select className="ta-input" value={editRuleForm.data.criteria} onChange={(e) => editRuleForm.setData('criteria', e.target.value)}><option value="inactivity_days">Inactivity Days</option><option value="min_spend">Min Spend</option><option value="min_visits">Min Visits</option></select>
                             <input className="ta-input" type="number" min="1" value={editRuleForm.data.threshold_value} onChange={(e) => editRuleForm.setData('threshold_value', e.target.value)} required />
                             <input className="ta-input" type="number" min="1" value={editRuleForm.data.lookback_days || ''} onChange={(e) => editRuleForm.setData('lookback_days', e.target.value === '' ? null : e.target.value)} />
@@ -382,9 +430,10 @@ export default function Automation({ tags, customerOptions, customers, customerF
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Rule</th><th className="px-4 py-2">Tag</th><th className="px-4 py-2">Criteria</th><th className="px-4 py-2">Threshold</th><th className="px-4 py-2">Lookback</th><th className="px-4 py-2">Preview</th><th className="px-4 py-2">Last Run</th><th className="px-4 py-2">Actions</th></tr></thead>
-                            <tbody>{segmentRules.map((rule) => <tr key={rule.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{rule.name}</td><td className="px-4 py-2"><span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: rule.tag_color }}>{rule.tag_name}</span></td><td className="px-4 py-2 text-slate-600">{rule.criteria}</td><td className="px-4 py-2 text-slate-600">{rule.threshold_value}</td><td className="px-4 py-2 text-slate-600">{rule.lookback_days || '-'}</td><td className="px-4 py-2 font-semibold text-slate-700">{rule.preview_count}</td><td className="px-4 py-2 text-slate-600">{rule.last_run_at ? formatDateTime(rule.last_run_at) : 'Never'}</td><td className="px-4 py-2"><div className="flex flex-wrap gap-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => startEditRule(rule)}>Edit</button><button className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700" onClick={() => router.post(route('customers.automation.segment-rules.preview', rule.id))}>Preview</button><button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700" onClick={() => router.post(route('customers.automation.segment-rules.run'), { rule_id: rule.id })}>Run</button><button className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700" onClick={() => router.patch(route('customers.automation.segment-rules.deactivate', rule.id))} disabled={!rule.is_active}>Deactivate</button></div></td></tr>)}</tbody>
+                            <tbody>{segmentRules.data.map((rule) => <tr key={rule.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{rule.name}</td><td className="px-4 py-2"><span className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: rule.tag_color }}>{rule.tag_name}</span></td><td className="px-4 py-2 text-slate-600">{rule.criteria}</td><td className="px-4 py-2 text-slate-600">{rule.threshold_value}</td><td className="px-4 py-2 text-slate-600">{rule.lookback_days || '-'}</td><td className="px-4 py-2 font-semibold text-slate-700">{rule.preview_count}</td><td className="px-4 py-2 text-slate-600">{rule.last_run_at ? formatDateTime(rule.last_run_at) : 'Never'}</td><td className="px-4 py-2"><div className="flex flex-wrap gap-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => startEditRule(rule)}>Edit</button><button className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700" onClick={() => router.post(route('customers.automation.segment-rules.preview', rule.id))}>Preview</button><button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700" onClick={() => router.post(route('customers.automation.segment-rules.run'), { rule_id: rule.id })}>Run</button><button className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700" onClick={() => router.patch(route('customers.automation.segment-rules.deactivate', rule.id))} disabled={!rule.is_active}>Deactivate</button></div></td></tr>)}</tbody>
                         </table>
                     </div>
+                    <PaginationLinks paginator={segmentRules} />
                 </section>
 
                 <section className="ta-card overflow-hidden">
@@ -481,11 +530,32 @@ export default function Automation({ tags, customerOptions, customers, customerF
                         <h3 className="text-sm font-semibold text-slate-700">Due Service Reminders</h3>
                         <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.due-services.generate'))}>Generate Due Services</button>
                     </div>
+                    <form
+                        className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-5"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            dueServiceForm.post(route('customers.automation.due-services.store'), {
+                                preserveScroll: true,
+                                onSuccess: () => dueServiceForm.reset('customer_id', 'salon_service_id', 'due_date', 'notes'),
+                            });
+                        }}
+                    >
+                        <SearchableSelect value={dueServiceForm.data.customer_id} onChange={(id) => dueServiceForm.setData('customer_id', id)} options={customerSelectOptions} placeholder="Search customer" />
+                        <SearchableSelect value={dueServiceForm.data.salon_service_id} onChange={selectDueService} options={serviceSelectOptions} placeholder="Search service" />
+                        <input className="ta-input" type="date" value={dueServiceForm.data.due_date} onChange={(e) => dueServiceForm.setData('due_date', e.target.value)} required />
+                        <input className="ta-input" placeholder="Notes" value={dueServiceForm.data.notes} onChange={(e) => dueServiceForm.setData('notes', e.target.value)} />
+                        <button className="ta-btn-primary" disabled={dueServiceForm.processing || !canManage}>Create Due Service</button>
+                        {(dueServiceForm.errors.customer_id || dueServiceForm.errors.salon_service_id || dueServiceForm.errors.due_date || dueServiceForm.errors.notes) && (
+                            <div className="text-xs text-red-600 md:col-span-5">
+                                {dueServiceForm.errors.customer_id || dueServiceForm.errors.salon_service_id || dueServiceForm.errors.due_date || dueServiceForm.errors.notes}
+                            </div>
+                        )}
+                    </form>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Customer</th><th className="px-4 py-2">Service</th><th className="px-4 py-2">Due Date</th><th className="px-4 py-2">Reminder</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Actions</th></tr></thead>
                             <tbody>
-                                {dueServices.map((row) => (
+                                {dueServices.data.map((row) => (
                                     <tr key={row.id} className="border-t border-slate-100">
                                         <td className="px-4 py-2 text-slate-700">{row.customer_name}</td>
                                         <td className="px-4 py-2 text-slate-600">{row.service_name}</td>
@@ -495,9 +565,15 @@ export default function Automation({ tags, customerOptions, customers, customerF
                                         <td className="px-4 py-2"><div className="flex gap-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700" onClick={() => router.post(route('customers.automation.due-services.remind', row.id), { channel: 'sms' })}>Remind SMS</button><button className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs text-violet-700" onClick={() => router.post(route('customers.automation.due-services.remind', row.id), { channel: 'whatsapp' })}>WhatsApp</button><button className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-700" onClick={() => router.post(route('customers.automation.due-services.remind', row.id), { channel: 'sms', policy: 'fallback_email' })}>SMS?Email</button><button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700" onClick={() => router.patch(route('customers.automation.due-services.status', row.id), { status: 'booked' })}>Booked</button><button className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-700" onClick={() => router.patch(route('customers.automation.due-services.status', row.id), { status: 'dismissed' })}>Dismiss</button></div></td>
                                     </tr>
                                 ))}
+                                {dueServices.data.length === 0 && (
+                                    <tr>
+                                        <td colSpan="6" className="px-4 py-8 text-center text-sm text-slate-500">No due services found.</td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
+                    <PaginationLinks paginator={dueServices} />
                 </section>
 
 
@@ -516,9 +592,15 @@ export default function Automation({ tags, customerOptions, customers, customerF
                                 <label className="ta-field-label">WhatsApp type</label>
                                 <select className="ta-input" value={templateForm.data.whatsapp_message_type} onChange={(e) => templateForm.setData('whatsapp_message_type', e.target.value)}>
                                     <option value="text">Text</option>
-                                    <option value="template">Meta Template</option>
+                                    <option value="template">WhatsApp Template</option>
                                 </select>
-                                <input className="ta-input" placeholder="Meta template name" value={templateForm.data.whatsapp_template_name} onChange={(e) => templateForm.setData('whatsapp_template_name', e.target.value)} disabled={templateForm.data.whatsapp_message_type !== 'template'} required={templateForm.data.whatsapp_message_type === 'template'} />
+                                <SearchableSelect
+                                    value={templateForm.data.whatsapp_template_name}
+                                    onChange={(name) => templateForm.setData('whatsapp_template_name', name)}
+                                    options={whatsappTemplateOptions.map((template) => ({ value: template.name, label: `${template.name} (${template.language})` }))}
+                                    placeholder={`Search ${templateProviderLabel} template`}
+                                    disabled={templateForm.data.whatsapp_message_type !== 'template'}
+                                />
                                 <input className="ta-input" placeholder="Language code" value={templateForm.data.whatsapp_template_language_code} onChange={(e) => templateForm.setData('whatsapp_template_language_code', e.target.value)} disabled={templateForm.data.whatsapp_message_type !== 'template'} />
                             </>
                         )}
@@ -527,9 +609,9 @@ export default function Automation({ tags, customerOptions, customers, customerF
 
                     <form className="mb-4 grid gap-3 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); campaignForm.post(route('customers.automation.campaigns.store'), { onSuccess: () => campaignForm.reset('name', 'scheduled_at') }); }}>
                         <input className="ta-input" placeholder="Campaign name" value={campaignForm.data.name} onChange={(e) => campaignForm.setData('name', e.target.value)} required />
-                        <label className="ta-field-label">Campaign Template</label><select className="ta-input" value={campaignForm.data.campaign_template_id} onChange={(e) => campaignForm.setData('campaign_template_id', e.target.value)} required><option value="">Template</option>{campaignTemplates.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name} ({t.channel})</option>)}</select>
+                        <SearchableSelect label="Campaign Template" value={campaignForm.data.campaign_template_id} onChange={(id) => campaignForm.setData('campaign_template_id', id)} options={campaignTemplateSelectOptions} placeholder="Search campaign template" />
                         <label className="ta-field-label">Audience Type</label><select className="ta-input" value={campaignForm.data.audience_type} onChange={(e) => campaignForm.setData('audience_type', e.target.value)}><option value="all">All active customers</option><option value="tag">By tag</option><option value="due_service">Due services</option><option value="inactivity_days">Inactivity days</option></select>
-                        <label className="ta-field-label">Customer Tag</label><select className="ta-input" value={campaignForm.data.customer_tag_id} onChange={(e) => campaignForm.setData('customer_tag_id', e.target.value)} disabled={campaignForm.data.audience_type !== 'tag'}><option value="">Tag (if tag audience)</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
+                        <SearchableSelect label="Customer Tag" value={campaignForm.data.customer_tag_id} onChange={(id) => campaignForm.setData('customer_tag_id', id)} options={tagSelectOptions} placeholder="Search tag" disabled={campaignForm.data.audience_type !== 'tag'} />
                         <input className="ta-input" type="number" min="1" placeholder="Inactivity days" value={campaignForm.data.inactivity_days} onChange={(e) => campaignForm.setData('inactivity_days', e.target.value)} disabled={campaignForm.data.audience_type !== 'inactivity_days'} />
                         <div className="grid gap-2 md:col-span-2 md:grid-cols-2">
                             <input className="ta-input" type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
@@ -544,15 +626,16 @@ export default function Automation({ tags, customerOptions, customers, customerF
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Campaign</th><th className="px-4 py-2">Template</th><th className="px-4 py-2">Audience</th><th className="px-4 py-2">Schedule</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Sent</th><th className="px-4 py-2">Failed</th><th className="px-4 py-2">Spend</th><th className="px-4 py-2">Actions</th></tr></thead>
-                            <tbody>{campaigns.map((c) => <tr key={c.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{c.name}</td><td className="px-4 py-2 text-slate-600">{c.template_name}</td><td className="px-4 py-2 text-slate-600">{c.audience_type}{c.tag_name ? ` (${c.tag_name})` : ''}{c.inactivity_days ? ` (${c.inactivity_days}d)` : ''}</td><td className="px-4 py-2 text-slate-600">{c.scheduled_at ? formatDateTime(c.scheduled_at) : 'Now/manual'}</td><td className="px-4 py-2 text-slate-600">{c.status}</td><td className="px-4 py-2 text-emerald-700">{c.sent_count}</td><td className="px-4 py-2 text-red-700">{c.failed_count}</td><td className="px-4 py-2 text-slate-600">{c.spend_total}</td><td className="px-4 py-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.campaigns.dispatch', c.id))}>Dispatch</button></td></tr>)}</tbody>
+                            <tbody>{campaigns.data.map((c) => <tr key={c.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{c.name}</td><td className="px-4 py-2 text-slate-600">{c.template_name}</td><td className="px-4 py-2 text-slate-600">{c.audience_type}{c.tag_name ? ` (${c.tag_name})` : ''}{c.inactivity_days ? ` (${c.inactivity_days}d)` : ''}</td><td className="px-4 py-2 text-slate-600">{c.scheduled_at ? formatDateTime(c.scheduled_at) : 'Now/manual'}</td><td className="px-4 py-2 text-slate-600">{c.status}</td><td className="px-4 py-2 text-emerald-700">{c.sent_count}</td><td className="px-4 py-2 text-red-700">{c.failed_count}</td><td className="px-4 py-2 text-slate-600">{c.spend_total}</td><td className="px-4 py-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.campaigns.dispatch', c.id))}>Dispatch</button></td></tr>)}</tbody>
                         </table>
                     </div>
+                    <PaginationLinks paginator={campaigns} />
                 </section>
 
                 <section className="ta-card p-5">
                     <div className="mb-4 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-slate-700">Meta Template Manager</h3>
-                        <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.whatsapp-templates.sync'))}>Sync From Meta</button>
+                        <h3 className="text-sm font-semibold text-slate-700">{templateProviderLabel} Template Manager</h3>
+                        <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.whatsapp-templates.sync'))}>Sync From {templateProviderLabel}</button>
                     </div>
 
                     <form className="mb-4 grid gap-3 md:grid-cols-2" onSubmit={(e) => {
@@ -582,23 +665,29 @@ export default function Automation({ tags, customerOptions, customers, customerF
                         <input className="ta-input md:col-span-2" placeholder="Header example value" value={metaTemplateForm.data.header_example} onChange={(e) => metaTemplateForm.setData('header_example', e.target.value)} disabled={metaTemplateForm.data.header_type !== 'text'} />
                         {['image', 'video', 'document'].includes(metaTemplateForm.data.header_type) && (
                             <>
-                                <input className="ta-input md:col-span-2" placeholder="Meta header handle" value={metaTemplateForm.data.header_media_handle} onChange={(e) => metaTemplateForm.setData('header_media_handle', e.target.value)} required />
-                                <input className="ta-input md:col-span-2" type="file" accept={metaTemplateForm.data.header_type === 'image' ? 'image/*' : metaTemplateForm.data.header_type === 'video' ? 'video/*' : '.pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx'} onChange={(e) => metaTemplateForm.setData('header_media_file', e.target.files?.[0] || null)} />
-                                <div className="flex items-center gap-2 md:col-span-2">
-                                    <button
-                                        type="button"
-                                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
-                                        disabled={metaTemplateForm.processing || !canManage || !metaTemplateForm.data.header_media_file}
-                                        onClick={() => metaTemplateForm.post(route('customers.automation.whatsapp-templates.header-media'), {
-                                            forceFormData: true,
-                                            preserveScroll: true,
-                                            onSuccess: () => metaTemplateForm.setData('header_media_file', null),
-                                        })}
-                                    >
-                                        Upload Sample Media to Meta
-                                    </button>
-                                    <span className="text-xs text-slate-500">Upload a sample file first, then use the returned handle in the template.</span>
-                                </div>
+                                <input className="ta-input md:col-span-2" placeholder={whatsappProvider === 'ycloud' ? 'Public sample media URL' : 'Meta header handle'} value={metaTemplateForm.data.header_media_handle} onChange={(e) => metaTemplateForm.setData('header_media_handle', e.target.value)} required />
+                                {whatsappProvider !== 'ycloud' ? (
+                                    <>
+                                        <input className="ta-input md:col-span-2" type="file" accept={metaTemplateForm.data.header_type === 'image' ? 'image/*' : metaTemplateForm.data.header_type === 'video' ? 'video/*' : '.pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx'} onChange={(e) => metaTemplateForm.setData('header_media_file', e.target.files?.[0] || null)} />
+                                        <div className="flex items-center gap-2 md:col-span-2">
+                                            <button
+                                                type="button"
+                                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
+                                                disabled={metaTemplateForm.processing || !canManage || !metaTemplateForm.data.header_media_file}
+                                                onClick={() => metaTemplateForm.post(route('customers.automation.whatsapp-templates.header-media'), {
+                                                    forceFormData: true,
+                                                    preserveScroll: true,
+                                                    onSuccess: () => metaTemplateForm.setData('header_media_file', null),
+                                                })}
+                                            >
+                                                Upload Sample Media to Meta
+                                            </button>
+                                            <span className="text-xs text-slate-500">Upload a sample file first, then use the returned handle in the template.</span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <span className="text-xs text-slate-500 md:col-span-2">Use an HTTPS URL that YCloud and Meta can fetch for template review.</span>
+                                )}
                             </>
                         )}
                         <textarea className="ta-input md:col-span-2" rows="3" placeholder="Template body, e.g. Hello {{1}}, your appointment is due." value={metaTemplateForm.data.body_text} onChange={(e) => metaTemplateForm.setData('body_text', e.target.value)} required />
@@ -618,7 +707,7 @@ export default function Automation({ tags, customerOptions, customers, customerF
                             </div>
                         ))}
                         <div className="md:col-span-2 flex gap-2">
-                            <button className="ta-btn-primary" disabled={metaTemplateForm.processing || !canManage}>{editingMetaTemplateId ? 'Replace Meta Template' : 'Create Meta Template'}</button>
+                            <button className="ta-btn-primary" disabled={metaTemplateForm.processing || !canManage}>{editingMetaTemplateId ? `Replace ${templateProviderLabel} Template` : `Create ${templateProviderLabel} Template`}</button>
                             {editingMetaTemplateId && <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700" onClick={resetMetaTemplateEditor}>Cancel</button>}
                         </div>
                     </form>
@@ -626,9 +715,10 @@ export default function Automation({ tags, customerOptions, customers, customerF
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Name</th><th className="px-4 py-2">Language</th><th className="px-4 py-2">Category</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Quality</th><th className="px-4 py-2">Last Sync</th><th className="px-4 py-2">Actions</th></tr></thead>
-                            <tbody>{metaTemplates.map((template) => <tr key={template.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{template.name}</td><td className="px-4 py-2 text-slate-600">{template.language}</td><td className="px-4 py-2 text-slate-600">{template.category || '-'}</td><td className="px-4 py-2 text-slate-600">{template.status || '-'}</td><td className="px-4 py-2 text-slate-600">{template.quality_score || '-'}</td><td className="px-4 py-2 text-slate-600">{template.last_synced_at ? formatDateTime(template.last_synced_at) : '-'}</td><td className="px-4 py-2"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => loadMetaTemplateIntoForm(template)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700" onClick={() => router.delete(route('customers.automation.whatsapp-templates.destroy', template.id))}>Delete</button></div></td></tr>)}</tbody>
+                            <tbody>{metaTemplates.data.map((template) => <tr key={template.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{template.name}</td><td className="px-4 py-2 text-slate-600">{template.language}</td><td className="px-4 py-2 text-slate-600">{template.category || '-'}</td><td className="px-4 py-2 text-slate-600">{template.status || '-'}</td><td className="px-4 py-2 text-slate-600">{template.quality_score || '-'}</td><td className="px-4 py-2 text-slate-600">{template.last_synced_at ? formatDateTime(template.last_synced_at) : '-'}</td><td className="px-4 py-2"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => loadMetaTemplateIntoForm(template)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700" onClick={() => router.delete(route('customers.automation.whatsapp-templates.destroy', template.id))}>Delete</button></div></td></tr>)}</tbody>
                         </table>
                     </div>
+                    <PaginationLinks paginator={metaTemplates} />
                 </section>
 
                 <section className="ta-card p-5">
@@ -643,10 +733,7 @@ export default function Automation({ tags, customerOptions, customers, customerF
                             });
                         }}
                     >
-                        <select className="ta-input" value={singleMessageForm.data.customer_id} onChange={(e) => singleMessageForm.setData('customer_id', e.target.value)} required>
-                            <option value="">Select contact</option>
-                            {customerOptions.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-                        </select>
+                        <SearchableSelect value={singleMessageForm.data.customer_id} onChange={(id) => singleMessageForm.setData('customer_id', id)} options={customerSelectOptions} placeholder="Search contact" />
                         <select className="ta-input" value={singleMessageForm.data.channel} onChange={(e) => singleMessageForm.setData('channel', e.target.value)}>
                             <option value="whatsapp">WhatsApp</option>
                             <option value="sms">SMS</option>
@@ -659,10 +746,7 @@ export default function Automation({ tags, customerOptions, customers, customerF
                                     <option value="template">WhatsApp template</option>
                                 </select>
                                 {singleMessageForm.data.whatsapp_message_type === 'template' && (
-                                    <select className="ta-input" value={singleMessageForm.data.whatsapp_template_id} onChange={(e) => singleMessageForm.setData('whatsapp_template_id', e.target.value)} required>
-                                        <option value="">Select Meta template</option>
-                                        {metaTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} ({template.language})</option>)}
-                                    </select>
+                                    <SearchableSelect value={singleMessageForm.data.whatsapp_template_id} onChange={(id) => singleMessageForm.setData('whatsapp_template_id', id)} options={whatsappTemplateSelectOptions} placeholder="Search WhatsApp template" />
                                 )}
                             </>
                         )}
@@ -758,9 +842,10 @@ export default function Automation({ tags, customerOptions, customers, customerF
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Channel</th><th className="px-5 py-3">Context</th><th className="px-5 py-3">Recipient</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Details</th></tr></thead>
-                            <tbody>{recentLogs.map((log) => <tr key={log.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{formatDateTime(log.accepted_at || log.sent_at || log.failed_at || log.queued_at || log.created_at)}</td><td className="px-5 py-3 text-slate-700">{log.customer_name || '-'}</td><td className="px-5 py-3 text-slate-600">{log.channel}</td><td className="px-5 py-3 text-slate-600">{log.context}</td><td className="px-5 py-3 text-slate-600">{log.recipient || '-'}</td><td className="px-5 py-3 text-slate-600">{log.provider_status ? `${log.status} / ${log.provider_status}` : log.status}</td><td className="max-w-xs px-5 py-3 text-xs text-slate-500">{log.error_message ? <span className="font-semibold text-red-600">{log.error_message}</span> : <span>{log.provider_message_id ? `Meta ID: ${log.provider_message_id}` : log.provider || '-'}</span>}{Number(log.attempt_count || 0) > 0 ? <div className="mt-1">Attempts: {log.attempt_count}</div> : null}</td></tr>)}</tbody>
+                            <tbody>{recentLogs.data.map((log) => <tr key={log.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{formatDateTime(log.accepted_at || log.sent_at || log.failed_at || log.queued_at || log.created_at)}</td><td className="px-5 py-3 text-slate-700">{log.customer_name || '-'}</td><td className="px-5 py-3 text-slate-600">{log.channel}</td><td className="px-5 py-3 text-slate-600">{log.context}</td><td className="px-5 py-3 text-slate-600">{log.recipient || '-'}</td><td className="px-5 py-3 text-slate-600">{log.provider_status ? `${log.status} / ${log.provider_status}` : log.status}</td><td className="max-w-xs px-5 py-3 text-xs text-slate-500">{log.error_message ? <span className="font-semibold text-red-600">{log.error_message}</span> : <span>{log.provider_message_id ? `Provider ID: ${log.provider_message_id}` : log.provider || '-'}</span>}{Number(log.attempt_count || 0) > 0 ? <div className="mt-1">Attempts: {log.attempt_count}</div> : null}</td></tr>)}</tbody>
                         </table>
                     </div>
+                    <PaginationLinks paginator={recentLogs} />
                 </section>
             </div>
         </AuthenticatedLayout>
