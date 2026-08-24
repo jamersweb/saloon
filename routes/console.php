@@ -8,7 +8,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('app:send-due-service-reminders --channel=sms --policy=fallback --fallback=email --limit=200')
+Schedule::command('app:send-due-service-reminders --channel=whatsapp --policy=single --limit=200')
     ->dailyAt('10:00');
 
 Schedule::command('app:dispatch-scheduled-campaigns --limit=25')
