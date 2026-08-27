@@ -8,6 +8,7 @@ use App\Models\CampaignTemplate;
 use App\Models\CommunicationLog;
 use App\Models\Customer;
 use App\Models\CustomerDueService;
+use App\Models\CustomerTag;
 use App\Models\FinanceSetting;
 use App\Models\Role;
 use App\Models\SalonService;
@@ -180,6 +181,148 @@ class WhatsAppDeliveryTest extends TestCase
                 && ($header['parameters'][0]['document']['link'] ?? null) === 'https://example.com/vina-luxury-beauty-offer.pdf'
                 && ($header['parameters'][0]['document']['filename'] ?? null) === 'vina-luxury-beauty-offer.pdf';
         });
+    }
+
+    public function test_campaign_dispatch_queues_tagged_whatsapp_audience(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $tag = CustomerTag::create([
+            'name' => 'Vip',
+            'color' => '#b85c64',
+            'is_active' => true,
+        ]);
+
+        $matchingCustomer = Customer::create([
+            'customer_code' => 'CUST-WA-TAG-1',
+            'name' => 'Tagged Customer',
+            'phone' => '971501111111',
+            'is_active' => true,
+        ]);
+        $matchingCustomer->tags()->attach($tag->id);
+
+        Customer::create([
+            'customer_code' => 'CUST-WA-TAG-2',
+            'name' => 'Untagged Customer',
+            'phone' => '971502222222',
+            'is_active' => true,
+        ]);
+
+        $template = CampaignTemplate::create([
+            'name' => 'Tagged WhatsApp Blast',
+            'channel' => 'whatsapp',
+            'content' => 'Hi {name}, this is a tagged campaign.',
+            'is_active' => true,
+        ]);
+
+        $campaign = Campaign::create([
+            'name' => 'Tagged Push',
+            'campaign_template_id' => $template->id,
+            'channel' => 'whatsapp',
+            'audience_type' => 'tag',
+            'customer_tag_id' => $tag->id,
+            'status' => 'draft',
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.campaigns.dispatch', $campaign))
+            ->assertSessionHasNoErrors();
+
+        Queue::assertPushed(SendWhatsAppDeliveryJob::class, 1);
+
+        $this->assertDatabaseHas('communication_logs', [
+            'customer_id' => $matchingCustomer->id,
+            'channel' => 'whatsapp',
+            'context' => 'campaign:'.$campaign->id,
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseMissing('communication_logs', [
+            'recipient' => '+971502222222',
+            'context' => 'campaign:'.$campaign->id,
+        ]);
+    }
+
+    public function test_campaign_dispatch_skips_already_queued_or_sent_customers_on_retry(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $alreadyQueued = Customer::create([
+            'customer_code' => 'CUST-WA-RETRY-1',
+            'name' => 'Already Queued',
+            'phone' => '971503333333',
+            'is_active' => true,
+        ]);
+
+        $newCustomer = Customer::create([
+            'customer_code' => 'CUST-WA-RETRY-2',
+            'name' => 'New Customer',
+            'phone' => '971504444444',
+            'is_active' => true,
+        ]);
+
+        $template = CampaignTemplate::create([
+            'name' => 'Retry WhatsApp Blast',
+            'channel' => 'whatsapp',
+            'content' => 'Hi {name}, this is a retry-safe campaign.',
+            'is_active' => true,
+        ]);
+
+        $campaign = Campaign::create([
+            'name' => 'Retry Push',
+            'campaign_template_id' => $template->id,
+            'channel' => 'whatsapp',
+            'audience_type' => 'all',
+            'status' => 'draft',
+            'created_by' => $user->id,
+        ]);
+
+        CommunicationLog::create([
+            'customer_id' => $alreadyQueued->id,
+            'channel' => 'whatsapp',
+            'context' => 'campaign:'.$campaign->id,
+            'recipient' => '+971503333333',
+            'message' => 'Existing queued message',
+            'status' => 'queued',
+            'provider' => 'whatsapp',
+            'provider_status' => 'queued',
+            'message_type' => 'text',
+            'queued_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.campaigns.dispatch', $campaign))
+            ->assertSessionHasNoErrors();
+
+        Queue::assertPushed(SendWhatsAppDeliveryJob::class, 1);
+
+        $this->assertSame(
+            1,
+            CommunicationLog::query()
+                ->where('customer_id', $alreadyQueued->id)
+                ->where('context', 'campaign:'.$campaign->id)
+                ->count()
+        );
+        $this->assertDatabaseHas('communication_logs', [
+            'customer_id' => $newCustomer->id,
+            'channel' => 'whatsapp',
+            'context' => 'campaign:'.$campaign->id,
+            'status' => 'queued',
+        ]);
     }
 
     public function test_whatsapp_template_command_posts_template_payload_to_meta(): void

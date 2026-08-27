@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Appointment;
 use App\Models\Campaign;
 use App\Models\CampaignTemplate;
+use App\Models\CommunicationLog;
 use App\Models\Customer;
 use App\Models\CustomerDueService;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,6 +26,10 @@ class CampaignDispatchService
             ->orderBy('customers.id')
             ->chunkById(100, function ($customers) use ($campaign, &$queued): void {
                 foreach ($customers as $customer) {
+                    if ($this->hasAlreadyQueuedOrSent($campaign, $customer)) {
+                        continue;
+                    }
+
                     $recipient = $campaign->channel === 'email' ? $customer->email : $customer->phone;
                     $message = str_replace('{name}', $customer->name, $campaign->template?->content ?? '');
 
@@ -43,7 +48,7 @@ class CampaignDispatchService
                         $queued++;
                     }
                 }
-            }, 'customers.id');
+            }, 'customers.id', 'id');
 
         $campaign->update([
             'status' => 'sent',
@@ -161,5 +166,15 @@ class CampaignDispatchService
                 ->havingRaw("COALESCE(MAX(appointments.scheduled_start), {$customerCreatedAtExpr}) <= ?", [now()->subDays((int) ($campaign->inactivity_days ?? 30))->toDateTimeString()]),
             default => Customer::query()->where('is_active', true),
         };
+    }
+
+    private function hasAlreadyQueuedOrSent(Campaign $campaign, Customer $customer): bool
+    {
+        return CommunicationLog::query()
+            ->where('customer_id', $customer->id)
+            ->where('channel', $campaign->channel)
+            ->where('context', 'campaign:'.$campaign->id)
+            ->whereIn('status', ['queued', 'sent'])
+            ->exists();
     }
 }
