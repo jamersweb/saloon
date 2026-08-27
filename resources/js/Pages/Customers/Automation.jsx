@@ -83,11 +83,22 @@ const templateHeaderMediaUrl = (template) => {
     return header?.example?.header_url?.[0] || header?.example?.header_handle?.[0] || '';
 };
 
+const CrmTabButton = ({ active, children, onClick }) => (
+    <button
+        type="button"
+        className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${active ? 'bg-[#b85f67] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        onClick={onClick}
+    >
+        {children}
+    </button>
+);
+
 export default function Automation({ tags, customerOptions, serviceOptions = [], campaignTemplateOptions = [], whatsappTemplateOptions = [], customers, customerFilters, contacts, contactFilters, dueServices, recentLogs, segmentRules, campaignTemplates, whatsappProvider = 'meta', metaTemplates, campaigns }) {
     const { flash, auth, app_timezone: appTimezone = 'Asia/Dubai' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_crm_automation);
     const [editingRuleId, setEditingRuleId] = useState(null);
     const [editingMetaTemplateId, setEditingMetaTemplateId] = useState(null);
+    const [marketingTab, setMarketingTab] = useState('campaigns');
     const templateProviderLabel = whatsappProvider === 'ycloud' ? 'YCloud' : 'Meta';
     const customerSelectOptions = customerOptions.map((customer) => ({ value: customer.id, label: customer.name }));
     const serviceSelectOptions = serviceOptions.map((service) => ({ value: service.id, label: `${service.name}${service.repeat_after_days ? ` (${service.repeat_after_days}d)` : ''}` }));
@@ -587,83 +598,96 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
 
 
                 <section className="ta-card p-5">
-                    <div className="mb-4 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-slate-700">Campaign Templates & Scheduling</h3>
-                        <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.campaigns.run-scheduled'))}>Run Due Scheduled</button>
-                    </div>
-
-                    <form className="mb-4 grid gap-3 md:grid-cols-4" onSubmit={(e) => { e.preventDefault(); templateForm.post(route('customers.automation.campaign-templates.store'), { onSuccess: () => templateForm.reset('name', 'content', 'whatsapp_template_name') }); }}>
-                        <input className="ta-input" placeholder="Template name" value={templateForm.data.name} onChange={(e) => templateForm.setData('name', e.target.value)} required />
-                        <label className="ta-field-label">Channel</label><select className="ta-input" value={templateForm.data.channel} onChange={(e) => templateForm.setData('channel', e.target.value)}><option value="sms">SMS</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select>
-                        <input className="ta-input md:col-span-2" placeholder="Message (use {name})" value={templateForm.data.content} onChange={(e) => templateForm.setData('content', e.target.value)} required={templateForm.data.channel !== 'whatsapp' || templateForm.data.whatsapp_message_type !== 'template'} />
-                        {templateForm.data.channel === 'whatsapp' && (
-                            <>
-                                <label className="ta-field-label">WhatsApp type</label>
-                                <select className="ta-input" value={templateForm.data.whatsapp_message_type} onChange={(e) => templateForm.setData('whatsapp_message_type', e.target.value)}>
-                                    <option value="text">Text</option>
-                                    <option value="template">WhatsApp Template</option>
-                                </select>
-                                <SearchableSelect
-                                    value={templateForm.data.whatsapp_template_name}
-                                    onChange={(name) => templateForm.setData('whatsapp_template_name', name)}
-                                    options={whatsappTemplateOptions.map((template) => ({ value: template.name, label: `${template.name} (${template.language})` }))}
-                                    placeholder={`Search ${templateProviderLabel} template`}
-                                    disabled={templateForm.data.whatsapp_message_type !== 'template'}
-                                />
-                                <input className="ta-input" placeholder="Language code" value={templateForm.data.whatsapp_template_language_code} onChange={(e) => templateForm.setData('whatsapp_template_language_code', e.target.value)} disabled={templateForm.data.whatsapp_message_type !== 'template'} />
-                                {templateForm.data.whatsapp_message_type === 'template' && (
-                                    <>
-                                        <select className="ta-input" value={templateForm.data.whatsapp_header_type} onChange={(e) => templateForm.setData('whatsapp_header_type', e.target.value)}>
-                                            <option value="none">No attachment</option>
-                                            <option value="document">Document/PDF attachment</option>
-                                            <option value="image">Image attachment</option>
-                                            <option value="video">Video attachment</option>
-                                        </select>
-                                        {templateForm.data.whatsapp_header_type !== 'none' && (
-                                            <>
-                                                <input className="ta-input md:col-span-2" placeholder="Public attachment URL" value={templateForm.data.whatsapp_header_media_url} onChange={(e) => templateForm.setData('whatsapp_header_media_url', e.target.value)} required />
-                                                <input className="ta-input" placeholder="Attachment filename" value={templateForm.data.whatsapp_header_media_filename} onChange={(e) => templateForm.setData('whatsapp_header_media_filename', e.target.value)} disabled={templateForm.data.whatsapp_header_type !== 'document'} />
-                                            </>
-                                        )}
-                                    </>
-                                )}
-                            </>
-                        )}
-                        <button className="ta-btn-primary md:col-span-4" disabled={templateForm.processing || !canManage}>Create Template</button>
-                    </form>
-
-                    <form className="mb-4 grid gap-3 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); campaignForm.post(route('customers.automation.campaigns.store'), { onSuccess: () => campaignForm.reset('name', 'scheduled_at') }); }}>
-                        <input className="ta-input" placeholder="Campaign name" value={campaignForm.data.name} onChange={(e) => campaignForm.setData('name', e.target.value)} required />
-                        <SearchableSelect label="Campaign Template" value={campaignForm.data.campaign_template_id} onChange={(id) => campaignForm.setData('campaign_template_id', id)} options={campaignTemplateSelectOptions} placeholder="Search campaign template" />
-                        <label className="ta-field-label">Audience Type</label><select className="ta-input" value={campaignForm.data.audience_type} onChange={(e) => campaignForm.setData('audience_type', e.target.value)}><option value="all">All active customers</option><option value="tag">By tag</option><option value="due_service">Due services</option><option value="inactivity_days">Inactivity days</option></select>
-                        <SearchableSelect label="Customer Tag" value={campaignForm.data.customer_tag_id} onChange={(id) => campaignForm.setData('customer_tag_id', id)} options={tagSelectOptions} placeholder="Search tag" disabled={campaignForm.data.audience_type !== 'tag'} />
-                        <input className="ta-input" type="number" min="1" placeholder="Inactivity days" value={campaignForm.data.inactivity_days} onChange={(e) => campaignForm.setData('inactivity_days', e.target.value)} disabled={campaignForm.data.audience_type !== 'inactivity_days'} />
-                        <div className="grid gap-2 md:col-span-2 md:grid-cols-2">
-                            <input className="ta-input" type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
-                            <select className="ta-input" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} disabled={!scheduledDate}>
-                                <option value="">{scheduledDate ? 'Select Dubai time' : 'Pick date first'}</option>
-                                {campaignTimeOptions.map((time) => <option key={time} value={time}>{time} Dubai time</option>)}
-                            </select>
+                    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold text-slate-700">Marketing</h3>
+                        <div className="flex flex-wrap gap-2">
+                            <CrmTabButton active={marketingTab === 'campaigns'} onClick={() => setMarketingTab('campaigns')}>Campaigns</CrmTabButton>
+                            <CrmTabButton active={marketingTab === 'message_templates'} onClick={() => setMarketingTab('message_templates')}>Message Templates</CrmTabButton>
+                            <CrmTabButton active={marketingTab === 'whatsapp_approval'} onClick={() => setMarketingTab('whatsapp_approval')}>WhatsApp Approval</CrmTabButton>
                         </div>
-                        <button className="ta-btn-primary md:col-span-6" disabled={campaignForm.processing || !canManage}>Create Campaign</button>
-                    </form>
-
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Campaign</th><th className="px-4 py-2">Template</th><th className="px-4 py-2">Audience</th><th className="px-4 py-2">Schedule</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Sent</th><th className="px-4 py-2">Failed</th><th className="px-4 py-2">Spend</th><th className="px-4 py-2">Actions</th></tr></thead>
-                            <tbody>{campaigns.data.map((c) => <tr key={c.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{c.name}</td><td className="px-4 py-2 text-slate-600">{c.template_name}</td><td className="px-4 py-2 text-slate-600">{c.audience_type}{c.tag_name ? ` (${c.tag_name})` : ''}{c.inactivity_days ? ` (${c.inactivity_days}d)` : ''}</td><td className="px-4 py-2 text-slate-600">{c.scheduled_at ? formatDateTime(c.scheduled_at) : 'Now/manual'}</td><td className="px-4 py-2 text-slate-600">{c.status}</td><td className="px-4 py-2 text-emerald-700">{c.sent_count}</td><td className="px-4 py-2 text-red-700">{c.failed_count}</td><td className="px-4 py-2 text-slate-600">{c.spend_total}</td><td className="px-4 py-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.campaigns.dispatch', c.id))}>Dispatch</button></td></tr>)}</tbody>
-                        </table>
-                    </div>
-                    <PaginationLinks paginator={campaigns} />
-                </section>
-
-                <section className="ta-card p-5">
-                    <div className="mb-4 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-slate-700">{templateProviderLabel} Template Manager</h3>
-                        <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.whatsapp-templates.sync'))}>Sync From {templateProviderLabel}</button>
                     </div>
 
-                    <form className="mb-4 grid gap-3 md:grid-cols-2" onSubmit={(e) => {
+                    {marketingTab === 'message_templates' && (
+                        <form className="grid gap-3 md:grid-cols-4" onSubmit={(e) => { e.preventDefault(); templateForm.post(route('customers.automation.campaign-templates.store'), { onSuccess: () => templateForm.reset('name', 'content', 'whatsapp_template_name') }); }}>
+                            <input className="ta-input" placeholder="Template name" value={templateForm.data.name} onChange={(e) => templateForm.setData('name', e.target.value)} required />
+                            <label className="ta-field-label">Channel</label><select className="ta-input" value={templateForm.data.channel} onChange={(e) => templateForm.setData('channel', e.target.value)}><option value="sms">SMS</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select>
+                            <input className="ta-input md:col-span-2" placeholder="Message (use {name})" value={templateForm.data.content} onChange={(e) => templateForm.setData('content', e.target.value)} required={templateForm.data.channel !== 'whatsapp' || templateForm.data.whatsapp_message_type !== 'template'} />
+                            {templateForm.data.channel === 'whatsapp' && (
+                                <>
+                                    <label className="ta-field-label">WhatsApp type</label>
+                                    <select className="ta-input" value={templateForm.data.whatsapp_message_type} onChange={(e) => templateForm.setData('whatsapp_message_type', e.target.value)}>
+                                        <option value="text">Text</option>
+                                        <option value="template">WhatsApp Template</option>
+                                    </select>
+                                    <SearchableSelect
+                                        value={templateForm.data.whatsapp_template_name}
+                                        onChange={(name) => templateForm.setData('whatsapp_template_name', name)}
+                                        options={whatsappTemplateOptions.map((template) => ({ value: template.name, label: `${template.name} (${template.language})` }))}
+                                        placeholder={`Search ${templateProviderLabel} template`}
+                                        disabled={templateForm.data.whatsapp_message_type !== 'template'}
+                                    />
+                                    <input className="ta-input" placeholder="Language code" value={templateForm.data.whatsapp_template_language_code} onChange={(e) => templateForm.setData('whatsapp_template_language_code', e.target.value)} disabled={templateForm.data.whatsapp_message_type !== 'template'} />
+                                    {templateForm.data.whatsapp_message_type === 'template' && (
+                                        <>
+                                            <select className="ta-input" value={templateForm.data.whatsapp_header_type} onChange={(e) => templateForm.setData('whatsapp_header_type', e.target.value)}>
+                                                <option value="none">No attachment</option>
+                                                <option value="document">Document/PDF attachment</option>
+                                                <option value="image">Image attachment</option>
+                                                <option value="video">Video attachment</option>
+                                            </select>
+                                            {templateForm.data.whatsapp_header_type !== 'none' && (
+                                                <>
+                                                    <input className="ta-input md:col-span-2" placeholder="Public attachment URL" value={templateForm.data.whatsapp_header_media_url} onChange={(e) => templateForm.setData('whatsapp_header_media_url', e.target.value)} required />
+                                                    <input className="ta-input" placeholder="Attachment filename" value={templateForm.data.whatsapp_header_media_filename} onChange={(e) => templateForm.setData('whatsapp_header_media_filename', e.target.value)} disabled={templateForm.data.whatsapp_header_type !== 'document'} />
+                                                </>
+                                            )}
+                                        </>
+                                    )}
+                                </>
+                            )}
+                            <button className="ta-btn-primary md:col-span-4" disabled={templateForm.processing || !canManage}>Save Message Template</button>
+                        </form>
+                    )}
+
+                    {marketingTab === 'campaigns' && (
+                        <>
+                            <div className="mb-4 flex justify-end">
+                                <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.campaigns.run-scheduled'))}>Run Due Scheduled</button>
+                            </div>
+                            <form className="mb-4 grid gap-3 md:grid-cols-6" onSubmit={(e) => { e.preventDefault(); campaignForm.post(route('customers.automation.campaigns.store'), { onSuccess: () => campaignForm.reset('name', 'scheduled_at') }); }}>
+                                <input className="ta-input" placeholder="Campaign name" value={campaignForm.data.name} onChange={(e) => campaignForm.setData('name', e.target.value)} required />
+                                <SearchableSelect label="Message Template" value={campaignForm.data.campaign_template_id} onChange={(id) => campaignForm.setData('campaign_template_id', id)} options={campaignTemplateSelectOptions} placeholder="Search message template" />
+                                <label className="ta-field-label">Audience</label><select className="ta-input" value={campaignForm.data.audience_type} onChange={(e) => campaignForm.setData('audience_type', e.target.value)}><option value="all">All active customers</option><option value="tag">By tag</option><option value="due_service">Due services</option><option value="inactivity_days">Inactivity days</option></select>
+                                <SearchableSelect label="Customer Tag" value={campaignForm.data.customer_tag_id} onChange={(id) => campaignForm.setData('customer_tag_id', id)} options={tagSelectOptions} placeholder="Search tag" disabled={campaignForm.data.audience_type !== 'tag'} />
+                                <input className="ta-input" type="number" min="1" placeholder="Inactivity days" value={campaignForm.data.inactivity_days} onChange={(e) => campaignForm.setData('inactivity_days', e.target.value)} disabled={campaignForm.data.audience_type !== 'inactivity_days'} />
+                                <div className="grid gap-2 md:col-span-2 md:grid-cols-2">
+                                    <input className="ta-input" type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
+                                    <select className="ta-input" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} disabled={!scheduledDate}>
+                                        <option value="">{scheduledDate ? 'Select Dubai time' : 'Pick date first'}</option>
+                                        {campaignTimeOptions.map((time) => <option key={time} value={time}>{time} Dubai time</option>)}
+                                    </select>
+                                </div>
+                                <button className="ta-btn-primary md:col-span-6" disabled={campaignForm.processing || !canManage}>Create Campaign</button>
+                            </form>
+
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-sm">
+                                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Campaign</th><th className="px-4 py-2">Message</th><th className="px-4 py-2">Audience</th><th className="px-4 py-2">Schedule</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Sent</th><th className="px-4 py-2">Failed</th><th className="px-4 py-2">Spend</th><th className="px-4 py-2">Actions</th></tr></thead>
+                                    <tbody>{campaigns.data.map((c) => <tr key={c.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{c.name}</td><td className="px-4 py-2 text-slate-600">{c.template_name}</td><td className="px-4 py-2 text-slate-600">{c.audience_type}{c.tag_name ? ` (${c.tag_name})` : ''}{c.inactivity_days ? ` (${c.inactivity_days}d)` : ''}</td><td className="px-4 py-2 text-slate-600">{c.scheduled_at ? formatDateTime(c.scheduled_at) : 'Now/manual'}</td><td className="px-4 py-2 text-slate-600">{c.status}</td><td className="px-4 py-2 text-emerald-700">{c.sent_count}</td><td className="px-4 py-2 text-red-700">{c.failed_count}</td><td className="px-4 py-2 text-slate-600">{c.spend_total}</td><td className="px-4 py-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.campaigns.dispatch', c.id))}>Dispatch</button></td></tr>)}</tbody>
+                                </table>
+                            </div>
+                            <PaginationLinks paginator={campaigns} />
+                        </>
+                    )}
+
+                    {marketingTab === 'whatsapp_approval' && (
+                        <>
+                            <div className="mb-4 flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-slate-700">{templateProviderLabel} Templates</h4>
+                                <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.whatsapp-templates.sync'))}>Sync From {templateProviderLabel}</button>
+                            </div>
+
+                            <form className="mb-4 grid gap-3 md:grid-cols-2" onSubmit={(e) => {
                         e.preventDefault();
                         const routeName = editingMetaTemplateId
                             ? route('customers.automation.whatsapp-templates.update', editingMetaTemplateId)
@@ -748,6 +772,8 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                         </table>
                     </div>
                     <PaginationLinks paginator={metaTemplates} />
+                        </>
+                    )}
                 </section>
 
                 <section className="ta-card p-5">
