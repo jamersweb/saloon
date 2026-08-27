@@ -1,4 +1,4 @@
-﻿import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import SearchableSelect from '@/Components/SearchableSelect';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
@@ -77,6 +77,12 @@ const PaginationLinks = ({ paginator }) => {
     );
 };
 
+const templateHeaderMediaUrl = (template) => {
+    const header = template.components?.find((component) => component.type === 'HEADER');
+
+    return header?.example?.header_url?.[0] || header?.example?.header_handle?.[0] || '';
+};
+
 export default function Automation({ tags, customerOptions, serviceOptions = [], campaignTemplateOptions = [], whatsappTemplateOptions = [], customers, customerFilters, contacts, contactFilters, dueServices, recentLogs, segmentRules, campaignTemplates, whatsappProvider = 'meta', metaTemplates, campaigns }) {
     const { flash, auth, app_timezone: appTimezone = 'Asia/Dubai' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_crm_automation);
@@ -125,6 +131,9 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
         whatsapp_message_type: 'text',
         whatsapp_template_name: '',
         whatsapp_template_language_code: 'en_US',
+        whatsapp_header_type: 'none',
+        whatsapp_header_media_url: 'https://portal.vina.ae/vina-luxury-beauty-offer.pdf',
+        whatsapp_header_media_filename: 'vina-luxury-beauty-offer.pdf',
         is_active: true,
     });
     const campaignForm = useForm({ name: '', campaign_template_id: '', audience_type: 'all', customer_tag_id: '', inactivity_days: '', scheduled_at: '' });
@@ -186,7 +195,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
             header_type: ['text', 'image', 'video', 'document'].includes(headerFormat) ? headerFormat : 'none',
             header_text: header?.text || '',
             header_example: header?.example?.header_text?.[0] || '',
-            header_media_handle: header?.example?.header_handle?.[0] || '',
+            header_media_handle: header?.example?.header_url?.[0] || header?.example?.header_handle?.[0] || '',
             header_media_file: null,
             body_text: body?.text || '',
             footer_text: footer?.text || '',
@@ -602,6 +611,22 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                     disabled={templateForm.data.whatsapp_message_type !== 'template'}
                                 />
                                 <input className="ta-input" placeholder="Language code" value={templateForm.data.whatsapp_template_language_code} onChange={(e) => templateForm.setData('whatsapp_template_language_code', e.target.value)} disabled={templateForm.data.whatsapp_message_type !== 'template'} />
+                                {templateForm.data.whatsapp_message_type === 'template' && (
+                                    <>
+                                        <select className="ta-input" value={templateForm.data.whatsapp_header_type} onChange={(e) => templateForm.setData('whatsapp_header_type', e.target.value)}>
+                                            <option value="none">No attachment</option>
+                                            <option value="document">Document/PDF attachment</option>
+                                            <option value="image">Image attachment</option>
+                                            <option value="video">Video attachment</option>
+                                        </select>
+                                        {templateForm.data.whatsapp_header_type !== 'none' && (
+                                            <>
+                                                <input className="ta-input md:col-span-2" placeholder="Public attachment URL" value={templateForm.data.whatsapp_header_media_url} onChange={(e) => templateForm.setData('whatsapp_header_media_url', e.target.value)} required />
+                                                <input className="ta-input" placeholder="Attachment filename" value={templateForm.data.whatsapp_header_media_filename} onChange={(e) => templateForm.setData('whatsapp_header_media_filename', e.target.value)} disabled={templateForm.data.whatsapp_header_type !== 'document'} />
+                                            </>
+                                        )}
+                                    </>
+                                )}
                             </>
                         )}
                         <button className="ta-btn-primary md:col-span-4" disabled={templateForm.processing || !canManage}>Create Template</button>
@@ -714,8 +739,12 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
 
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Name</th><th className="px-4 py-2">Language</th><th className="px-4 py-2">Category</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Quality</th><th className="px-4 py-2">Last Sync</th><th className="px-4 py-2">Actions</th></tr></thead>
-                            <tbody>{metaTemplates.data.map((template) => <tr key={template.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{template.name}</td><td className="px-4 py-2 text-slate-600">{template.language}</td><td className="px-4 py-2 text-slate-600">{template.category || '-'}</td><td className="px-4 py-2 text-slate-600">{template.status || '-'}</td><td className="px-4 py-2 text-slate-600">{template.quality_score || '-'}</td><td className="px-4 py-2 text-slate-600">{template.last_synced_at ? formatDateTime(template.last_synced_at) : '-'}</td><td className="px-4 py-2"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => loadMetaTemplateIntoForm(template)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700" onClick={() => router.delete(route('customers.automation.whatsapp-templates.destroy', template.id))}>Delete</button></div></td></tr>)}</tbody>
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Name</th><th className="px-4 py-2">Language</th><th className="px-4 py-2">Category</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Quality</th><th className="px-4 py-2">Attachment</th><th className="px-4 py-2">Last Sync</th><th className="px-4 py-2">Actions</th></tr></thead>
+                            <tbody>{metaTemplates.data.map((template) => {
+                                const attachmentUrl = templateHeaderMediaUrl(template);
+
+                                return <tr key={template.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{template.name}</td><td className="px-4 py-2 text-slate-600">{template.language}</td><td className="px-4 py-2 text-slate-600">{template.category || '-'}</td><td className="px-4 py-2 text-slate-600">{template.status || '-'}</td><td className="px-4 py-2 text-slate-600">{template.quality_score || '-'}</td><td className="px-4 py-2 text-slate-600">{attachmentUrl ? <a className="text-indigo-600 hover:underline" href={attachmentUrl} target="_blank" rel="noreferrer">Open link</a> : '-'}</td><td className="px-4 py-2 text-slate-600">{template.last_synced_at ? formatDateTime(template.last_synced_at) : '-'}</td><td className="px-4 py-2"><div className="flex gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => loadMetaTemplateIntoForm(template)}>Edit</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700" onClick={() => router.delete(route('customers.automation.whatsapp-templates.destroy', template.id))}>Delete</button></div></td></tr>;
+                            })}</tbody>
                         </table>
                     </div>
                     <PaginationLinks paginator={metaTemplates} />

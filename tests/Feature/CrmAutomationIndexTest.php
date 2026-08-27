@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CampaignTemplate;
 use App\Models\Customer;
 use App\Models\CustomerTag;
 use App\Models\Role;
@@ -158,5 +159,69 @@ class CrmAutomationIndexTest extends TestCase
                 ->has('contacts.data', 1)
                 ->where('contacts.data.0.id', $readyContact->id)
                 ->where('contacts.data.0.whatsapp_ready', true));
+    }
+
+    public function test_manager_can_save_campaign_template_with_whatsapp_pdf_attachment_link(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.campaign-templates.store'), [
+                'name' => 'Emirati Women PDF Offer',
+                'channel' => 'whatsapp',
+                'content' => 'Dear {name}, please see our offer.',
+                'whatsapp_message_type' => 'template',
+                'whatsapp_template_name' => 'vina_emirati_womens_day_2026_offer',
+                'whatsapp_template_language_code' => 'en_US',
+                'whatsapp_header_type' => 'document',
+                'whatsapp_header_media_url' => 'https://portal.vina.ae/vina-luxury-beauty-offer.pdf',
+                'whatsapp_header_media_filename' => 'vina-luxury-beauty-offer.pdf',
+                'is_active' => true,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('campaign_templates', [
+            'name' => 'Emirati Women PDF Offer',
+            'channel' => 'whatsapp',
+            'whatsapp_message_type' => 'template',
+            'whatsapp_template_name' => 'vina_emirati_womens_day_2026_offer',
+            'whatsapp_header_type' => 'document',
+            'whatsapp_header_media_url' => 'https://portal.vina.ae/vina-luxury-beauty-offer.pdf',
+            'whatsapp_header_media_filename' => 'vina-luxury-beauty-offer.pdf',
+        ]);
+    }
+
+    public function test_document_campaign_attachment_must_use_pdf_url(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.campaign-templates.store'), [
+                'name' => 'Invalid Document Offer',
+                'channel' => 'whatsapp',
+                'content' => 'Dear {name}, please see our offer.',
+                'whatsapp_message_type' => 'template',
+                'whatsapp_template_name' => 'vina_emirati_womens_day_2026_offer',
+                'whatsapp_template_language_code' => 'en_US',
+                'whatsapp_header_type' => 'document',
+                'whatsapp_header_media_url' => 'https://portal.vina.ae/offer',
+                'whatsapp_header_media_filename' => 'offer.pdf',
+                'is_active' => true,
+            ])
+            ->assertSessionHasErrors('whatsapp_header_media_url');
+
+        $this->assertDatabaseCount(CampaignTemplate::class, 0);
     }
 }

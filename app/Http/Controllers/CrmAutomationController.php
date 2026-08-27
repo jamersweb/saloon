@@ -318,14 +318,21 @@ class CrmAutomationController extends Controller
             'whatsapp_message_type' => ['nullable', 'in:text,template'],
             'whatsapp_template_name' => ['nullable', 'string', 'max:255'],
             'whatsapp_template_language_code' => ['nullable', 'string', 'max:16'],
+            'whatsapp_header_type' => ['nullable', 'in:none,image,video,document'],
+            'whatsapp_header_media_url' => ['nullable', 'url', 'max:2048'],
+            'whatsapp_header_media_filename' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
         ]);
+        $this->validateCampaignTemplateMediaHeader($data);
 
         $template = CampaignTemplate::create([
             ...$data,
             'whatsapp_message_type' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_message_type'] ?? 'text') : null,
             'whatsapp_template_name' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_template_name'] ?? null) : null,
             'whatsapp_template_language_code' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_template_language_code'] ?? null) : null,
+            'whatsapp_header_type' => $this->campaignTemplateHeaderType($data),
+            'whatsapp_header_media_url' => $this->campaignTemplateHeaderMediaUrl($data),
+            'whatsapp_header_media_filename' => $this->campaignTemplateHeaderMediaFilename($data),
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
 
@@ -345,14 +352,21 @@ class CrmAutomationController extends Controller
             'whatsapp_message_type' => ['nullable', 'in:text,template'],
             'whatsapp_template_name' => ['nullable', 'string', 'max:255'],
             'whatsapp_template_language_code' => ['nullable', 'string', 'max:16'],
+            'whatsapp_header_type' => ['nullable', 'in:none,image,video,document'],
+            'whatsapp_header_media_url' => ['nullable', 'url', 'max:2048'],
+            'whatsapp_header_media_filename' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
         ]);
+        $this->validateCampaignTemplateMediaHeader($data);
 
         $template->update([
             ...$data,
             'whatsapp_message_type' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_message_type'] ?? 'text') : null,
             'whatsapp_template_name' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_template_name'] ?? null) : null,
             'whatsapp_template_language_code' => $data['channel'] === 'whatsapp' ? ($data['whatsapp_template_language_code'] ?? null) : null,
+            'whatsapp_header_type' => $this->campaignTemplateHeaderType($data),
+            'whatsapp_header_media_url' => $this->campaignTemplateHeaderMediaUrl($data),
+            'whatsapp_header_media_filename' => $this->campaignTemplateHeaderMediaFilename($data),
             'is_active' => (bool) ($data['is_active'] ?? false),
         ]);
 
@@ -858,6 +872,76 @@ class CrmAutomationController extends Controller
             'lookback_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
             'is_active' => ['nullable', 'boolean'],
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function validateCampaignTemplateMediaHeader(array $data): void
+    {
+        if (($data['channel'] ?? null) !== 'whatsapp' || ($data['whatsapp_message_type'] ?? 'text') !== 'template') {
+            return;
+        }
+
+        $headerType = (string) ($data['whatsapp_header_type'] ?? 'none');
+
+        if (! in_array($headerType, ['image', 'video', 'document'], true)) {
+            return;
+        }
+
+        $url = (string) ($data['whatsapp_header_media_url'] ?? '');
+
+        if ($url === '') {
+            throw ValidationException::withMessages([
+                'whatsapp_header_media_url' => 'Add the public media URL for this WhatsApp template header.',
+            ]);
+        }
+
+        if (! str_starts_with(strtolower($url), 'https://')) {
+            throw ValidationException::withMessages([
+                'whatsapp_header_media_url' => 'WhatsApp media links must use HTTPS.',
+            ]);
+        }
+
+        if ($headerType === 'document') {
+            $path = parse_url($url, PHP_URL_PATH);
+
+            if (! is_string($path) || ! str_ends_with(strtolower($path), '.pdf')) {
+                throw ValidationException::withMessages([
+                    'whatsapp_header_media_url' => 'Document campaign attachments must link to a PDF file ending in .pdf.',
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function campaignTemplateHeaderType(array $data): ?string
+    {
+        if (($data['channel'] ?? null) !== 'whatsapp' || ($data['whatsapp_message_type'] ?? 'text') !== 'template') {
+            return null;
+        }
+
+        $headerType = (string) ($data['whatsapp_header_type'] ?? 'none');
+
+        return $headerType === 'none' ? null : $headerType;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function campaignTemplateHeaderMediaUrl(array $data): ?string
+    {
+        return $this->campaignTemplateHeaderType($data) ? ($data['whatsapp_header_media_url'] ?? null) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function campaignTemplateHeaderMediaFilename(array $data): ?string
+    {
+        return $this->campaignTemplateHeaderType($data) ? ($data['whatsapp_header_media_filename'] ?? null) : null;
     }
 
     private function resolveRuleCustomerIds(CustomerSegmentRule $rule)
