@@ -17,7 +17,7 @@ class SetupEmiratiWomensDayOfferCampaignTest extends TestCase
     public function test_command_creates_ycloud_template_and_local_campaign_records(): void
     {
         Http::fake([
-            'https://api.ycloud.com/v2/whatsapp/templates?page=1&limit=100&filter.wabaId=waba_123' => Http::sequence()
+            'https://api.ycloud.com/v2/whatsapp/templates?page=1&limit=100&filter.wabaId=2585564098538924' => Http::sequence()
                 ->push(['data' => []], 200)
                 ->push([
                     'data' => [
@@ -40,11 +40,12 @@ class SetupEmiratiWomensDayOfferCampaignTest extends TestCase
 
         FinanceSetting::current()->update([
             'whatsapp_access_token' => 'ycloud-token',
-            'whatsapp_business_account_id' => 'waba_123',
+            'whatsapp_business_account_id' => '4263327080555368',
         ]);
 
         $this->artisan('app:setup-emirati-womens-day-offer', [
             '--document-url' => 'https://example.com/vina-luxury-beauty-offer.pdf',
+            '--waba-id' => '2585564098538924',
         ])->assertSuccessful();
 
         Http::assertSent(function ($request) {
@@ -57,7 +58,7 @@ class SetupEmiratiWomensDayOfferCampaignTest extends TestCase
             $body = collect($components)->firstWhere('type', 'BODY');
 
             return $request->hasHeader('X-API-Key', 'ycloud-token')
-                && $request['wabaId'] === 'waba_123'
+                && $request['wabaId'] === '2585564098538924'
                 && $request['name'] === 'vina_emirati_womens_day_2026_offer'
                 && $request['category'] === 'MARKETING'
                 && ($header['format'] ?? null) === 'DOCUMENT'
@@ -69,6 +70,7 @@ class SetupEmiratiWomensDayOfferCampaignTest extends TestCase
             'id' => 1,
             'whatsapp_driver' => 'ycloud',
             'whatsapp_base_url' => 'https://api.ycloud.com',
+            'whatsapp_business_account_id' => '2585564098538924',
         ]);
 
         $this->assertDatabaseHas('whatsapp_message_templates', [
@@ -96,6 +98,16 @@ class SetupEmiratiWomensDayOfferCampaignTest extends TestCase
     {
         $this->artisan('app:setup-emirati-womens-day-offer', [
             '--document-url' => 'C:\\Users\\Hp\\OneDrive\\Desktop\\offer.pdf',
+        ])->assertFailed();
+
+        $this->assertDatabaseCount(WhatsAppMessageTemplate::class, 0);
+    }
+
+    public function test_command_rejects_invalid_waba_id(): void
+    {
+        $this->artisan('app:setup-emirati-womens-day-offer', [
+            '--document-url' => 'https://example.com/vina-luxury-beauty-offer.pdf',
+            '--waba-id' => 'waba_123',
         ])->assertFailed();
 
         $this->assertDatabaseCount(WhatsAppMessageTemplate::class, 0);

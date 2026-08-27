@@ -14,6 +14,7 @@ class SetupEmiratiWomensDayOfferCampaign extends Command
 {
     protected $signature = 'app:setup-emirati-womens-day-offer
         {--document-url= : Public HTTPS URL for the PDF offer file}
+        {--waba-id= : YCloud WhatsApp Business Account ID to save before syncing}
         {--filename=vina-luxury-beauty-offer.pdf : Filename shown in WhatsApp}
         {--template-name=vina_emirati_womens_day_2026_offer : WhatsApp template name}
         {--language=en_US : WhatsApp template language code}
@@ -25,6 +26,7 @@ class SetupEmiratiWomensDayOfferCampaign extends Command
     public function handle(WhatsAppTemplateManagerService $templateManagerService): int
     {
         $documentUrl = trim((string) $this->option('document-url'));
+        $wabaId = trim((string) $this->option('waba-id'));
         $filename = trim((string) $this->option('filename'));
         $templateName = strtolower(trim((string) $this->option('template-name')));
         $language = trim((string) $this->option('language'));
@@ -41,7 +43,13 @@ class SetupEmiratiWomensDayOfferCampaign extends Command
             return self::FAILURE;
         }
 
-        $this->configureYCloudDriver();
+        if ($wabaId !== '' && ! $this->isValidWabaId($wabaId)) {
+            $this->error('WABA ID must contain only numbers.');
+
+            return self::FAILURE;
+        }
+
+        $this->configureYCloudDriver($wabaId);
 
         try {
             $this->line('Syncing existing YCloud templates...');
@@ -172,19 +180,30 @@ class SetupEmiratiWomensDayOfferCampaign extends Command
         return str_replace('{{1}}', '{name}', $this->templateBody());
     }
 
-    private function configureYCloudDriver(): void
+    private function configureYCloudDriver(string $wabaId): void
     {
         $settings = FinanceSetting::current();
 
-        $settings->forceFill([
+        $attributes = [
             'whatsapp_driver' => 'ycloud',
             'whatsapp_base_url' => 'https://api.ycloud.com',
-        ])->save();
+        ];
+
+        if ($wabaId !== '') {
+            $attributes['whatsapp_business_account_id'] = $wabaId;
+        }
+
+        $settings->forceFill($attributes)->save();
     }
 
     private function isValidTemplateName(string $templateName): bool
     {
         return preg_match('/^[a-z0-9_]+$/', $templateName) === 1;
+    }
+
+    private function isValidWabaId(string $wabaId): bool
+    {
+        return preg_match('/^[0-9]+$/', $wabaId) === 1;
     }
 
     private function isPublicPdfUrl(string $url): bool
