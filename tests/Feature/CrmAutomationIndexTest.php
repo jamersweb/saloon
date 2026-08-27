@@ -9,6 +9,8 @@ use App\Models\Role;
 use App\Models\User;
 use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -223,5 +225,55 @@ class CrmAutomationIndexTest extends TestCase
             ->assertSessionHasErrors('whatsapp_header_media_url');
 
         $this->assertDatabaseCount(CampaignTemplate::class, 0);
+    }
+
+    public function test_manager_can_upload_campaign_template_pdf_attachment(): void
+    {
+        Storage::fake('public');
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $response = $this->actingAs($user)
+            ->post(route('customers.automation.campaign-templates.media'), [
+                'header_type' => 'document',
+                'header_media_file' => UploadedFile::fake()->create('vina-offer.pdf', 100, 'application/pdf'),
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('campaign_template_media_url')
+            ->assertSessionHas('campaign_template_media_filename', 'vina-offer.pdf');
+
+        $url = (string) $response->baseResponse->getSession()->get('campaign_template_media_url');
+        $path = str($url)->after('/storage/')->toString();
+
+        $this->assertStringStartsWith('http://localhost/storage/crm-campaign-media/', $url);
+        Storage::disk('public')->assertExists($path);
+    }
+
+    public function test_campaign_template_document_upload_requires_pdf_file(): void
+    {
+        Storage::fake('public');
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.campaign-templates.media'), [
+                'header_type' => 'document',
+                'header_media_file' => UploadedFile::fake()->image('offer.jpg'),
+            ])
+            ->assertSessionHasErrors('header_media_file');
+
+        Storage::disk('public')->assertMissing('crm-campaign-media/offer.jpg');
     }
 }

@@ -10,6 +10,7 @@ use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class WhatsAppTemplateManagerTest extends TestCase
@@ -270,6 +271,39 @@ class WhatsAppTemplateManagerTest extends TestCase
             'language' => 'en_US',
             'category' => 'MARKETING',
         ]);
+    }
+
+    public function test_manager_can_upload_ycloud_header_media_to_public_storage(): void
+    {
+        Storage::fake('public');
+
+        FinanceSetting::current()->update([
+            'whatsapp_driver' => 'ycloud',
+            'whatsapp_base_url' => 'https://api.ycloud.com',
+        ]);
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $response = $this->actingAs($user)
+            ->post(route('customers.automation.whatsapp-templates.header-media'), [
+                'header_type' => 'document',
+                'header_media_file' => UploadedFile::fake()->create('offer.pdf', 100, 'application/pdf'),
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('whatsapp_header_media_handle')
+            ->assertSessionHas('whatsapp_header_media_filename', 'offer.pdf');
+
+        $url = (string) $response->baseResponse->getSession()->get('whatsapp_header_media_handle');
+        $path = str($url)->after('/storage/')->toString();
+
+        $this->assertStringStartsWith('http://localhost/storage/crm-campaign-media/', $url);
+        Storage::disk('public')->assertExists($path);
     }
 
     public function test_manager_can_upload_media_header_sample_to_meta(): void

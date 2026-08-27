@@ -21,6 +21,9 @@ use App\Services\WhatsAppTemplateManagerService;
 use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -478,16 +481,28 @@ class CrmAutomationController extends Controller
     {
         $this->authorizeRoles($request, 'owner', 'manager');
 
-        if ($this->whatsappTemplateProvider() === 'ycloud') {
-            return back()->withErrors([
-                'header_media_file' => 'YCloud template media samples must use a public HTTPS sample URL.',
-            ]);
-        }
-
         $data = $request->validate([
             'header_type' => ['required', 'in:image,video,document'],
             'header_media_file' => ['required', 'file', 'max:16384'],
         ]);
+
+        $this->validateUploadedHeaderMediaFile((string) $data['header_type'], $data['header_media_file']);
+
+        if ($this->whatsappTemplateProvider() === 'ycloud') {
+            $media = $this->storePublicCampaignMedia($data['header_media_file']);
+
+            Audit::log($request->user()?->id, 'whatsapp.template.header_media_uploaded', 'WhatsAppMessageTemplate', null, [
+                'header_type' => $data['header_type'],
+                'file_name' => $data['header_media_file']->getClientOriginalName(),
+                'storage_path' => $media['path'],
+                'provider' => 'ycloud',
+            ]);
+
+            return back()
+                ->with('status', 'Header file uploaded.')
+                ->with('whatsapp_header_media_handle', $media['url'])
+                ->with('whatsapp_header_media_filename', $media['filename']);
+        }
 
         $handle = $templateManagerService->uploadHeaderSample($data['header_media_file']);
 
@@ -499,6 +514,31 @@ class CrmAutomationController extends Controller
         return back()
             ->with('status', 'Header sample uploaded to Meta.')
             ->with('whatsapp_header_media_handle', $handle);
+    }
+
+    public function uploadCampaignTemplateMedia(Request $request): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'header_type' => ['required', 'in:image,video,document'],
+            'header_media_file' => ['required', 'file', 'max:16384'],
+        ]);
+
+        $this->validateUploadedHeaderMediaFile((string) $data['header_type'], $data['header_media_file']);
+
+        $media = $this->storePublicCampaignMedia($data['header_media_file']);
+
+        Audit::log($request->user()?->id, 'campaign_template.media_uploaded', 'CampaignTemplate', null, [
+            'header_type' => $data['header_type'],
+            'file_name' => $data['header_media_file']->getClientOriginalName(),
+            'storage_path' => $media['path'],
+        ]);
+
+        return back()
+            ->with('status', 'Attachment uploaded.')
+            ->with('campaign_template_media_url', $media['url'])
+            ->with('campaign_template_media_filename', $media['filename']);
     }
 
     public function destroyMetaTemplate(Request $request, WhatsAppMessageTemplate $template, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
@@ -942,6 +982,59 @@ class CrmAutomationController extends Controller
     private function campaignTemplateHeaderMediaFilename(array $data): ?string
     {
         return $this->campaignTemplateHeaderType($data) ? ($data['whatsapp_header_media_filename'] ?? null) : null;
+    }
+
+    private function validateUploadedHeaderMediaFile(string $headerType, UploadedFile $file): void
+    {
+        $mimeType = (string) $file->getMimeType();
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+
+        if ($headerType === 'image' && ! str_starts_with($mimeType, 'image/')) {
+            throw ValidationException::withMessages([
+                'header_media_file' => 'Upload an image file for an image header.',
+            ]);
+        }
+
+        if ($headerType === 'video' && ! str_starts_with($mimeType, 'video/')) {
+            throw ValidationException::withMessages([
+                'header_media_file' => 'Upload a video file for a video header.',
+            ]);
+        }
+
+        if ($headerType === 'document' && $mimeType !== 'application/pdf' && $extension !== 'pdf') {
+            throw ValidationException::withMessages([
+                'header_media_file' => 'Upload a PDF file for a document header.',
+            ]);
+        }
+    }
+
+    /**
+     * @return array{url:string,filename:string,path:string}
+     */
+    private function storePublicCampaignMedia(UploadedFile $file): array
+    {
+        $originalName = $file->getClientOriginalName();
+        $baseName = pathinfo($originalName, PATHINFO_FILENAME);
+        $extension = strtolower($file->getClientOriginalExtension() ?: ($file->guessExtension() ?: 'bin'));
+        $storedName = sprintf(
+            '%s-%s.%s',
+            Str::slug($baseName) ?: 'campaign-media',
+            Str::uuid()->toString(),
+            $extension,
+        );
+        $path = $file->storeAs('crm-campaign-media', $storedName, 'public');
+
+        if (! is_string($path) || $path === '') {
+            throw ValidationException::withMessages([
+                'header_media_file' => 'Unable to save the uploaded file.',
+            ]);
+        }
+
+        return [
+            'url' => url(Storage::url($path)),
+            'filename' => $originalName !== '' ? $originalName : $storedName,
+            'path' => $path,
+        ];
     }
 
     private function resolveRuleCustomerIds(CustomerSegmentRule $rule)

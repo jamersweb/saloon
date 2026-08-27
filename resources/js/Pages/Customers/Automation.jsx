@@ -99,6 +99,8 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
     const [editingRuleId, setEditingRuleId] = useState(null);
     const [editingMetaTemplateId, setEditingMetaTemplateId] = useState(null);
     const [marketingTab, setMarketingTab] = useState('campaigns');
+    const [templateMediaFile, setTemplateMediaFile] = useState(null);
+    const [templateMediaUploading, setTemplateMediaUploading] = useState(false);
     const templateProviderLabel = whatsappProvider === 'ycloud' ? 'YCloud' : 'Meta';
     const customerSelectOptions = customerOptions.map((customer) => ({ value: customer.id, label: customer.name }));
     const serviceSelectOptions = serviceOptions.map((service) => ({ value: service.id, label: `${service.name}${service.repeat_after_days ? ` (${service.repeat_after_days}d)` : ''}` }));
@@ -167,6 +169,23 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
     });
 
     const removeTag = (customerId, tagId) => router.delete(route('customers.automation.tags.remove'), { data: { customer_id: customerId, customer_tag_id: tagId } });
+
+    const uploadTemplateMedia = () => {
+        router.post(
+            route('customers.automation.campaign-templates.media'),
+            {
+                header_type: templateForm.data.whatsapp_header_type,
+                header_media_file: templateMediaFile,
+            },
+            {
+                forceFormData: true,
+                preserveScroll: true,
+                onStart: () => setTemplateMediaUploading(true),
+                onSuccess: () => setTemplateMediaFile(null),
+                onFinish: () => setTemplateMediaUploading(false),
+            },
+        );
+    };
 
     const startEditRule = (rule) => {
         setEditingRuleId(rule.id);
@@ -248,6 +267,18 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
             header_media_file: null,
         }));
     }, [flash?.whatsapp_header_media_handle]);
+
+    useEffect(() => {
+        if (!flash?.campaign_template_media_url) {
+            return;
+        }
+
+        templateForm.setData((data) => ({
+            ...data,
+            whatsapp_header_media_url: flash.campaign_template_media_url,
+            whatsapp_header_media_filename: flash.campaign_template_media_filename || data.whatsapp_header_media_filename,
+        }));
+    }, [flash?.campaign_template_media_url, flash?.campaign_template_media_filename]);
 
     useEffect(() => {
         customerFilterForm.setData({
@@ -639,6 +670,22 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                                 <>
                                                     <input className="ta-input md:col-span-2" placeholder="Public attachment URL" value={templateForm.data.whatsapp_header_media_url} onChange={(e) => templateForm.setData('whatsapp_header_media_url', e.target.value)} required />
                                                     <input className="ta-input" placeholder="Attachment filename" value={templateForm.data.whatsapp_header_media_filename} onChange={(e) => templateForm.setData('whatsapp_header_media_filename', e.target.value)} disabled={templateForm.data.whatsapp_header_type !== 'document'} />
+                                                    <div className="flex flex-wrap items-center gap-2 md:col-span-3">
+                                                        <input
+                                                            className="ta-input flex-1"
+                                                            type="file"
+                                                            accept={templateForm.data.whatsapp_header_type === 'image' ? 'image/*' : templateForm.data.whatsapp_header_type === 'video' ? 'video/*' : 'application/pdf,.pdf'}
+                                                            onChange={(e) => setTemplateMediaFile(e.target.files?.[0] || null)}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
+                                                            disabled={!canManage || templateMediaUploading || !templateMediaFile}
+                                                            onClick={uploadTemplateMedia}
+                                                        >
+                                                            Upload Attachment
+                                                        </button>
+                                                    </div>
                                                 </>
                                             )}
                                         </>
@@ -715,28 +762,24 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                         {['image', 'video', 'document'].includes(metaTemplateForm.data.header_type) && (
                             <>
                                 <input className="ta-input md:col-span-2" placeholder={whatsappProvider === 'ycloud' ? 'Public sample media URL' : 'Meta header handle'} value={metaTemplateForm.data.header_media_handle} onChange={(e) => metaTemplateForm.setData('header_media_handle', e.target.value)} required />
-                                {whatsappProvider !== 'ycloud' ? (
-                                    <>
-                                        <input className="ta-input md:col-span-2" type="file" accept={metaTemplateForm.data.header_type === 'image' ? 'image/*' : metaTemplateForm.data.header_type === 'video' ? 'video/*' : '.pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx'} onChange={(e) => metaTemplateForm.setData('header_media_file', e.target.files?.[0] || null)} />
-                                        <div className="flex items-center gap-2 md:col-span-2">
-                                            <button
-                                                type="button"
-                                                className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
-                                                disabled={metaTemplateForm.processing || !canManage || !metaTemplateForm.data.header_media_file}
-                                                onClick={() => metaTemplateForm.post(route('customers.automation.whatsapp-templates.header-media'), {
-                                                    forceFormData: true,
-                                                    preserveScroll: true,
-                                                    onSuccess: () => metaTemplateForm.setData('header_media_file', null),
-                                                })}
-                                            >
-                                                Upload Sample Media to Meta
-                                            </button>
-                                            <span className="text-xs text-slate-500">Upload a sample file first, then use the returned handle in the template.</span>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <span className="text-xs text-slate-500 md:col-span-2">Use an HTTPS URL that YCloud and Meta can fetch for template review.</span>
-                                )}
+                                <input className="ta-input md:col-span-2" type="file" accept={metaTemplateForm.data.header_type === 'image' ? 'image/*' : metaTemplateForm.data.header_type === 'video' ? 'video/*' : 'application/pdf,.pdf'} onChange={(e) => metaTemplateForm.setData('header_media_file', e.target.files?.[0] || null)} />
+                                <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+                                    <button
+                                        type="button"
+                                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
+                                        disabled={metaTemplateForm.processing || !canManage || !metaTemplateForm.data.header_media_file}
+                                        onClick={() => metaTemplateForm.post(route('customers.automation.whatsapp-templates.header-media'), {
+                                            forceFormData: true,
+                                            preserveScroll: true,
+                                            onSuccess: () => metaTemplateForm.setData('header_media_file', null),
+                                        })}
+                                    >
+                                        {whatsappProvider === 'ycloud' ? 'Upload File' : 'Upload Sample Media to Meta'}
+                                    </button>
+                                    <span className="text-xs text-slate-500">
+                                        {whatsappProvider === 'ycloud' ? 'Upload fills the public sample URL.' : 'Upload a sample file first, then use the returned handle in the template.'}
+                                    </span>
+                                </div>
                             </>
                         )}
                         <textarea className="ta-input md:col-span-2" rows="3" placeholder="Template body, e.g. Hello {{1}}, your appointment is due." value={metaTemplateForm.data.body_text} onChange={(e) => metaTemplateForm.setData('body_text', e.target.value)} required />
