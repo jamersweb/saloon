@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Appointment;
 use App\Models\Campaign;
+use App\Models\CampaignTemplate;
 use App\Models\Customer;
 use App\Models\CustomerDueService;
 use Illuminate\Database\Eloquent\Builder;
@@ -12,8 +13,7 @@ class CampaignDispatchService
 {
     public function __construct(
         private readonly CommunicationDeliveryService $communicationDeliveryService,
-    ) {
-    }
+    ) {}
 
     public function dispatch(Campaign $campaign): array
     {
@@ -35,7 +35,7 @@ class CampaignDispatchService
                         $campaign->channel,
                         $recipient,
                         $message,
-                        'campaign:' . $campaign->id,
+                        'campaign:'.$campaign->id,
                         $options,
                     );
 
@@ -65,22 +65,14 @@ class CampaignDispatchService
         $template = $campaign->template;
 
         if (($template?->whatsapp_message_type ?? 'text') === 'template' && filled($template?->whatsapp_template_name)) {
+            $components = $this->templateSendComponents($template, $customerName);
+
             return [
                 'async' => true,
                 'message_type' => 'template',
                 'template_name' => $template->whatsapp_template_name,
                 'language_code' => $template->whatsapp_template_language_code ?: config('services.whatsapp.default_language_code', 'en_US'),
-                'components' => [
-                    [
-                        'type' => 'body',
-                        'parameters' => [
-                            [
-                                'type' => 'text',
-                                'text' => $customerName,
-                            ],
-                        ],
-                    ],
-                ],
+                'components' => $components,
             ];
         }
 
@@ -88,6 +80,60 @@ class CampaignDispatchService
             'async' => true,
             'message_type' => 'text',
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function templateSendComponents(CampaignTemplate $template, string $customerName): array
+    {
+        $components = [];
+        $headerType = (string) ($template->whatsapp_header_type ?? '');
+        $headerUrl = (string) ($template->whatsapp_header_media_url ?? '');
+
+        if (in_array($headerType, ['image', 'video', 'document'], true) && $headerUrl !== '') {
+            $mediaPayload = ['link' => $headerUrl];
+
+            if ($headerType === 'document') {
+                $mediaPayload['filename'] = $this->documentFilename($template, $headerUrl);
+            }
+
+            $components[] = [
+                'type' => 'header',
+                'parameters' => [
+                    [
+                        'type' => $headerType,
+                        $headerType => $mediaPayload,
+                    ],
+                ],
+            ];
+        }
+
+        $components[] = [
+            'type' => 'body',
+            'parameters' => [
+                [
+                    'type' => 'text',
+                    'text' => $customerName,
+                ],
+            ],
+        ];
+
+        return $components;
+    }
+
+    private function documentFilename(CampaignTemplate $template, string $headerUrl): string
+    {
+        $configuredFilename = trim((string) ($template->whatsapp_header_media_filename ?? ''));
+
+        if ($configuredFilename !== '') {
+            return $configuredFilename;
+        }
+
+        $path = parse_url($headerUrl, PHP_URL_PATH);
+        $basename = is_string($path) ? basename($path) : '';
+
+        return $basename !== '' ? $basename : 'offer.pdf';
     }
 
     private function resolveAudience(Campaign $campaign): Builder

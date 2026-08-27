@@ -127,6 +127,61 @@ class WhatsAppDeliveryTest extends TestCase
         $this->assertSame('queued', $log->provider_status);
     }
 
+    public function test_campaign_dispatch_includes_whatsapp_document_header_for_template_campaigns(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        Customer::create([
+            'customer_code' => 'CUST-WA-DOC',
+            'name' => 'Document Customer',
+            'phone' => '5554448888',
+            'is_active' => true,
+        ]);
+
+        $template = CampaignTemplate::create([
+            'name' => 'WhatsApp PDF Blast',
+            'channel' => 'whatsapp',
+            'content' => 'Dear {name}, view our latest offer.',
+            'whatsapp_message_type' => 'template',
+            'whatsapp_template_name' => 'vina_emirati_womens_day_2026_offer',
+            'whatsapp_template_language_code' => 'en_US',
+            'whatsapp_header_type' => 'document',
+            'whatsapp_header_media_url' => 'https://example.com/vina-luxury-beauty-offer.pdf',
+            'whatsapp_header_media_filename' => 'vina-luxury-beauty-offer.pdf',
+            'is_active' => true,
+        ]);
+
+        $campaign = Campaign::create([
+            'name' => 'PDF Push',
+            'campaign_template_id' => $template->id,
+            'channel' => 'whatsapp',
+            'audience_type' => 'all',
+            'status' => 'draft',
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.campaigns.dispatch', $campaign))
+            ->assertSessionHasNoErrors();
+
+        Queue::assertPushed(SendWhatsAppDeliveryJob::class, function (SendWhatsAppDeliveryJob $job) {
+            $header = collect($job->payload['components'] ?? [])->firstWhere('type', 'header');
+
+            return ($job->payload['message_type'] ?? null) === 'template'
+                && ($job->payload['template_name'] ?? null) === 'vina_emirati_womens_day_2026_offer'
+                && ($header['parameters'][0]['type'] ?? null) === 'document'
+                && ($header['parameters'][0]['document']['link'] ?? null) === 'https://example.com/vina-luxury-beauty-offer.pdf'
+                && ($header['parameters'][0]['document']['filename'] ?? null) === 'vina-luxury-beauty-offer.pdf';
+        });
+    }
+
     public function test_whatsapp_template_command_posts_template_payload_to_meta(): void
     {
         config()->set('services.whatsapp.driver', 'meta');

@@ -17,6 +17,9 @@ class CampaignTemplate extends Model
         'whatsapp_message_type',
         'whatsapp_template_name',
         'whatsapp_template_language_code',
+        'whatsapp_header_type',
+        'whatsapp_header_media_url',
+        'whatsapp_header_media_filename',
         'is_active',
     ];
 
