@@ -317,11 +317,16 @@ class ReportController extends Controller
 
         $rows = $appointments
             ->flatMap(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $vatRatePercent): Collection {
-                $serviceItems = ($invoiceItems[$appointment->id] ?? collect())
-                    ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id !== null)
+                $appointmentInvoiceItems = $invoiceItems[$appointment->id] ?? collect();
+                $serviceItems = $appointmentInvoiceItems
+                    ->filter(fn (TaxInvoiceItem $item) => $this->isServiceReportInvoiceItem($item))
                     ->values();
 
                 if ($serviceItems->isEmpty()) {
+                    if ($appointmentInvoiceItems->isNotEmpty()) {
+                        return collect();
+                    }
+
                     return collect([
                         $this->fallbackServiceReportRow($appointment, $invoiceLabels, $invoiceIds, $vatRatePercent),
                     ]);
@@ -681,7 +686,7 @@ class ReportController extends Controller
                 }
 
                 return $invoice->items
-                    ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id === null)
+                    ->filter(fn (TaxInvoiceItem $item) => $this->isRetailProductReportItem($item))
                     ->values()
                     ->map(fn (TaxInvoiceItem $item, int $index): array => [
                         'id' => sprintf('product-%d-%d', $invoice->id, $item->id ?: $index),
@@ -939,6 +944,32 @@ class ReportController extends Controller
         $invoiceNumber = trim((string) $invoice?->invoice_number);
 
         return $invoiceNumber !== '' ? $invoiceNumber : $fallbackInvoiceNumber;
+    }
+
+    private function isServiceReportInvoiceItem(TaxInvoiceItem $item): bool
+    {
+        return $item->salon_service_id !== null
+            && $this->invoiceItemRevenueCategory($item) !== 'package_sales';
+    }
+
+    private function isRetailProductReportItem(TaxInvoiceItem $item): bool
+    {
+        if ($item->salon_service_id !== null) {
+            return false;
+        }
+
+        $category = $this->invoiceItemRevenueCategory($item);
+
+        return $category === 'retail_product_sales'
+            || $item->inventory_item_id !== null
+            || $category === 'service_income';
+    }
+
+    private function invoiceItemRevenueCategory(TaxInvoiceItem $item): string
+    {
+        $category = trim((string) $item->revenue_category);
+
+        return $category !== '' ? $category : 'service_income';
     }
 
     /**

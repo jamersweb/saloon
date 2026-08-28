@@ -339,6 +339,163 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(134.4, $rows[0]['total']);
     }
 
+    public function test_service_report_excludes_package_sales_invoice_lines_from_service_rows(): void
+    {
+        [$packageAppointment, $invoice] = $this->completedAppointmentWithInvoice('Rezvan Khedri', 'RCT00253');
+
+        $packageAppointment->service->update([
+            'name' => 'Package Hair Blow dry, Package Root color, Hair Color Rinse /toner Long',
+            'price' => 2500,
+        ]);
+        $packageAppointment->update([
+            'visit_id' => 'visit-rct00253',
+            'service_quantity' => 3,
+            'service_unit_price' => 2500,
+        ]);
+
+        $rootColor = SalonService::create([
+            'name' => 'Root color',
+            'category' => 'Hair',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 200,
+            'is_active' => true,
+        ]);
+        $toner = SalonService::create([
+            'name' => 'Hair Color Rinse /toner Medium',
+            'category' => 'Hair',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 150,
+            'is_active' => true,
+        ]);
+
+        $rootAppointment = Appointment::create([
+            'customer_id' => $packageAppointment->customer_id,
+            'service_id' => $rootColor->id,
+            'staff_profile_id' => $packageAppointment->staff_profile_id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => '2026-05-21 11:20:00',
+            'scheduled_end' => '2026-05-21 11:50:00',
+            'customer_name' => $packageAppointment->customer_name,
+            'customer_phone' => $packageAppointment->customer_phone,
+            'visit_id' => 'visit-rct00253',
+        ]);
+        $tonerAppointment = Appointment::create([
+            'customer_id' => $packageAppointment->customer_id,
+            'service_id' => $toner->id,
+            'staff_profile_id' => $packageAppointment->staff_profile_id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => '2026-05-21 13:20:00',
+            'scheduled_end' => '2026-05-21 13:50:00',
+            'customer_name' => $packageAppointment->customer_name,
+            'customer_phone' => $packageAppointment->customer_phone,
+            'visit_id' => 'visit-rct00253',
+        ]);
+
+        $invoice->update([
+            'appointment_id' => $packageAppointment->id,
+            'subtotal' => 2850,
+            'vat_amount' => 142.5,
+            'total' => 2992.5,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $packageAppointment->service_id,
+            'revenue_category' => 'package_sales',
+            'description' => 'Package Hair Blow dry, Package Root color, Hair Color Rinse /toner Long',
+            'quantity' => 3,
+            'unit_price' => 2500,
+            'discount_amount' => 0,
+            'line_subtotal' => 2500,
+            'tax_rate_percent' => 5,
+            'line_tax' => 125,
+            'line_total' => 2625,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $rootColor->id,
+            'revenue_category' => 'service_income',
+            'staff_profile_id' => $rootAppointment->staff_profile_id,
+            'description' => 'Root color',
+            'quantity' => 1,
+            'unit_price' => 200,
+            'discount_amount' => 0,
+            'line_subtotal' => 200,
+            'tax_rate_percent' => 5,
+            'line_tax' => 10,
+            'line_total' => 210,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $toner->id,
+            'revenue_category' => 'service_income',
+            'staff_profile_id' => $tonerAppointment->staff_profile_id,
+            'description' => 'Hair Color Rinse /toner Medium',
+            'quantity' => 1,
+            'unit_price' => 150,
+            'discount_amount' => 0,
+            'line_subtotal' => 150,
+            'tax_rate_percent' => 5,
+            'line_tax' => 7.5,
+            'line_total' => 157.5,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectAppointmentServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = collect($method->invoke(app(ReportController::class), Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(), [
+            'customer_name' => 'Rezvan',
+            'invoice_number' => 'RCT00253',
+        ]));
+
+        $this->assertCount(2, $rows);
+        $this->assertFalse($rows->pluck('service_name')->contains('Package Hair Blow dry, Package Root color, Hair Color Rinse /toner Long'));
+        $this->assertEqualsCanonicalizing(['Root color', 'Hair Color Rinse /toner Medium'], $rows->pluck('service_name')->all());
+        $this->assertSame(367.5, round((float) $rows->sum('total'), 2));
+    }
+
+    public function test_service_report_does_not_count_package_sales_lines_as_retail_products(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Kyrene Prado', 'RCT00255');
+
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'revenue_category' => 'service_income',
+            'description' => 'Nails Basic manicure & Pedicure',
+            'quantity' => 3,
+            'unit_price' => 100,
+            'discount_amount' => 0,
+            'line_subtotal' => 300,
+            'tax_rate_percent' => 5,
+            'line_tax' => 15,
+            'line_total' => 315,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => null,
+            'revenue_category' => 'package_sales',
+            'description' => 'Package Sale: Nail and hair package',
+            'quantity' => 1,
+            'unit_price' => 1000,
+            'discount_amount' => 0,
+            'line_subtotal' => 1000,
+            'tax_rate_percent' => 5,
+            'line_tax' => 50,
+            'line_total' => 1050,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectAppointmentServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = $method->invoke(app(ReportController::class), Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(), [
+            'customer_name' => 'Kyrene',
+            'invoice_number' => 'RCT00255',
+        ]);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Nails Basic manicure & Pedicure', $rows[0]['service_name']);
+        $this->assertSame(315.0, $rows[0]['total']);
+    }
+
     public function test_service_report_invoice_item_rows_use_billed_customer_name(): void
     {
         [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Bhakita / Debbie', 'RCT00192');
