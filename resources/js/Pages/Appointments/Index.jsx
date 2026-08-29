@@ -272,15 +272,30 @@ const normalizeServiceStarts = (serviceIds, serviceStarts, fallbackStart = '') =
 
     return next;
 };
-const estimateSelectedServicesTotal = (serviceIds, serviceQuantities, services, coveredServiceIds = []) => {
+const getServiceLinePricing = (service, index, serviceId, formData = {}, coveredServiceIds = []) => {
+    const quantity = Math.max(1, Number(serviceLineMapValue(formData.service_quantities, index, serviceId, 1)));
+    const unitPrice = Math.max(0, Number(serviceLineMapValue(formData.service_unit_prices, index, serviceId, service?.price ?? 0)));
+    const discountAmount = Math.max(0, Number(serviceLineMapValue(formData.service_discount_amounts, index, serviceId, 0)));
+    const packageCovered = (coveredServiceIds || []).map((id) => String(id)).includes(String(serviceId));
+    const lineSubtotal = unitPrice * quantity;
+
+    return {
+        quantity,
+        unitPrice,
+        discountAmount,
+        packageCovered,
+        lineSubtotal,
+        lineTotal: packageCovered ? 0 : Math.max(0, lineSubtotal - discountAmount),
+    };
+};
+const estimateSelectedServicesTotal = (serviceIds, formData, services, coveredServiceIds = []) => {
     const covered = new Set((coveredServiceIds || []).map((id) => String(id)));
 
     return (serviceIds || []).reduce((sum, serviceId, index) => {
         const service = services.find((item) => String(item.id) === String(serviceId));
         if (!service) return sum;
         if (covered.has(String(serviceId))) return sum;
-        const quantity = Math.max(1, Number(serviceLineMapValue(serviceQuantities, index, serviceId, 1)));
-        return sum + (Number(service.price || 0) * quantity);
+        return sum + getServiceLinePricing(service, index, serviceId, formData, coveredServiceIds).lineTotal;
     }, 0);
 };
 const addMinutesToDateTimeLocal = (value, minutes) => {
@@ -945,6 +960,24 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         });
     };
 
+    const updateAppointmentServicePricing = (form, index, updates) => {
+        const lineKey = serviceLineKey(index);
+        form.setData((prev) => {
+            const nextData = {
+                ...prev,
+                service_quantities: { ...(prev.service_quantities || {}) },
+                service_unit_prices: { ...(prev.service_unit_prices || {}) },
+                service_discount_amounts: { ...(prev.service_discount_amounts || {}) },
+            };
+
+            if (updates.quantity !== undefined) nextData.service_quantities[lineKey] = Math.max(1, Number(updates.quantity || 1));
+            if (updates.unitPrice !== undefined) nextData.service_unit_prices[lineKey] = Math.max(0, Number(updates.unitPrice || 0));
+            if (updates.discountAmount !== undefined) nextData.service_discount_amounts[lineKey] = Math.max(0, Number(updates.discountAmount || 0));
+
+            return nextData;
+        });
+    };
+
     const seedBlockedTimeFromCalendar = (quickAction = calendarQuickAction) => {
         if (!quickAction) return;
 
@@ -1171,8 +1204,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     });
     const createFilteredServices = createAvailableServices.filter((s) => serviceMatchesSearch(s, createServiceSearch));
     const editFilteredServices = editAvailableServices.filter((s) => serviceMatchesSearch(s, editServiceSearch));
-    const createEstimatedServicesTotal = estimateSelectedServicesTotal(createSelectedServices, createForm.data.service_quantities, services, createCoveredServiceIds);
-    const editEstimatedServicesTotal = estimateSelectedServicesTotal(editSelectedServices, editForm.data.service_quantities, services, editCoveredServiceIds);
+    const createEstimatedServicesTotal = estimateSelectedServicesTotal(createSelectedServices, createForm.data, services, createCoveredServiceIds);
+    const editEstimatedServicesTotal = estimateSelectedServicesTotal(editSelectedServices, editForm.data, services, editCoveredServiceIds);
     const createSelectedServiceRows = createSelectedServices
         .map((id, index) => {
             const service = services.find((item) => String(item.id) === String(id));
@@ -1185,29 +1218,26 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         const sid = String(service.id);
         const lineIndex = Number.isInteger(service.lineIndex) ? service.lineIndex : createSelectedServices.findIndex((id) => String(id) === sid);
         const lineKey = service.lineKey || serviceLineKey(Math.max(0, lineIndex));
-        const quantity = Math.max(1, Number(serviceLineMapValue(createForm.data.service_quantities, lineIndex, sid, 1)));
-        const unitPrice = Number(serviceLineMapValue(createForm.data.service_unit_prices, lineIndex, sid, service.price ?? 0));
-        const discountAmount = Math.max(0, Number(serviceLineMapValue(createForm.data.service_discount_amounts, lineIndex, sid, 0)));
+        const pricing = getServiceLinePricing(service, lineIndex, sid, createForm.data, createForm.data.package_service_ids);
         const durationMinutes = Math.max(1, Number(serviceLineMapValue(createForm.data.service_durations, lineIndex, sid, service.duration_minutes || 0)));
         const extraMinutes = Math.max(0, Number(serviceLineMapValue(createForm.data.service_extra_minutes, lineIndex, sid, 0)));
         const staffId = String(serviceLineMapValue(createForm.data.staff_assignments, lineIndex, sid, createSelectedServices.length === 1 ? createForm.data.staff_profile_id : '') || '');
         const staff = normalizedStaffProfiles.find((item) => String(item.id) === staffId);
-        const packageCovered = Boolean(createSelectedPackage && (createForm.data.package_service_ids || []).map(String).includes(sid));
 
         return {
             sid,
             lineIndex,
             lineKey,
-            quantity,
-            unitPrice,
-            discountAmount,
+            quantity: pricing.quantity,
+            unitPrice: pricing.unitPrice,
+            discountAmount: pricing.discountAmount,
             durationMinutes,
             extraMinutes,
             staffId,
             staffName: staff?.name || 'Auto / Unassigned',
-            packageCovered,
+            packageCovered: Boolean(createSelectedPackage && pricing.packageCovered),
             packageCoverage: createPackageCoverageMap[sid] || null,
-            lineTotal: packageCovered ? 0 : Math.max(0, (unitPrice * quantity) - discountAmount),
+            lineTotal: pricing.lineTotal,
         };
     };
     const createDrawerServicesSubtotal = createSelectedServiceRows.reduce((sum, service) => sum + getCreateServiceMeta(service).lineTotal, 0);
@@ -1819,7 +1849,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                     return (
                                         <div key={serviceLineKey(index)} className="flex items-center gap-2">
                                             <button type="button" className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700" onClick={() => handleCreateServiceChange(createSelectedServices.filter((_, selectedIndex) => selectedIndex !== index))}>
-                                                {s.name}{Number(createForm.data.service_quantities?.[String(id)] || 1) > 1 ? ` x${createForm.data.service_quantities?.[String(id)]}` : ''} ✕
+                                                {s.name}{Number(serviceLineMapValue(createForm.data.service_quantities, index, id, 1)) > 1 ? ` x${serviceLineMapValue(createForm.data.service_quantities, index, id, 1)}` : ''} ✕
                                             </button>
                                             {createCustomerMode === 'package' && createSelectedPackage && packageCoverage ? (
                                                 <label className="inline-flex items-center gap-1 text-xs text-emerald-700">
@@ -1841,6 +1871,72 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                             {fieldError(createForm, 'service_id')}
                             {fieldError(createForm, 'service_ids')}
                         </div>
+                        {createSelectedServices.length > 0 ? (
+                            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-700">Service pricing</p>
+                                    <span className="text-sm font-bold text-slate-800">{formatMoney(createEstimatedServicesTotal, currencyCode)}</span>
+                                </div>
+                                <div className="space-y-3">
+                                    {createSelectedServices.map((serviceId, index) => {
+                                        const service = services.find((s) => String(s.id) === String(serviceId));
+                                        if (!service) return null;
+                                        const pricing = getServiceLinePricing(service, index, serviceId, createForm.data, createCoveredServiceIds);
+                                        const packageCoverage = createPackageCoverageMap[String(serviceId)];
+
+                                        return (
+                                            <div key={`create-pricing-${serviceLineKey(index)}`} className="rounded-lg border border-slate-200 bg-white p-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="text-sm font-semibold text-slate-800">{service.name}</span>
+                                                    <span className="text-sm font-bold text-slate-800">{formatMoney(pricing.lineTotal, currencyCode)}</span>
+                                                </div>
+                                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                    <div>
+                                                        <label className="ta-field-label">Qty</label>
+                                                        <input
+                                                            className="ta-input"
+                                                            type="number"
+                                                            min="1"
+                                                            value={pricing.quantity}
+                                                            onChange={(e) => updateAppointmentServicePricing(createForm, index, { quantity: e.target.value })}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="ta-field-label">Service price</label>
+                                                        <input
+                                                            className="ta-input"
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={pricing.unitPrice}
+                                                            onChange={(e) => updateAppointmentServicePricing(createForm, index, { unitPrice: e.target.value })}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="ta-field-label">Discount</label>
+                                                        <input
+                                                            className="ta-input"
+                                                            type="number"
+                                                            min="0"
+                                                            max={pricing.lineSubtotal}
+                                                            step="0.01"
+                                                            value={pricing.discountAmount}
+                                                            onChange={(e) => updateAppointmentServicePricing(createForm, index, { discountAmount: e.target.value })}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                {packageCoverage && pricing.packageCovered ? (
+                                                    <p className="mt-2 text-xs font-semibold text-emerald-700">Package session selected, invoice total for this service is zero.</p>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {fieldError(createForm, 'service_quantities')}
+                                {fieldError(createForm, 'service_unit_prices')}
+                                {fieldError(createForm, 'service_discount_amounts')}
+                            </div>
+                        ) : null}
                         {createSelectedCustomer && createCustomerHasGiftCards ? (
                             <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gift Card Check</p>
@@ -1878,19 +1974,6 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         return (
                                             <div key={`create-staff-${serviceId}`}>
                                                 <label className="ta-field-label">{service?.name || `Service #${serviceId}`}</label>
-                                                <div className="mb-2">
-                                                    <label className="ta-field-label">Qty</label>
-                                                    <input
-                                                        className="ta-input"
-                                                        type="number"
-                                                        min="1"
-                                                        value={createForm.data.service_quantities?.[assignmentKey] || 1}
-                                                        onChange={(e) => createForm.setData('service_quantities', {
-                                                            ...(createForm.data.service_quantities || {}),
-                                                            [assignmentKey]: e.target.value,
-                                                        })}
-                                                    />
-                                                </div>
                                                 <SearchableSelect
                                                     value={createForm.data.staff_assignments?.[assignmentKey] || ''}
                                                     onChange={(id) => {
@@ -2604,6 +2687,72 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                             {fieldError(editForm, 'service_id')}
                             {fieldError(editForm, 'service_ids')}
                         </div>
+                        {editSelectedServices.length > 0 ? (
+                            <div className="md:col-span-2 rounded-md border border-white/10 bg-white/[0.03] p-4">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <p className="text-xs font-bold uppercase text-slate-400">Service pricing</p>
+                                    <span className="text-sm font-bold text-slate-100">{formatMoney(editEstimatedServicesTotal, currencyCode)}</span>
+                                </div>
+                                <div className="space-y-3">
+                                    {editSelectedServices.map((serviceId, index) => {
+                                        const service = services.find((s) => String(s.id) === String(serviceId));
+                                        if (!service) return null;
+                                        const pricing = getServiceLinePricing(service, index, serviceId, editForm.data, editCoveredServiceIds);
+                                        const packageCoverage = editPackageCoverageMap[String(serviceId)];
+
+                                        return (
+                                            <div key={`edit-pricing-${serviceLineKey(index)}`} className="rounded-md border border-white/10 bg-[#18181a] p-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="text-sm font-bold text-white">{service.name}</span>
+                                                    <span className="text-sm font-black text-slate-100">{formatMoney(pricing.lineTotal, currencyCode)}</span>
+                                                </div>
+                                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                    <div>
+                                                        <label className="ta-field-label">Qty</label>
+                                                        <input
+                                                            className="ta-input"
+                                                            type="number"
+                                                            min="1"
+                                                            value={pricing.quantity}
+                                                            onChange={(e) => updateAppointmentServicePricing(editForm, index, { quantity: e.target.value })}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="ta-field-label">Service price</label>
+                                                        <input
+                                                            className="ta-input"
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={pricing.unitPrice}
+                                                            onChange={(e) => updateAppointmentServicePricing(editForm, index, { unitPrice: e.target.value })}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="ta-field-label">Discount</label>
+                                                        <input
+                                                            className="ta-input"
+                                                            type="number"
+                                                            min="0"
+                                                            max={pricing.lineSubtotal}
+                                                            step="0.01"
+                                                            value={pricing.discountAmount}
+                                                            onChange={(e) => updateAppointmentServicePricing(editForm, index, { discountAmount: e.target.value })}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                {packageCoverage && pricing.packageCovered ? (
+                                                    <p className="mt-2 text-xs font-semibold text-emerald-300">Package session selected, invoice total for this service is zero.</p>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {fieldError(editForm, 'service_quantities')}
+                                {fieldError(editForm, 'service_unit_prices')}
+                                {fieldError(editForm, 'service_discount_amounts')}
+                            </div>
+                        ) : null}
                         {editSelectedCustomer && editCustomerHasGiftCards ? (
                             <div className="md:col-span-2 rounded-md border border-white/10 bg-white/[0.03] p-4">
                                 <p className="text-xs font-bold uppercase text-slate-400">Gift card check</p>
@@ -2641,19 +2790,6 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         return (
                                             <div key={`edit-staff-${assignmentKey}`}>
                                                 <label className="ta-field-label">{service?.name || `Service #${serviceId}`}</label>
-                                                <div className="mb-2">
-                                                    <label className="ta-field-label">Qty</label>
-                                                    <input
-                                                        className="ta-input"
-                                                        type="number"
-                                                        min="1"
-                                                        value={editForm.data.service_quantities?.[assignmentKey] || 1}
-                                                        onChange={(e) => editForm.setData('service_quantities', {
-                                                            ...(editForm.data.service_quantities || {}),
-                                                            [assignmentKey]: e.target.value,
-                                                        })}
-                                                    />
-                                                </div>
                                                 <SearchableSelect
                                                     variant="dark"
                                                     value={editForm.data.staff_assignments?.[assignmentKey] || ''}
