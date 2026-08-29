@@ -166,6 +166,6 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
 
     private function shouldRetryProviderFailure(string $errorMessage): bool
     {
-        return ! preg_match('/\b131049\b/', $errorMessage);
+        return ! preg_match('/\b(131049|132000|132012)\b/', $errorMessage);
     }
 }

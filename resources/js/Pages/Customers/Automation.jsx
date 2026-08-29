@@ -77,10 +77,34 @@ const PaginationLinks = ({ paginator }) => {
     );
 };
 
-const templateHeaderMediaUrl = (template) => {
-    const header = template.components?.find((component) => component.type === 'HEADER');
+const isPublicUrl = (value) => {
+    try {
+        return Boolean(new URL(value).protocol.match(/^https?:$/));
+    } catch {
+        return false;
+    }
+};
 
-    return header?.example?.header_url?.[0] || header?.example?.header_handle?.[0] || '';
+const templateHeaderMediaUrl = (template) => {
+    const header = (template?.components || []).find((component) => String(component?.type || '').toLowerCase() === 'header');
+    const candidates = [header?.example?.header_url?.[0], header?.example?.header_handle?.[0]];
+
+    return candidates.find((value) => typeof value === 'string' && isPublicUrl(value)) || '';
+};
+
+const templateDocumentFilename = (mediaUrl) => {
+    if (!mediaUrl) {
+        return '';
+    }
+
+    try {
+        const pathname = new URL(mediaUrl).pathname;
+        const filename = pathname.split('/').filter(Boolean).pop();
+
+        return filename || '';
+    } catch {
+        return '';
+    }
 };
 
 const templateBodyParameterCount = (template) => {
@@ -132,6 +156,9 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
         whatsapp_message_type: 'text',
         whatsapp_template_id: '',
         whatsapp_template_variables: '',
+        whatsapp_template_header_type: '',
+        whatsapp_template_header_media_url: '',
+        whatsapp_template_header_media_filename: '',
     });
     const customerFilterForm = useForm({
         search: customerFilters?.search || '',
@@ -429,7 +456,8 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
     const selectedSingleMessageTemplate = whatsappTemplateOptions.find((template) => String(template.id) === String(singleMessageForm.data.whatsapp_template_id));
     const selectedSingleMessageTemplateVariableCount = templateBodyParameterCount(selectedSingleMessageTemplate);
     const selectedSingleMessageTemplateHeaderFormat = templateMediaHeaderFormat(selectedSingleMessageTemplate);
-    const selectedSingleMessageTemplateHeaderUrl = templateHeaderMediaUrl(selectedSingleMessageTemplate);
+    const selectedSingleMessageTemplateHeaderUrl = singleMessageForm.data.whatsapp_template_header_media_url || templateHeaderMediaUrl(selectedSingleMessageTemplate);
+    const selectedSingleMessageTemplateHeaderType = singleMessageForm.data.whatsapp_template_header_type || selectedSingleMessageTemplateHeaderFormat;
 
     return (
         <AuthenticatedLayout header="CRM Automation">
@@ -862,7 +890,24 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                     <option value="template">WhatsApp template</option>
                                 </select>
                                 {singleMessageForm.data.whatsapp_message_type === 'template' && (
-                                    <SearchableSelect value={singleMessageForm.data.whatsapp_template_id} onChange={(id) => singleMessageForm.setData('whatsapp_template_id', id)} options={whatsappTemplateSelectOptions} placeholder="Search WhatsApp template" />
+                                    <SearchableSelect
+                                        value={singleMessageForm.data.whatsapp_template_id}
+                                        onChange={(id) => {
+                                            const template = whatsappTemplateOptions.find((option) => String(option.id) === String(id));
+                                            const headerUrl = templateHeaderMediaUrl(template);
+                                            const headerType = templateMediaHeaderFormat(template);
+
+                                            singleMessageForm.setData((data) => ({
+                                                ...data,
+                                                whatsapp_template_id: id,
+                                                whatsapp_template_header_type: headerType,
+                                                whatsapp_template_header_media_url: headerUrl,
+                                                whatsapp_template_header_media_filename: headerType === 'document' ? templateDocumentFilename(headerUrl) : '',
+                                            }));
+                                        }}
+                                        options={whatsappTemplateSelectOptions}
+                                        placeholder="Search WhatsApp template"
+                                    />
                                 )}
                             </>
                         )}
@@ -893,8 +938,47 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                             : `This template needs a public ${selectedSingleMessageTemplateHeaderFormat} header URL before sending.`}
                                     </p>
                                 ) : null}
+                                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                    <select
+                                        className="ta-input"
+                                        value={selectedSingleMessageTemplateHeaderType || 'none'}
+                                        onChange={(e) => {
+                                            const headerType = e.target.value === 'none' ? '' : e.target.value;
+
+                                            singleMessageForm.setData((data) => ({
+                                                ...data,
+                                                whatsapp_template_header_type: headerType,
+                                                whatsapp_template_header_media_url: headerType ? data.whatsapp_template_header_media_url : '',
+                                                whatsapp_template_header_media_filename: headerType === 'document' ? data.whatsapp_template_header_media_filename : '',
+                                            }));
+                                        }}
+                                    >
+                                        <option value="none">No media header</option>
+                                        <option value="document">Document header</option>
+                                        <option value="image">Image header</option>
+                                        <option value="video">Video header</option>
+                                    </select>
+                                    <input
+                                        className="ta-input md:col-span-2"
+                                        placeholder="Public header media URL"
+                                        value={singleMessageForm.data.whatsapp_template_header_media_url}
+                                        onChange={(e) => singleMessageForm.setData('whatsapp_template_header_media_url', e.target.value)}
+                                        disabled={!selectedSingleMessageTemplateHeaderType}
+                                    />
+                                    {selectedSingleMessageTemplateHeaderType === 'document' ? (
+                                        <input
+                                            className="ta-input md:col-span-3"
+                                            placeholder="Document filename"
+                                            value={singleMessageForm.data.whatsapp_template_header_media_filename}
+                                            onChange={(e) => singleMessageForm.setData('whatsapp_template_header_media_filename', e.target.value)}
+                                        />
+                                    ) : null}
+                                </div>
                                 {singleMessageForm.errors?.whatsapp_template_variables ? (
                                     <p className="mt-1 text-xs font-semibold text-red-600">{singleMessageForm.errors.whatsapp_template_variables}</p>
+                                ) : null}
+                                {singleMessageForm.errors?.whatsapp_template_header_media_url ? (
+                                    <p className="mt-1 text-xs font-semibold text-red-600">{singleMessageForm.errors.whatsapp_template_header_media_url}</p>
                                 ) : null}
                                 {singleMessageForm.errors?.whatsapp_template_id ? (
                                     <p className="mt-1 text-xs font-semibold text-red-600">{singleMessageForm.errors.whatsapp_template_id}</p>

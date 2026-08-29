@@ -627,6 +627,53 @@ class WhatsAppDeliveryTest extends TestCase
         $this->assertSame(1, $campaign->fresh()->failed_count);
     }
 
+    public function test_whatsapp_delivery_job_does_not_retry_template_header_format_failures(): void
+    {
+        FinanceSetting::current()->update([
+            'whatsapp_driver' => 'ycloud',
+            'whatsapp_phone_number_id' => '+971501111111',
+            'whatsapp_access_token' => 'ycloud-secret-key',
+        ]);
+
+        $log = CommunicationLog::create([
+            'channel' => 'whatsapp',
+            'context' => 'single_message:25',
+            'recipient' => '+923473639710',
+            'message' => 'WhatsApp template message',
+            'status' => 'queued',
+            'provider' => 'whatsapp',
+            'provider_status' => 'queued',
+            'message_type' => 'template',
+            'queued_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://api.ycloud.com/*' => Http::response([
+                'error' => [
+                    'message' => '132012 header: Format mismatch, expected DOCUMENT, received UNKNOWN (#132012) Parameter format does not match format in the created template',
+                ],
+            ], 400),
+        ]);
+
+        $job = new SendWhatsAppDeliveryJob($log->id, [
+            'message_type' => 'template',
+            'recipient' => '+923473639710',
+            'template_name' => 'document_single',
+            'language_code' => 'en_US',
+            'components' => [],
+        ]);
+
+        $job->handle(app(WhatsAppService::class));
+
+        $log->refresh();
+
+        $this->assertSame('failed', $log->status);
+        $this->assertSame('failed', $log->provider_status);
+        $this->assertSame(1, $log->attempt_count);
+        $this->assertStringContainsString('132012', $log->error_message);
+        $this->assertNotNull($log->failed_at);
+    }
+
     public function test_single_whatsapp_message_can_be_queued_for_one_customer(): void
     {
         Queue::fake();
@@ -781,6 +828,58 @@ class WhatsAppDeliveryTest extends TestCase
                 && ($header['parameters'][0]['document']['link'] ?? null) === 'https://example.com/vina-service-menu.pdf'
                 && ($header['parameters'][0]['document']['filename'] ?? null) === 'vina-service-menu.pdf'
                 && ($body['parameters'][0]['text'] ?? null) === 'Document Single Customer';
+        });
+    }
+
+    public function test_single_whatsapp_template_can_send_explicit_document_header_when_template_metadata_is_stale(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-WA-DOC-EXPLICIT',
+            'name' => 'Explicit Document Customer',
+            'phone' => '923473639710',
+            'is_active' => true,
+        ]);
+
+        $template = WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-template-document-explicit',
+            'name' => 'document_single_stale',
+            'language' => 'en_US',
+            'category' => 'UTILITY',
+            'status' => 'APPROVED',
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}']],
+            'last_synced_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.messages.single'), [
+                'customer_id' => $customer->id,
+                'channel' => 'whatsapp',
+                'whatsapp_message_type' => 'template',
+                'whatsapp_template_id' => $template->id,
+                'whatsapp_template_variables' => '',
+                'whatsapp_template_header_type' => 'document',
+                'whatsapp_template_header_media_url' => 'https://example.com/manual-menu.pdf',
+                'whatsapp_template_header_media_filename' => 'manual-menu.pdf',
+            ])
+            ->assertSessionHasNoErrors();
+
+        Queue::assertPushed(SendWhatsAppDeliveryJob::class, function (SendWhatsAppDeliveryJob $job) {
+            $header = collect($job->payload['components'] ?? [])->firstWhere('type', 'header');
+            $body = collect($job->payload['components'] ?? [])->firstWhere('type', 'body');
+
+            return ($header['parameters'][0]['type'] ?? null) === 'document'
+                && ($header['parameters'][0]['document']['link'] ?? null) === 'https://example.com/manual-menu.pdf'
+                && ($header['parameters'][0]['document']['filename'] ?? null) === 'manual-menu.pdf'
+                && ($body['parameters'][0]['text'] ?? null) === 'Explicit Document Customer';
         });
     }
 

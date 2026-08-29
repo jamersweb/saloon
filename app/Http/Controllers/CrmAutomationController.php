@@ -753,6 +753,9 @@ class CrmAutomationController extends Controller
             'whatsapp_message_type' => ['nullable', 'in:text,template'],
             'whatsapp_template_id' => ['nullable', 'exists:whatsapp_message_templates,id'],
             'whatsapp_template_variables' => ['nullable', 'string', 'max:1000'],
+            'whatsapp_template_header_type' => ['nullable', 'in:none,image,video,document'],
+            'whatsapp_template_header_media_url' => ['nullable', 'url', 'max:2048'],
+            'whatsapp_template_header_media_filename' => ['nullable', 'string', 'max:255'],
         ]);
 
         $customer = Customer::findOrFail((int) $data['customer_id']);
@@ -1163,7 +1166,7 @@ class CrmAutomationController extends Controller
             ]);
         }
 
-        $components = $this->whatsAppTemplateHeaderSendComponents($template);
+        $components = $this->whatsAppTemplateHeaderSendComponents($template, $data);
 
         if ($expectedVariables > 0) {
             $components[] = [
@@ -1201,27 +1204,37 @@ class CrmAutomationController extends Controller
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function whatsAppTemplateHeaderSendComponents(WhatsAppMessageTemplate $template): array
+    private function whatsAppTemplateHeaderSendComponents(WhatsAppMessageTemplate $template, array $data = []): array
     {
         $header = $this->whatsAppTemplateComponent($template, 'header');
-        $format = strtolower((string) ($header['format'] ?? ''));
+        $storedFormat = strtolower((string) ($header['format'] ?? ''));
+        $requestedFormat = strtolower((string) ($data['whatsapp_template_header_type'] ?? ''));
+        $format = in_array($requestedFormat, ['image', 'video', 'document'], true)
+            ? $requestedFormat
+            : $storedFormat;
 
         if (! in_array($format, ['image', 'video', 'document'], true)) {
             return [];
         }
 
-        $mediaUrl = $this->whatsAppTemplateHeaderMediaUrl($header);
+        $providedMediaUrl = trim((string) ($data['whatsapp_template_header_media_url'] ?? ''));
+        $mediaUrl = filter_var($providedMediaUrl, FILTER_VALIDATE_URL)
+            ? $providedMediaUrl
+            : $this->whatsAppTemplateHeaderMediaUrl($header);
 
         if ($mediaUrl === '') {
             throw ValidationException::withMessages([
-                'whatsapp_template_id' => 'This WhatsApp template requires a public media URL for its header before it can be sent.',
+                'whatsapp_template_header_media_url' => 'This WhatsApp template requires a public media URL for its header before it can be sent.',
             ]);
         }
 
         $mediaPayload = ['link' => $mediaUrl];
 
         if ($format === 'document') {
-            $mediaPayload['filename'] = $this->whatsAppTemplateDocumentFilename($mediaUrl);
+            $mediaPayload['filename'] = $this->whatsAppTemplateDocumentFilename(
+                $mediaUrl,
+                (string) ($data['whatsapp_template_header_media_filename'] ?? '')
+            );
         }
 
         return [[
@@ -1262,8 +1275,14 @@ class CrmAutomationController extends Controller
         return '';
     }
 
-    private function whatsAppTemplateDocumentFilename(string $mediaUrl): string
+    private function whatsAppTemplateDocumentFilename(string $mediaUrl, string $providedFilename = ''): string
     {
+        $providedFilename = trim($providedFilename);
+
+        if ($providedFilename !== '') {
+            return $providedFilename;
+        }
+
         $path = parse_url($mediaUrl, PHP_URL_PATH);
         $basename = is_string($path) ? basename($path) : '';
 
