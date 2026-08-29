@@ -1143,13 +1143,25 @@ class CrmAutomationController extends Controller
             ->map(fn (string $value) => trim($value))
             ->filter()
             ->values();
+        $expectedVariables = $this->whatsAppTemplateBodyParameterCount($template);
+
+        if ($variables->count() !== $expectedVariables) {
+            throw ValidationException::withMessages([
+                'whatsapp_template_variables' => sprintf(
+                    'This WhatsApp template requires %d body variable%s; %d provided.',
+                    $expectedVariables,
+                    $expectedVariables === 1 ? '' : 's',
+                    $variables->count()
+                ),
+            ]);
+        }
 
         return [
             'async' => true,
             'message_type' => 'template',
             'template_name' => $template->name,
             'language_code' => $template->language,
-            'components' => $variables->isEmpty() ? [] : [[
+            'components' => $expectedVariables === 0 ? [] : [[
                 'type' => 'body',
                 'parameters' => $variables
                     ->map(fn (string $value) => ['type' => 'text', 'text' => $value])
@@ -1157,6 +1169,21 @@ class CrmAutomationController extends Controller
                     ->all(),
             ]],
         ];
+    }
+
+    private function whatsAppTemplateBodyParameterCount(WhatsAppMessageTemplate $template): int
+    {
+        $body = collect($template->components ?? [])
+            ->first(fn ($component) => is_array($component) && strtolower((string) ($component['type'] ?? '')) === 'body');
+        $bodyText = is_array($body) ? (string) ($body['text'] ?? '') : '';
+
+        if ($bodyText === '') {
+            return 0;
+        }
+
+        preg_match_all('/{{\s*(\d+)\s*}}/', $bodyText, $matches);
+
+        return count(array_unique($matches[1] ?? []));
     }
 
     private function isWhatsAppReady(string $phone): bool

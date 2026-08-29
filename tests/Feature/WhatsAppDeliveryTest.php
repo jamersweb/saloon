@@ -652,7 +652,7 @@ class WhatsAppDeliveryTest extends TestCase
             'language' => 'en_US',
             'category' => 'UTILITY',
             'status' => 'APPROVED',
-            'components' => [],
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}']],
             'last_synced_at' => now(),
         ]);
 
@@ -674,6 +674,52 @@ class WhatsAppDeliveryTest extends TestCase
             'status' => 'queued',
             'provider_status' => 'queued',
             'message_type' => 'template',
+            'context' => 'single_message:'.$customer->id,
+        ]);
+    }
+
+    public function test_single_whatsapp_template_requires_matching_body_variables(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-WA-005',
+            'name' => 'Missing Variable Customer',
+            'phone' => '923473639710',
+            'is_active' => true,
+        ]);
+
+        $template = WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-template-2',
+            'name' => 'needs_name',
+            'language' => 'en_US',
+            'category' => 'UTILITY',
+            'status' => 'APPROVED',
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}']],
+            'last_synced_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->from(route('customers.automation.index'))
+            ->post(route('customers.automation.messages.single'), [
+                'customer_id' => $customer->id,
+                'channel' => 'whatsapp',
+                'whatsapp_message_type' => 'template',
+                'whatsapp_template_id' => $template->id,
+                'whatsapp_template_variables' => '',
+            ])
+            ->assertSessionHasErrors('whatsapp_template_variables');
+
+        Queue::assertNothingPushed();
+        $this->assertDatabaseMissing('communication_logs', [
+            'customer_id' => $customer->id,
             'context' => 'single_message:'.$customer->id,
         ]);
     }

@@ -83,6 +83,13 @@ const templateHeaderMediaUrl = (template) => {
     return header?.example?.header_url?.[0] || header?.example?.header_handle?.[0] || '';
 };
 
+const templateBodyParameterCount = (template) => {
+    const body = (template?.components || []).find((component) => String(component?.type || '').toLowerCase() === 'body');
+    const matches = String(body?.text || '').matchAll(/{{\s*(\d+)\s*}}/g);
+
+    return new Set([...matches].map((match) => match[1])).size;
+};
+
 const CrmTabButton = ({ active, children, onClick }) => (
     <button
         type="button"
@@ -412,6 +419,8 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
     };
 
     const selectedSingleMessageCustomer = customerOptions.find((customer) => String(customer.id) === String(singleMessageForm.data.customer_id));
+    const selectedSingleMessageTemplate = whatsappTemplateOptions.find((template) => String(template.id) === String(singleMessageForm.data.whatsapp_template_id));
+    const selectedSingleMessageTemplateVariableCount = templateBodyParameterCount(selectedSingleMessageTemplate);
 
     return (
         <AuthenticatedLayout header="CRM Automation">
@@ -856,12 +865,22 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                             onChange={(e) => singleMessageForm.setData('message', e.target.value)}
                         />
                         {singleMessageForm.data.channel === 'whatsapp' && singleMessageForm.data.whatsapp_message_type === 'template' && (
-                            <input
-                                className="ta-input md:col-span-2"
-                                placeholder="Template variables, comma-separated"
-                                value={singleMessageForm.data.whatsapp_template_variables}
-                                onChange={(e) => singleMessageForm.setData('whatsapp_template_variables', e.target.value)}
-                            />
+                            <div className="md:col-span-2">
+                                <input
+                                    className="ta-input"
+                                    placeholder="Template variables, comma-separated"
+                                    value={singleMessageForm.data.whatsapp_template_variables}
+                                    onChange={(e) => singleMessageForm.setData('whatsapp_template_variables', e.target.value)}
+                                />
+                                <p className="mt-1 text-xs text-slate-500">
+                                    {selectedSingleMessageTemplate
+                                        ? `This template needs ${selectedSingleMessageTemplateVariableCount} body variable${selectedSingleMessageTemplateVariableCount === 1 ? '' : 's'}.`
+                                        : 'Select a template to see required variables.'}
+                                </p>
+                                {singleMessageForm.errors?.whatsapp_template_variables ? (
+                                    <p className="mt-1 text-xs font-semibold text-red-600">{singleMessageForm.errors.whatsapp_template_variables}</p>
+                                ) : null}
+                            </div>
                         )}
                         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 md:col-span-2">
                             Recipient: {selectedSingleMessageCustomer ? selectedSingleMessageCustomer.name : 'Select a contact'}.
