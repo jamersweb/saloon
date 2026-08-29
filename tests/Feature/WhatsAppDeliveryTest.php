@@ -19,6 +19,7 @@ use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use InvalidArgumentException;
 use Tests\TestCase;
 
 class WhatsAppDeliveryTest extends TestCase
@@ -426,6 +427,33 @@ class WhatsAppDeliveryTest extends TestCase
                 && $request['text']['body'] === 'Hello from Vina'
                 && $request['text']['preview_url'] === false;
         });
+    }
+
+    public function test_whatsapp_normalizes_uae_local_mobile_numbers_for_transport(): void
+    {
+        FinanceSetting::current()->update([
+            'whatsapp_driver' => 'ycloud',
+        ]);
+
+        $service = app(WhatsAppService::class);
+
+        $this->assertSame('+971544550498', $service->normalizeRecipientForTransport('0544550498'));
+        $this->assertSame('+971544550498', $service->normalizeRecipientForTransport('+0544550498'));
+        $this->assertSame('+971588174848', $service->normalizeRecipientForTransport('588174848'));
+    }
+
+    public function test_whatsapp_rejects_placeholder_and_invalid_international_numbers(): void
+    {
+        $service = app(WhatsAppService::class);
+
+        foreach (['000000', '+0000000000', '+07403765451'] as $recipient) {
+            try {
+                $service->normalizeRecipientForTransport($recipient);
+                $this->fail("Expected [{$recipient}] to be rejected.");
+            } catch (InvalidArgumentException $exception) {
+                $this->assertSame('WhatsApp recipient must contain a valid phone number.', $exception->getMessage());
+            }
+        }
     }
 
     public function test_ycloud_base_url_uses_api_key_header_even_when_driver_is_meta(): void

@@ -351,7 +351,16 @@ class WhatsAppService
     {
         $normalized = preg_replace('/\D+/', '', $recipient) ?? '';
 
-        if (strlen($normalized) < 8) {
+        if (preg_match('/^0?5\d{8}$/', $normalized) === 1) {
+            $normalized = '971'.ltrim($normalized, '0');
+        }
+
+        if (
+            strlen($normalized) < 8
+            || strlen($normalized) > 15
+            || ! preg_match('/^[1-9]\d+$/', $normalized)
+            || preg_match('/^(\d)\1+$/', $normalized) === 1
+        ) {
             throw new InvalidArgumentException('WhatsApp recipient must contain a valid phone number.');
         }
 
