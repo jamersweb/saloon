@@ -770,7 +770,7 @@ class CrmAutomationController extends Controller
         }
 
         $recipient = $this->recipientForCustomerChannel($customer, $channel);
-        $deliveryOptions = $this->deliveryOptionsForSingleMessage($channel, $messageType, $data);
+        $deliveryOptions = $this->deliveryOptionsForSingleMessage($channel, $messageType, $data, $customer);
         $log = $communicationDeliveryService->deliver(
             $customer,
             $channel,
@@ -1125,7 +1125,7 @@ class CrmAutomationController extends Controller
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function deliveryOptionsForSingleMessage(string $channel, string $messageType, array $data): array
+    private function deliveryOptionsForSingleMessage(string $channel, string $messageType, array $data, Customer $customer): array
     {
         if ($channel !== 'whatsapp') {
             return [];
@@ -1144,6 +1144,13 @@ class CrmAutomationController extends Controller
             ->filter()
             ->values();
         $expectedVariables = $this->whatsAppTemplateBodyParameterCount($template);
+
+        if ($expectedVariables > 0 && $variables->count() < $expectedVariables) {
+            $variables = collect([(string) ($customer->name ?: 'Customer')])
+                ->merge($variables)
+                ->take($expectedVariables)
+                ->values();
+        }
 
         if ($variables->count() !== $expectedVariables) {
             throw ValidationException::withMessages([

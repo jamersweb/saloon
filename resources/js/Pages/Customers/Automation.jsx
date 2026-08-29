@@ -868,13 +868,13 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                             <div className="md:col-span-2">
                                 <input
                                     className="ta-input"
-                                    placeholder="Template variables, comma-separated"
+                                    placeholder="Remaining template variables, comma-separated"
                                     value={singleMessageForm.data.whatsapp_template_variables}
                                     onChange={(e) => singleMessageForm.setData('whatsapp_template_variables', e.target.value)}
                                 />
                                 <p className="mt-1 text-xs text-slate-500">
                                     {selectedSingleMessageTemplate
-                                        ? `This template needs ${selectedSingleMessageTemplateVariableCount} body variable${selectedSingleMessageTemplateVariableCount === 1 ? '' : 's'}.`
+                                        ? `This template needs ${selectedSingleMessageTemplateVariableCount} body variable${selectedSingleMessageTemplateVariableCount === 1 ? '' : 's'}. The first blank variable uses the customer name.`
                                         : 'Select a template to see required variables.'}
                                 </p>
                                 {singleMessageForm.errors?.whatsapp_template_variables ? (

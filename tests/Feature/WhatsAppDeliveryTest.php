@@ -678,7 +678,7 @@ class WhatsAppDeliveryTest extends TestCase
         ]);
     }
 
-    public function test_single_whatsapp_template_requires_matching_body_variables(): void
+    public function test_single_whatsapp_template_uses_customer_name_when_body_variable_is_blank(): void
     {
         Queue::fake();
 
@@ -703,6 +703,54 @@ class WhatsAppDeliveryTest extends TestCase
             'category' => 'UTILITY',
             'status' => 'APPROVED',
             'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}']],
+            'last_synced_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.messages.single'), [
+                'customer_id' => $customer->id,
+                'channel' => 'whatsapp',
+                'whatsapp_message_type' => 'template',
+                'whatsapp_template_id' => $template->id,
+                'whatsapp_template_variables' => '',
+            ])
+            ->assertSessionHasNoErrors();
+
+        Queue::assertPushed(SendWhatsAppDeliveryJob::class, function (SendWhatsAppDeliveryJob $job) {
+            return ($job->payload['components'][0]['parameters'][0]['text'] ?? null) === 'Missing Variable Customer';
+        });
+        $this->assertDatabaseHas('communication_logs', [
+            'customer_id' => $customer->id,
+            'context' => 'single_message:'.$customer->id,
+            'status' => 'queued',
+        ]);
+    }
+
+    public function test_single_whatsapp_template_requires_remaining_body_variables(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-WA-006',
+            'name' => 'Remaining Variable Customer',
+            'phone' => '923473639711',
+            'is_active' => true,
+        ]);
+
+        $template = WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-template-3',
+            'name' => 'needs_name_and_date',
+            'language' => 'en_US',
+            'category' => 'UTILITY',
+            'status' => 'APPROVED',
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}, your appointment is {{2}}']],
             'last_synced_at' => now(),
         ]);
 
