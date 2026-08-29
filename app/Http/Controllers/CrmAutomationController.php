@@ -1163,25 +1163,30 @@ class CrmAutomationController extends Controller
             ]);
         }
 
-        return [
-            'async' => true,
-            'message_type' => 'template',
-            'template_name' => $template->name,
-            'language_code' => $template->language,
-            'components' => $expectedVariables === 0 ? [] : [[
+        $components = $this->whatsAppTemplateHeaderSendComponents($template);
+
+        if ($expectedVariables > 0) {
+            $components[] = [
                 'type' => 'body',
                 'parameters' => $variables
                     ->map(fn (string $value) => ['type' => 'text', 'text' => $value])
                     ->values()
                     ->all(),
-            ]],
+            ];
+        }
+
+        return [
+            'async' => true,
+            'message_type' => 'template',
+            'template_name' => $template->name,
+            'language_code' => $template->language,
+            'components' => $components,
         ];
     }
 
     private function whatsAppTemplateBodyParameterCount(WhatsAppMessageTemplate $template): int
     {
-        $body = collect($template->components ?? [])
-            ->first(fn ($component) => is_array($component) && strtolower((string) ($component['type'] ?? '')) === 'body');
+        $body = $this->whatsAppTemplateComponent($template, 'body');
         $bodyText = is_array($body) ? (string) ($body['text'] ?? '') : '';
 
         if ($bodyText === '') {
@@ -1191,6 +1196,78 @@ class CrmAutomationController extends Controller
         preg_match_all('/{{\s*(\d+)\s*}}/', $bodyText, $matches);
 
         return count(array_unique($matches[1] ?? []));
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function whatsAppTemplateHeaderSendComponents(WhatsAppMessageTemplate $template): array
+    {
+        $header = $this->whatsAppTemplateComponent($template, 'header');
+        $format = strtolower((string) ($header['format'] ?? ''));
+
+        if (! in_array($format, ['image', 'video', 'document'], true)) {
+            return [];
+        }
+
+        $mediaUrl = $this->whatsAppTemplateHeaderMediaUrl($header);
+
+        if ($mediaUrl === '') {
+            throw ValidationException::withMessages([
+                'whatsapp_template_id' => 'This WhatsApp template requires a public media URL for its header before it can be sent.',
+            ]);
+        }
+
+        $mediaPayload = ['link' => $mediaUrl];
+
+        if ($format === 'document') {
+            $mediaPayload['filename'] = $this->whatsAppTemplateDocumentFilename($mediaUrl);
+        }
+
+        return [[
+            'type' => 'header',
+            'parameters' => [[
+                'type' => $format,
+                $format => $mediaPayload,
+            ]],
+        ]];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function whatsAppTemplateComponent(WhatsAppMessageTemplate $template, string $type): array
+    {
+        $component = collect($template->components ?? [])
+            ->first(fn ($component) => is_array($component) && strtolower((string) ($component['type'] ?? '')) === strtolower($type));
+
+        return is_array($component) ? $component : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $header
+     */
+    private function whatsAppTemplateHeaderMediaUrl(array $header): string
+    {
+        $example = is_array($header['example'] ?? null) ? $header['example'] : [];
+
+        foreach (['header_url', 'header_handle'] as $key) {
+            $value = $example[$key][0] ?? null;
+
+            if (is_string($value) && filter_var($value, FILTER_VALIDATE_URL)) {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function whatsAppTemplateDocumentFilename(string $mediaUrl): string
+    {
+        $path = parse_url($mediaUrl, PHP_URL_PATH);
+        $basename = is_string($path) ? basename($path) : '';
+
+        return $basename !== '' ? $basename : 'document.pdf';
     }
 
     private function isWhatsAppReady(string $phone): bool

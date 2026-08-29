@@ -726,6 +726,64 @@ class WhatsAppDeliveryTest extends TestCase
         ]);
     }
 
+    public function test_single_whatsapp_template_includes_document_header_component(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-WA-DOC-SINGLE',
+            'name' => 'Document Single Customer',
+            'phone' => '971556354004',
+            'is_active' => true,
+        ]);
+
+        $template = WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-template-document-single',
+            'name' => 'document_single',
+            'language' => 'en_US',
+            'category' => 'UTILITY',
+            'status' => 'APPROVED',
+            'components' => [
+                [
+                    'type' => 'HEADER',
+                    'format' => 'DOCUMENT',
+                    'example' => [
+                        'header_url' => ['https://example.com/vina-service-menu.pdf'],
+                    ],
+                ],
+                ['type' => 'BODY', 'text' => 'Hello {{1}}'],
+            ],
+            'last_synced_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('customers.automation.messages.single'), [
+                'customer_id' => $customer->id,
+                'channel' => 'whatsapp',
+                'whatsapp_message_type' => 'template',
+                'whatsapp_template_id' => $template->id,
+                'whatsapp_template_variables' => '',
+            ])
+            ->assertSessionHasNoErrors();
+
+        Queue::assertPushed(SendWhatsAppDeliveryJob::class, function (SendWhatsAppDeliveryJob $job) {
+            $header = collect($job->payload['components'] ?? [])->firstWhere('type', 'header');
+            $body = collect($job->payload['components'] ?? [])->firstWhere('type', 'body');
+
+            return ($header['parameters'][0]['type'] ?? null) === 'document'
+                && ($header['parameters'][0]['document']['link'] ?? null) === 'https://example.com/vina-service-menu.pdf'
+                && ($header['parameters'][0]['document']['filename'] ?? null) === 'vina-service-menu.pdf'
+                && ($body['parameters'][0]['text'] ?? null) === 'Document Single Customer';
+        });
+    }
+
     public function test_single_whatsapp_template_requires_remaining_body_variables(): void
     {
         Queue::fake();

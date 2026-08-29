@@ -90,6 +90,13 @@ const templateBodyParameterCount = (template) => {
     return new Set([...matches].map((match) => match[1])).size;
 };
 
+const templateMediaHeaderFormat = (template) => {
+    const header = (template?.components || []).find((component) => String(component?.type || '').toLowerCase() === 'header');
+    const format = String(header?.format || '').toLowerCase();
+
+    return ['image', 'video', 'document'].includes(format) ? format : '';
+};
+
 const CrmTabButton = ({ active, children, onClick }) => (
     <button
         type="button"
@@ -421,6 +428,8 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
     const selectedSingleMessageCustomer = customerOptions.find((customer) => String(customer.id) === String(singleMessageForm.data.customer_id));
     const selectedSingleMessageTemplate = whatsappTemplateOptions.find((template) => String(template.id) === String(singleMessageForm.data.whatsapp_template_id));
     const selectedSingleMessageTemplateVariableCount = templateBodyParameterCount(selectedSingleMessageTemplate);
+    const selectedSingleMessageTemplateHeaderFormat = templateMediaHeaderFormat(selectedSingleMessageTemplate);
+    const selectedSingleMessageTemplateHeaderUrl = templateHeaderMediaUrl(selectedSingleMessageTemplate);
 
     return (
         <AuthenticatedLayout header="CRM Automation">
@@ -877,8 +886,18 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                         ? `This template needs ${selectedSingleMessageTemplateVariableCount} body variable${selectedSingleMessageTemplateVariableCount === 1 ? '' : 's'}. The first blank variable uses the customer name.`
                                         : 'Select a template to see required variables.'}
                                 </p>
+                                {selectedSingleMessageTemplateHeaderFormat ? (
+                                    <p className={`mt-1 text-xs font-semibold ${selectedSingleMessageTemplateHeaderUrl ? 'text-slate-600' : 'text-red-600'}`}>
+                                        {selectedSingleMessageTemplateHeaderUrl
+                                            ? `Includes ${selectedSingleMessageTemplateHeaderFormat} header attachment.`
+                                            : `This template needs a public ${selectedSingleMessageTemplateHeaderFormat} header URL before sending.`}
+                                    </p>
+                                ) : null}
                                 {singleMessageForm.errors?.whatsapp_template_variables ? (
                                     <p className="mt-1 text-xs font-semibold text-red-600">{singleMessageForm.errors.whatsapp_template_variables}</p>
+                                ) : null}
+                                {singleMessageForm.errors?.whatsapp_template_id ? (
+                                    <p className="mt-1 text-xs font-semibold text-red-600">{singleMessageForm.errors.whatsapp_template_id}</p>
                                 ) : null}
                             </div>
                         )}
