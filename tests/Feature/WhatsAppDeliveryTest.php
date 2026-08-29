@@ -566,6 +566,67 @@ class WhatsAppDeliveryTest extends TestCase
         $this->assertSame(\Illuminate\Queue\Middleware\RateLimited::class, $job->middleware()[0]::class);
     }
 
+    public function test_whatsapp_delivery_job_does_not_retry_ecosystem_engagement_failures(): void
+    {
+        FinanceSetting::current()->update([
+            'whatsapp_driver' => 'ycloud',
+            'whatsapp_phone_number_id' => '+971501111111',
+            'whatsapp_access_token' => 'ycloud-secret-key',
+        ]);
+
+        $template = CampaignTemplate::create([
+            'name' => 'Engagement Limited Template',
+            'channel' => 'whatsapp',
+            'content' => 'Campaign message',
+            'is_active' => true,
+        ]);
+
+        $campaign = Campaign::create([
+            'name' => 'Engagement Limited Campaign',
+            'campaign_template_id' => $template->id,
+            'channel' => 'whatsapp',
+            'audience_type' => 'all',
+            'status' => 'draft',
+        ]);
+
+        $log = CommunicationLog::create([
+            'channel' => 'whatsapp',
+            'context' => 'campaign:'.$campaign->id,
+            'recipient' => '+971556354004',
+            'message' => 'Campaign message',
+            'status' => 'queued',
+            'provider' => 'whatsapp',
+            'provider_status' => 'queued',
+            'message_type' => 'text',
+            'queued_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://api.ycloud.com/*' => Http::response([
+                'error' => [
+                    'message' => '131049 In order to maintain a healthy ecosystem engagement, the message failed to be delivered.',
+                ],
+            ], 400),
+        ]);
+
+        $job = new SendWhatsAppDeliveryJob($log->id, [
+            'message_type' => 'text',
+            'recipient' => '+971556354004',
+            'message' => 'Campaign message',
+        ]);
+
+        $job->handle(app(WhatsAppService::class));
+
+        $log->refresh();
+
+        $this->assertSame('failed', $log->status);
+        $this->assertSame('failed', $log->provider_status);
+        $this->assertSame(1, $log->attempt_count);
+        $this->assertStringContainsString('131049', $log->error_message);
+        $this->assertNotNull($log->failed_at);
+        $this->assertSame(1, $campaign->fresh()->failed_count);
+    }
+
     public function test_single_whatsapp_message_can_be_queued_for_one_customer(): void
     {
         Queue::fake();

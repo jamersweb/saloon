@@ -69,18 +69,29 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
             );
 
         if (! $result['successful']) {
+            $errorMessage = (string) ($result['error_message'] ?? 'WhatsApp send failed.');
+            $shouldRetry = $this->shouldRetryProviderFailure($errorMessage);
+
             $log->forceFill([
+                'status' => $shouldRetry ? $log->status : 'failed',
                 'provider' => $result['provider'] ?? $log->provider,
                 'provider_message_id' => $result['provider_message_id'] ?? $log->provider_message_id,
-                'provider_status' => 'retrying',
+                'provider_status' => $shouldRetry ? 'retrying' : 'failed',
                 'recipient' => $result['recipient'] ?? $log->recipient,
                 'message' => $result['message'] ?? $log->message,
-                'error_message' => $result['error_message'] ?? 'WhatsApp send failed.',
+                'error_message' => $errorMessage,
                 'provider_payload' => $this->providerPayloadSnapshot($result),
+                'failed_at' => $shouldRetry ? null : now(),
                 'last_provider_event_at' => now(),
             ])->save();
 
-            throw new RuntimeException((string) ($result['error_message'] ?? 'WhatsApp send failed.'));
+            if (! $shouldRetry) {
+                $this->applyFailureEffects($log);
+
+                return;
+            }
+
+            throw new RuntimeException($errorMessage);
         }
 
         $log->forceFill([
@@ -151,5 +162,10 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
         if (preg_match('/^campaign:(\d+)$/', (string) $log->context, $matches) === 1) {
             Campaign::query()->whereKey((int) $matches[1])->increment('failed_count');
         }
+    }
+
+    private function shouldRetryProviderFailure(string $errorMessage): bool
+    {
+        return ! preg_match('/\b131049\b/', $errorMessage);
     }
 }
