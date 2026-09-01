@@ -73,15 +73,15 @@
 <div class="embed-shell">
     <div class="card">
         <div class="brand">
-            <img src="{{ asset('images/vina-logo.png') }}" alt="Vina">
+            <img src="/images/vina-logo.png" alt="Vina">
         </div>
         <h1>Thank you</h1>
         <p>Your booking request was received. We will confirm shortly.</p>
-        <p><a href="{{ route('embed.booking') }}">Book another appointment</a></p>
+        <p><a href="{{ route('embed.booking', [], false) }}">Book another appointment</a></p>
         <p>
-            <a class="text-link" href="{{ route('public.privacy-policy') }}" target="_blank" rel="noreferrer">Privacy Policy</a>
+            <a class="text-link" href="{{ route('public.privacy-policy', [], false) }}" target="_blank" rel="noreferrer">Privacy Policy</a>
             &nbsp;|&nbsp;
-            <a class="text-link" href="{{ route('public.terms-of-service') }}" target="_blank" rel="noreferrer">Terms of Service</a>
+            <a class="text-link" href="{{ route('public.terms-of-service', [], false) }}" target="_blank" rel="noreferrer">Terms of Service</a>
         </p>
     </div>
 </div>

@@ -81,8 +81,23 @@ class StaffProfile extends Model
 
     public function scopeAssignableToServices(Builder $query): Builder
     {
-        return $query->whereHas('user.role', function (Builder $roleQuery): void {
-            $roleQuery->whereIn('name', ['owner', 'manager', 'staff', 'reception']);
+        return $query->whereHas('user', function (Builder $userQuery): void {
+            $userQuery
+                ->whereDoesntHave('role')
+                ->orWhereHas('role', function (Builder $roleQuery): void {
+                    $roleQuery->whereIn('name', ['owner', 'manager', 'staff', 'reception']);
+                });
+        });
+    }
+
+    public function scopeBookableOnline(Builder $query): Builder
+    {
+        return $query->whereHas('user', function (Builder $userQuery): void {
+            $userQuery
+                ->whereDoesntHave('role')
+                ->orWhereHas('role', function (Builder $roleQuery): void {
+                    $roleQuery->whereIn('name', ['owner', 'manager', 'staff']);
+                });
         });
     }
 }

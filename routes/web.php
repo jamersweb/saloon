@@ -46,7 +46,9 @@ Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
     ->name('whatsapp.webhook.receive');
 
 Route::get('/embed/book', [PublicBookingController::class, 'embedCreate'])->name('embed.booking');
-Route::post('/embed/book', [PublicBookingController::class, 'embedStore'])->name('embed.booking.store');
+Route::post('/embed/book', [PublicBookingController::class, 'embedStore'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
+    ->name('embed.booking.store');
 Route::get('/embed/book/thanks', [PublicBookingController::class, 'embedThanks'])->name('embed.booking.thanks');
 Route::get('/portal/{token}', [CustomerPortalController::class, 'show'])->name('customer.portal.show');
 Route::get('/portal/nfc/{nfcUid}', [CustomerPortalController::class, 'showByNfc'])->name('customer.portal.nfc');

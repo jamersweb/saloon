@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -81,7 +82,7 @@ class PublicBookingController extends Controller
 
     public function store(Request $request, BookingAvailabilityService $availabilityService, PublicBookingNotificationService $notificationService): RedirectResponse
     {
-        $result = $this->createPublicAppointment($request, $availabilityService, $notificationService);
+        $result = $this->createPublicAppointment($request, $availabilityService, $notificationService, 'public.booking');
 
         if ($result instanceof RedirectResponse) {
             return $result;
@@ -92,7 +93,7 @@ class PublicBookingController extends Controller
 
     public function embedStore(Request $request, BookingAvailabilityService $availabilityService, PublicBookingNotificationService $notificationService): RedirectResponse
     {
-        $result = $this->createPublicAppointment($request, $availabilityService, $notificationService);
+        $result = $this->createPublicAppointment($request, $availabilityService, $notificationService, 'embed.booking');
 
         if ($result instanceof RedirectResponse) {
             return $result;
@@ -105,8 +106,9 @@ class PublicBookingController extends Controller
         Request $request,
         BookingAvailabilityService $availabilityService,
         PublicBookingNotificationService $notificationService,
+        string $errorRouteName,
     ): Appointment|RedirectResponse {
-        $data = $request->validate([
+        $validator = Validator::make($request->all(), [
             'service_id' => ['nullable', 'exists:salon_services,id'],
             'service_ids' => ['nullable', 'array', 'min:1'],
             'service_ids.*' => ['integer', 'exists:salon_services,id'],
@@ -118,9 +120,17 @@ class PublicBookingController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
+        if ($validator->fails()) {
+            return $this->redirectToPublicBookingForm($errorRouteName)
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        $data = $validator->validated();
+
         $serviceIds = $this->resolveServiceIdsFromPayload($data);
         if ($serviceIds === []) {
-            return back()->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
+            return $this->redirectToPublicBookingForm($errorRouteName)->withErrors(['service_ids' => 'Please select at least one service.'])->withInput();
         }
 
         $start = Carbon::parse($data['scheduled_start']);
@@ -131,7 +141,7 @@ class PublicBookingController extends Controller
             ->keyBy('id');
 
         if ($services->count() !== count($serviceIds)) {
-            return back()->withErrors(['service_ids' => 'One or more selected services are unavailable.'])->withInput();
+            return $this->redirectToPublicBookingForm($errorRouteName)->withErrors(['service_ids' => 'One or more selected services are unavailable.'])->withInput();
         }
 
         $plans = $this->buildServicePlans($start, $serviceIds, $services);
@@ -141,12 +151,12 @@ class PublicBookingController extends Controller
         $this->staffScheduleGenerator->fillGapsForActiveStaff(now(), $start->copy()->addDays(1));
 
         if ($windowError = $availabilityService->validateAdvanceWindow($start)) {
-            return back()->withErrors(['scheduled_start' => $windowError])->withInput();
+            return $this->redirectToPublicBookingForm($errorRouteName)->withErrors(['scheduled_start' => $windowError])->withInput();
         }
 
         foreach ($plans as $plan) {
             if ($salonError = $availabilityService->validateSalonHours($plan['start'], $plan['end'])) {
-                return back()->withErrors(['scheduled_start' => $salonError])->withInput();
+                return $this->redirectToPublicBookingForm($errorRouteName)->withErrors(['scheduled_start' => $salonError])->withInput();
             }
         }
 
@@ -156,23 +166,23 @@ class PublicBookingController extends Controller
             $canAssignSelectedStaff = StaffProfile::query()
                 ->whereKey($resolvedStaffId)
                 ->where('is_active', true)
-                ->assignableToServices()
+                ->bookableOnline()
                 ->exists();
 
             if (! $canAssignSelectedStaff) {
-                return back()->withErrors(['staff_profile_id' => 'Selected staff is unavailable for online booking.'])->withInput();
+                return $this->redirectToPublicBookingForm($errorRouteName)->withErrors(['staff_profile_id' => 'Selected staff is unavailable for online booking.'])->withInput();
             }
 
             foreach ($plans as $plan) {
                 $staffAvailabilityError = $availabilityService->validateStaffAvailability($resolvedStaffId, $plan['start'], $plan['end']);
                 if ($staffAvailabilityError) {
-                    return back()->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
+                    return $this->redirectToPublicBookingForm($errorRouteName)->withErrors(['staff_profile_id' => $staffAvailabilityError])->withInput();
                 }
             }
         } else {
             $resolvedStaffId = $this->findAnyFullyAvailableStaffId($plans, $availabilityService);
             if (! $resolvedStaffId) {
-                return back()->withErrors(['scheduled_start' => 'No staff available for the selected slot.'])->withInput();
+                return $this->redirectToPublicBookingForm($errorRouteName)->withErrors(['scheduled_start' => 'No staff available for the selected slot.'])->withInput();
             }
         }
 
@@ -219,6 +229,11 @@ class PublicBookingController extends Controller
         return $firstAppointment;
     }
 
+    private function redirectToPublicBookingForm(string $routeName): RedirectResponse
+    {
+        return redirect()->route($routeName);
+    }
+
     private function resolveServiceIdsFromPayload(array $data): array
     {
         $raw = $data['service_ids'] ?? [];
@@ -262,7 +277,7 @@ class PublicBookingController extends Controller
     {
         $staffIds = StaffProfile::query()
             ->where('is_active', true)
-            ->assignableToServices()
+            ->bookableOnline()
             ->pluck('id')
             ->all();
 

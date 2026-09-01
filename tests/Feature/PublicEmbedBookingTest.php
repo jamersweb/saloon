@@ -39,7 +39,7 @@ class PublicEmbedBookingTest extends TestCase
             ->assertSee('Book Your Appointment', false)
             ->assertSee('+971111111111', false)
             ->assertDontSee('Staff Profile', false)
-            ->assertSee(route('embed.booking.store'), false);
+            ->assertSee('action="/embed/book"', false);
     }
 
     public function test_embed_booking_success_redirects_to_thanks(): void

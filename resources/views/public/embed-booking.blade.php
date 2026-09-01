@@ -209,7 +209,7 @@
             <div class="errors">{{ $errors->first() }}</div>
         @endif
 
-        <form method="post" action="{{ route('embed.booking.store') }}" class="cols-2" id="embed-booking-form">
+        <form method="post" action="{{ route('embed.booking.store', [], false) }}" class="cols-2" id="embed-booking-form">
             @csrf
             <div class="field">
                 <label for="customer_name">Customer Name</label>
@@ -275,8 +275,8 @@
             </div>
         </form>
         <div class="footer-links">
-            <a href="{{ route('public.privacy-policy') }}" target="_blank" rel="noreferrer">Privacy Policy</a>
-            <a href="{{ route('public.terms-of-service') }}" target="_blank" rel="noreferrer">Terms of Service</a>
+            <a href="{{ route('public.privacy-policy', [], false) }}" target="_blank" rel="noreferrer">Privacy Policy</a>
+            <a href="{{ route('public.terms-of-service', [], false) }}" target="_blank" rel="noreferrer">Terms of Service</a>
         </div>
     </div>
 </div>
