@@ -323,7 +323,7 @@ class ReportController extends Controller
                     ->values();
 
                 if ($serviceItems->isEmpty()) {
-                    if ($appointmentInvoiceItems->isNotEmpty()) {
+                    if ($appointmentInvoiceItems->isNotEmpty() || ($invoiceIds[$appointment->id] ?? []) !== []) {
                         return collect();
                     }
 

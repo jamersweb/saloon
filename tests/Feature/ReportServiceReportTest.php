@@ -79,11 +79,24 @@ class ReportServiceReportTest extends TestCase
 
     public function test_service_report_can_include_retail_product_invoice_lines(): void
     {
-        [, $invoice] = $this->completedAppointmentWithInvoice('Aisha Khan', 'INV-2026-0007');
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Aisha Khan', 'INV-2026-0007');
+
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Hair Styling',
+            'quantity' => 1,
+            'unit_price' => 120,
+            'discount_amount' => 0,
+            'line_subtotal' => 120,
+            'tax_rate_percent' => 5,
+            'line_tax' => 6,
+            'line_total' => 126,
+        ]);
 
         $invoice->items()->create([
             'salon_service_id' => null,
             'description' => 'Hair Serum (SER-01)',
+            'revenue_category' => 'retail_product_sales',
             'quantity' => 1,
             'unit_price' => 80,
             'discount_amount' => 0,
@@ -116,6 +129,88 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(80.0, $productRow['subtotal']);
         $this->assertSame(4.0, $productRow['tax']);
         $this->assertSame(84.0, $productRow['total']);
+    }
+
+    public function test_service_report_does_not_fallback_to_appointment_service_when_invoice_has_only_retail_products(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Zeynab Bigdeli', 'RCT00279');
+
+        $appointment->service->update([
+            'name' => 'Acrylic gel refill',
+            'price' => 250,
+        ]);
+
+        $invoice->update([
+            'subtotal' => 214.29,
+            'vat_amount' => 10.71,
+            'total' => 225,
+        ]);
+
+        $invoice->items()->create([
+            'salon_service_id' => null,
+            'description' => 'Wella Pro EIMI Mistify-Me Strong Hairspray 500ml (8005610640358)',
+            'revenue_category' => 'retail_product_sales',
+            'quantity' => 1,
+            'unit_price' => 95,
+            'discount_amount' => 4.52,
+            'line_subtotal' => 90.48,
+            'tax_rate_percent' => 5,
+            'line_tax' => 4.52,
+            'line_total' => 95,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => null,
+            'description' => 'Wella Pro EIMI Flexible Finish Spray 250ml (4064666219608)',
+            'revenue_category' => 'retail_product_sales',
+            'quantity' => 1,
+            'unit_price' => 120,
+            'discount_amount' => 5.71,
+            'line_subtotal' => 114.29,
+            'tax_rate_percent' => 5,
+            'line_tax' => 5.71,
+            'line_total' => 120,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => null,
+            'description' => 'Pepsi (012000067150)',
+            'revenue_category' => 'retail_product_sales',
+            'quantity' => 2,
+            'unit_price' => 5,
+            'discount_amount' => 0.48,
+            'line_subtotal' => 9.52,
+            'tax_rate_percent' => 5,
+            'line_tax' => 0.48,
+            'line_total' => 10,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectServiceReportRows');
+        $method->setAccessible(true);
+
+        $serviceOnlyRows = collect($method->invoke(
+            app(ReportController::class),
+            Carbon::parse('2026-05-21')->startOfDay(),
+            Carbon::parse('2026-05-21')->endOfDay(),
+            [
+                'customer_name' => 'Zeynab',
+                'invoice_number' => 'RCT00279',
+            ]
+        ));
+
+        $rowsWithRetail = collect($method->invoke(
+            app(ReportController::class),
+            Carbon::parse('2026-05-21')->startOfDay(),
+            Carbon::parse('2026-05-21')->endOfDay(),
+            [
+                'customer_name' => 'Zeynab',
+                'invoice_number' => 'RCT00279',
+            ],
+            true
+        ));
+
+        $this->assertCount(0, $serviceOnlyRows);
+        $this->assertCount(3, $rowsWithRetail);
+        $this->assertFalse($rowsWithRetail->pluck('service_name')->contains('Acrylic gel refill'));
+        $this->assertSame(225.0, round((float) $rowsWithRetail->sum('total'), 2));
     }
 
     public function test_service_report_uses_visit_invoice_line_when_invoice_service_variant_was_changed(): void
@@ -594,8 +689,20 @@ class ReportServiceReportTest extends TestCase
     public function test_service_report_totals_include_invoice_cash_and_card_payments_for_filtered_service_rows(): void
     {
         $manager = $this->managerUser();
-        [, $invoice] = $this->completedAppointmentWithInvoice('Payment Client', 'INV-PAY-1');
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Payment Client', 'INV-PAY-1');
         [, $otherInvoice] = $this->completedAppointmentWithInvoice('Other Client', 'INV-PAY-2');
+
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Hair Styling',
+            'quantity' => 1,
+            'unit_price' => 120,
+            'discount_amount' => 0,
+            'line_subtotal' => 120,
+            'tax_rate_percent' => 5,
+            'line_tax' => 6,
+            'line_total' => 126,
+        ]);
 
         InvoicePayment::create([
             'tax_invoice_id' => $invoice->id,
