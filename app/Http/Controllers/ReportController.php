@@ -368,7 +368,7 @@ class ReportController extends Controller
      */
     private function collectAppointmentServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters): array
     {
-        return collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters, true))
+        return collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters))
             ->groupBy(fn (array $row): string => isset($row['appointment_id'])
                 ? 'appointment-'.$row['appointment_id']
                 : 'row-'.$row['id'])

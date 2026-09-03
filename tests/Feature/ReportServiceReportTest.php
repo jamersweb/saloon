@@ -185,6 +185,8 @@ class ReportServiceReportTest extends TestCase
 
         $method = new ReflectionMethod(ReportController::class, 'collectServiceReportRows');
         $method->setAccessible(true);
+        $groupedMethod = new ReflectionMethod(ReportController::class, 'collectAppointmentServiceReportRows');
+        $groupedMethod->setAccessible(true);
 
         $serviceOnlyRows = collect($method->invoke(
             app(ReportController::class),
@@ -206,8 +208,18 @@ class ReportServiceReportTest extends TestCase
             ],
             true
         ));
+        $pdfRows = collect($groupedMethod->invoke(
+            app(ReportController::class),
+            Carbon::parse('2026-05-21')->startOfDay(),
+            Carbon::parse('2026-05-21')->endOfDay(),
+            [
+                'customer_name' => 'Zeynab',
+                'invoice_number' => 'RCT00279',
+            ]
+        ));
 
         $this->assertCount(0, $serviceOnlyRows);
+        $this->assertCount(0, $pdfRows);
         $this->assertCount(3, $rowsWithRetail);
         $this->assertFalse($rowsWithRetail->pluck('service_name')->contains('Acrylic gel refill'));
         $this->assertSame(225.0, round((float) $rowsWithRetail->sum('total'), 2));
