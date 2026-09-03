@@ -623,6 +623,7 @@ class ReportController extends Controller
     private function paymentTotalsForServiceRows(Carbon $dateFrom, Carbon $dateTo, array $rows): array
     {
         $invoiceIds = collect($rows)
+            ->filter(fn (array $row) => (bool) ($row['count_payment_totals'] ?? true))
             ->flatMap(fn (array $row) => $row['invoice_ids'] ?? [])
             ->filter()
             ->unique()
@@ -932,6 +933,7 @@ class ReportController extends Controller
             'total' => 0.0,
             'staff_name' => $appointment->staffProfile?->user?->name,
             'service_report' => $appointment->notes,
+            'count_payment_totals' => false,
         ];
     }
 

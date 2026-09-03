@@ -182,11 +182,19 @@ class ReportServiceReportTest extends TestCase
             'line_tax' => 0.48,
             'line_total' => 10,
         ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 225,
+            'method' => InvoicePayment::METHOD_CARD,
+            'paid_at' => '2026-05-21 12:00:00',
+        ]);
 
         $method = new ReflectionMethod(ReportController::class, 'collectServiceReportRows');
         $method->setAccessible(true);
         $groupedMethod = new ReflectionMethod(ReportController::class, 'collectAppointmentServiceReportRows');
         $groupedMethod->setAccessible(true);
+        $paymentTotalsMethod = new ReflectionMethod(ReportController::class, 'paymentTotalsForServiceRows');
+        $paymentTotalsMethod->setAccessible(true);
 
         $serviceOnlyRows = collect($method->invoke(
             app(ReportController::class),
@@ -217,6 +225,12 @@ class ReportServiceReportTest extends TestCase
                 'invoice_number' => 'RCT00279',
             ]
         ));
+        $pdfPaymentTotals = $paymentTotalsMethod->invoke(
+            app(ReportController::class),
+            Carbon::parse('2026-05-21')->startOfDay(),
+            Carbon::parse('2026-05-21')->endOfDay(),
+            $pdfRows->all()
+        );
 
         $this->assertCount(0, $serviceOnlyRows);
         $this->assertCount(1, $pdfRows);
@@ -226,6 +240,8 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(0.0, $pdfRows[0]['subtotal']);
         $this->assertSame(0.0, $pdfRows[0]['tax']);
         $this->assertSame(0.0, $pdfRows[0]['total']);
+        $this->assertSame(0.0, $pdfPaymentTotals['cash_total_payment']);
+        $this->assertSame(0.0, $pdfPaymentTotals['card_total_payment']);
         $this->assertCount(3, $rowsWithRetail);
         $this->assertFalse($rowsWithRetail->pluck('service_name')->contains('Acrylic gel refill'));
         $this->assertSame(225.0, round((float) $rowsWithRetail->sum('total'), 2));
