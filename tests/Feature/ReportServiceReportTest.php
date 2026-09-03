@@ -219,7 +219,13 @@ class ReportServiceReportTest extends TestCase
         ));
 
         $this->assertCount(0, $serviceOnlyRows);
-        $this->assertCount(0, $pdfRows);
+        $this->assertCount(1, $pdfRows);
+        $this->assertSame('Acrylic gel refill', $pdfRows[0]['service_name']);
+        $this->assertSame('RCT00279', $pdfRows[0]['invoice_number']);
+        $this->assertSame(0.0, $pdfRows[0]['unit_price']);
+        $this->assertSame(0.0, $pdfRows[0]['subtotal']);
+        $this->assertSame(0.0, $pdfRows[0]['tax']);
+        $this->assertSame(0.0, $pdfRows[0]['total']);
         $this->assertCount(3, $rowsWithRetail);
         $this->assertFalse($rowsWithRetail->pluck('service_name')->contains('Acrylic gel refill'));
         $this->assertSame(225.0, round((float) $rowsWithRetail->sum('total'), 2));

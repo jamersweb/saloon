@@ -297,7 +297,7 @@ class ReportController extends Controller
      * @param  array{customer_name: string, invoice_number: string}  $filters
      * @return list<array<string, mixed>>
      */
-    private function collectServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters, bool $includeRetailProducts = false): array
+    private function collectServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters, bool $includeRetailProducts = false, bool $includeZeroBilledInvoiceFallback = false): array
     {
         $financeSetting = FinanceSetting::current();
         $vatRatePercent = (float) $financeSetting->vat_rate_percent;
@@ -316,13 +316,19 @@ class ReportController extends Controller
         $invoiceItems = $this->invoiceItemsForAppointments($appointments);
 
         $rows = $appointments
-            ->flatMap(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $vatRatePercent): Collection {
+            ->flatMap(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $vatRatePercent, $includeZeroBilledInvoiceFallback): Collection {
                 $appointmentInvoiceItems = $invoiceItems[$appointment->id] ?? collect();
                 $serviceItems = $appointmentInvoiceItems
                     ->filter(fn (TaxInvoiceItem $item) => $this->isServiceReportInvoiceItem($item))
                     ->values();
 
                 if ($serviceItems->isEmpty()) {
+                    if ($includeZeroBilledInvoiceFallback && $appointmentInvoiceItems->isEmpty() && ($invoiceIds[$appointment->id] ?? []) !== []) {
+                        return collect([
+                            $this->zeroBilledInvoiceServiceReportRow($appointment, $invoiceLabels, $invoiceIds),
+                        ]);
+                    }
+
                     if ($appointmentInvoiceItems->isNotEmpty() || ($invoiceIds[$appointment->id] ?? []) !== []) {
                         return collect();
                     }
@@ -368,7 +374,7 @@ class ReportController extends Controller
      */
     private function collectAppointmentServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters): array
     {
-        return collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters))
+        return collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters, false, true))
             ->groupBy(fn (array $row): string => isset($row['appointment_id'])
                 ? 'appointment-'.$row['appointment_id']
                 : 'row-'.$row['id'])
@@ -897,6 +903,33 @@ class ReportController extends Controller
             'subtotal' => round($subtotal, 2),
             'tax' => round($tax, 2),
             'total' => round($total, 2),
+            'staff_name' => $appointment->staffProfile?->user?->name,
+            'service_report' => $appointment->notes,
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $invoiceLabels
+     * @param  array<int, list<int>>  $invoiceIds
+     * @return array<string, mixed>
+     */
+    private function zeroBilledInvoiceServiceReportRow(Appointment $appointment, array $invoiceLabels, array $invoiceIds): array
+    {
+        return [
+            'id' => $appointment->id,
+            'appointment_id' => $appointment->id,
+            'date' => optional($appointment->scheduled_start)->format('Y-m-d H:i'),
+            'customer_name' => $appointment->customer?->name ?: $appointment->customer_name,
+            'customer_phone' => $appointment->customer_phone,
+            'invoice_number' => $invoiceLabels[$appointment->id] ?? '',
+            'invoice_ids' => $invoiceIds[$appointment->id] ?? [],
+            'service_name' => $appointment->service?->name,
+            'quantity' => max(1.0, (float) ($appointment->service_quantity ?? 1)),
+            'unit_price' => 0.0,
+            'discount_amount' => 0.0,
+            'subtotal' => 0.0,
+            'tax' => 0.0,
+            'total' => 0.0,
             'staff_name' => $appointment->staffProfile?->user?->name,
             'service_report' => $appointment->notes,
         ];
