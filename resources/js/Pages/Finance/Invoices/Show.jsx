@@ -416,6 +416,8 @@ export default function FinanceInvoicesShow({
                                 </button>
                             </div>
                             <div className="space-y-3">
+                                {editForm.errors.appointment_id && <p className="text-xs text-red-600">{editForm.errors.appointment_id}</p>}
+                                {editForm.errors.invoice && <p className="text-xs text-red-600">{editForm.errors.invoice}</p>}
                                 {editForm.data.items.map((row, idx) => {
                                     const totals = lineTotals(row, vat_rate_percent);
                                     const lineName = selectedLineName(row);

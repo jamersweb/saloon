@@ -51,7 +51,25 @@ class TaxInvoiceController extends Controller
             return;
         }
 
-        if ($user->hasPermission('can_collect_payments') && $invoice->appointment_id !== null) {
+        if ($user->hasPermission('can_collect_payments') && ($invoice->appointment_id !== null || $this->isRetailOnlyInvoice($invoice))) {
+            return;
+        }
+
+        abort(403);
+    }
+
+    protected function authorizeInvoiceCreate(Request $request): void
+    {
+        $user = $request->user();
+        if (! $user) {
+            abort(403);
+        }
+
+        if ($user->hasRole('owner', 'manager')) {
+            return;
+        }
+
+        if ($user->hasPermission('can_manage_finance') || $user->hasPermission('can_collect_payments')) {
             return;
         }
 
@@ -122,9 +140,12 @@ class TaxInvoiceController extends Controller
 
     public function create(Request $request): InertiaResponse
     {
-        $this->authorizeRoles($request, 'owner', 'manager');
+        $this->authorizeInvoiceCreate($request);
 
         $settings = FinanceSetting::current();
+        $saleType = $request->query('sale_type') === 'retail' || ! $this->canManageFullFinance($request)
+            ? 'retail'
+            : 'standard';
 
         return Inertia::render('Finance/Invoices/Create', [
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
@@ -151,12 +172,13 @@ class TaxInvoiceController extends Controller
                 ->map(fn (Appointment $a) => $this->serializeInvoiceAppointmentOption($a)),
             'vat_rate_percent' => (float) $settings->vat_rate_percent,
             'currency_code' => $settings->currency_code,
+            'sale_type' => $saleType,
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $this->authorizeRoles($request, 'owner', 'manager');
+        $this->authorizeInvoiceCreate($request);
 
         $settings = FinanceSetting::current();
         $vatRate = (float) $settings->vat_rate_percent;
@@ -180,6 +202,7 @@ class TaxInvoiceController extends Controller
         ]);
 
         $items = $this->normalizeInvoiceItems($data['items']);
+        $this->validateInvoiceWorkflow($request, isset($data['appointment_id']) ? (int) $data['appointment_id'] : null, $items);
 
         $invoice = DB::transaction(function () use ($data, $items, $request, $vatRate) {
             $invoice = TaxInvoice::query()->create([
@@ -376,6 +399,7 @@ class TaxInvoiceController extends Controller
         ]);
 
         $items = $this->normalizeInvoiceItems($data['items']);
+        $this->validateInvoiceWorkflow($request, isset($data['appointment_id']) ? (int) $data['appointment_id'] : null, $items);
 
         DB::transaction(function () use ($invoice, $data, $items, $vatRate) {
             $invoice->update([
@@ -445,6 +469,13 @@ class TaxInvoiceController extends Controller
         if (! $invoice->isEditable()) {
             return back()->withErrors(['invoice' => 'Invoice is already finalized or void.']);
         }
+
+        $invoice->loadMissing('items');
+        $this->validateInvoiceWorkflow(
+            $request,
+            $invoice->appointment_id ? (int) $invoice->appointment_id : null,
+            $invoice->items->map(fn (TaxInvoiceItem $item) => $item->toArray())->all()
+        );
 
         app(TaxInvoiceFinalizeService::class)->finalize($invoice, $request->user()->id);
 
@@ -629,6 +660,64 @@ class TaxInvoiceController extends Controller
             'vat_amount' => round($invoice->items->sum('line_tax'), 2),
             'total' => round($invoice->items->sum('line_total'), 2),
         ]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    private function validateInvoiceWorkflow(Request $request, ?int $appointmentId, array $items): void
+    {
+        $hasServiceLine = collect($items)->contains(fn (array $row): bool => $this->isServiceInvoiceRow($row));
+
+        if ($appointmentId && ! $hasServiceLine) {
+            throw ValidationException::withMessages([
+                'appointment_id' => 'This invoice is linked to a visit, so it must keep at least one service line. For products only, create a Product sale without linking a visit.',
+            ]);
+        }
+
+        $user = $request->user();
+        if ($this->canManageFullFinance($request) || ! $user?->hasPermission('can_collect_payments') || $appointmentId) {
+            return;
+        }
+
+        $hasNonRetailLine = collect($items)->contains(fn (array $row): bool => ! $this->isRetailInvoiceRow($row));
+        if ($hasNonRetailLine) {
+            throw ValidationException::withMessages([
+                'items' => 'Direct invoices created from checkout access can contain retail product lines only. Link a visit to bill services.',
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function isServiceInvoiceRow(array $row): bool
+    {
+        return filled($row['salon_service_id'] ?? null)
+            || (
+                empty($row['inventory_item_id'])
+                && ($row['revenue_category'] ?? null) === FinanceStructure::DEFAULT_REVENUE_CATEGORY
+            );
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function isRetailInvoiceRow(array $row): bool
+    {
+        return empty($row['salon_service_id'])
+            && (
+                filled($row['inventory_item_id'] ?? null)
+                || ($row['revenue_category'] ?? null) === 'retail_product_sales'
+            );
+    }
+
+    private function isRetailOnlyInvoice(TaxInvoice $invoice): bool
+    {
+        $invoice->loadMissing('items');
+
+        return $invoice->items->isNotEmpty()
+            && $invoice->items->every(fn (TaxInvoiceItem $item): bool => $this->isRetailInvoiceRow($item->toArray()));
     }
 
     private function refreshDraftIfMissingVisitItems(TaxInvoice $invoice, Request $request): TaxInvoice

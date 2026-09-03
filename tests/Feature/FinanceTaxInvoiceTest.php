@@ -636,6 +636,184 @@ class FinanceTaxInvoiceTest extends TestCase
         $this->assertSame(1, InventoryTransaction::query()->where('inventory_item_id', $item->id)->count());
     }
 
+    public function test_reception_can_create_finalize_and_pay_product_sale_without_visit(): void
+    {
+        $receptionRole = Role::updateOrCreate(
+            ['name' => 'reception'],
+            [
+                'label' => 'Reception',
+                'permissions' => ['can_collect_payments'],
+            ]
+        );
+
+        $user = User::factory()->create([
+            'role_id' => $receptionRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $item = InventoryItem::create([
+            'sku' => 'RET-MASK-01',
+            'name' => 'Retail Hair Mask',
+            'category' => 'Retail',
+            'unit' => 'jar',
+            'cost_price' => 30,
+            'selling_price' => 90,
+            'stock_quantity' => 3,
+            'reorder_level' => 1,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('finance.invoices.create', ['sale_type' => 'retail']))
+            ->assertOk();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.store'), [
+                'customer_display_name' => 'Walk-in Retail Customer',
+                'appointment_id' => null,
+                'items' => [
+                    [
+                        'inventory_item_id' => $item->id,
+                        'revenue_category' => 'retail_product_sales',
+                        'cost_center' => 'general_salon',
+                        'description' => 'Retail Hair Mask',
+                        'quantity' => 1,
+                        'unit_price' => 90,
+                        'discount_amount' => 0,
+                    ],
+                ],
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $invoice = TaxInvoice::query()->latest()->firstOrFail();
+
+        $this->assertNull($invoice->appointment_id);
+        $this->assertSame($item->id, $invoice->items()->firstOrFail()->inventory_item_id);
+
+        $this->actingAs($user)
+            ->get(route('finance.invoices.show', $invoice))
+            ->assertOk();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.finalize', $invoice))
+            ->assertSessionHasNoErrors();
+
+        $invoice->refresh();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.payments.store', $invoice), [
+                'amount' => $invoice->total,
+                'method' => 'cash',
+                'paid_at' => now()->toDateTimeString(),
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertLessThan(0.02, $invoice->fresh()->balanceDue());
+        $this->assertSame(2, $item->fresh()->stock_quantity);
+    }
+
+    public function test_linked_visit_invoice_cannot_be_saved_as_product_only(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-LINKED-PRODUCT',
+            'name' => 'Linked Visit Customer',
+            'phone' => '5551117788',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Acrylic Gel Refill',
+            'category' => 'Nails',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 250,
+            'is_active' => true,
+        ]);
+
+        $item = InventoryItem::create([
+            'sku' => 'RET-SPRAY-01',
+            'name' => 'Retail Spray',
+            'category' => 'Retail',
+            'unit' => 'bottle',
+            'cost_price' => 40,
+            'selling_price' => 120,
+            'stock_quantity' => 4,
+            'reorder_level' => 1,
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => now()->subHour(),
+            'scheduled_end' => now(),
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+        ]);
+
+        $invoice = TaxInvoice::create([
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'appointment_id' => $appointment->id,
+            'status' => TaxInvoice::STATUS_DRAFT,
+            'subtotal' => 250,
+            'vat_amount' => 12.5,
+            'total' => 262.5,
+            'created_by' => $user->id,
+        ]);
+
+        $invoice->items()->create([
+            'salon_service_id' => $service->id,
+            'revenue_category' => 'service_income',
+            'cost_center' => 'nail',
+            'description' => $service->name,
+            'quantity' => 1,
+            'unit_price' => 250,
+            'discount_amount' => 0,
+            'line_subtotal' => 250,
+            'tax_rate_percent' => 5,
+            'line_tax' => 12.5,
+            'line_total' => 262.5,
+        ]);
+
+        $this->actingAs($user)
+            ->put(route('finance.invoices.update', $invoice), [
+                'customer_id' => $customer->id,
+                'customer_display_name' => $customer->name,
+                'appointment_id' => $appointment->id,
+                'items' => [
+                    [
+                        'inventory_item_id' => $item->id,
+                        'revenue_category' => 'retail_product_sales',
+                        'cost_center' => 'general_salon',
+                        'description' => 'Retail Spray',
+                        'quantity' => 1,
+                        'unit_price' => 120,
+                        'discount_amount' => 0,
+                    ],
+                ],
+            ])
+            ->assertSessionHasErrors(['appointment_id']);
+
+        $this->assertSame($appointment->id, $invoice->fresh()->appointment_id);
+        $this->assertSame($service->id, $invoice->items()->firstOrFail()->salon_service_id);
+    }
+
     public function test_finalizing_product_invoice_fails_when_stock_is_insufficient(): void
     {
         $ownerRole = Role::create([

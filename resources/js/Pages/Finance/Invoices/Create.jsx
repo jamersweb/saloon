@@ -3,19 +3,20 @@ import SearchableSelect from '@/Components/SearchableSelect';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { useMemo } from 'react';
 
-const blankItem = () => ({
+const blankItem = (saleType = 'standard') => ({
     salon_service_id: '',
     inventory_item_id: '',
     staff_profile_id: '',
-    revenue_category: 'service_income',
+    revenue_category: saleType === 'retail' ? 'retail_product_sales' : 'service_income',
     cost_center: 'general_salon',
     description: '',
     quantity: '1',
     unit_price: '',
 });
 
-export default function FinanceInvoicesCreate({ customers, services, staff_profiles = [], inventory_items = [], revenue_categories = {}, cost_centers = {}, appointments, vat_rate_percent, currency_code }) {
+export default function FinanceInvoicesCreate({ customers, services, staff_profiles = [], inventory_items = [], revenue_categories = {}, cost_centers = {}, appointments, vat_rate_percent, currency_code, sale_type = 'standard' }) {
     const { flash } = usePage().props;
+    const isRetailSale = sale_type === 'retail';
 
     const form = useForm({
         customer_id: '',
@@ -23,7 +24,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
         appointment_id: '',
         cashier_name: '',
         notes: '',
-        items: [blankItem()],
+        items: [blankItem(sale_type)],
     });
 
     const serviceById = useMemo(() => Object.fromEntries(services.map((s) => [String(s.id), s])), [services]);
@@ -37,10 +38,10 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
         ...appointments.map((a) => ({ value: String(a.id), label: a.label })),
     ]), [appointments]);
     const serviceOptions = useMemo(() => ([
-        { value: '', label: 'Custom line' },
-        ...services.map((s) => ({ value: `service:${s.id}`, label: `${s.name} (${currency_code} ${s.price})` })),
+        { value: '', label: isRetailSale ? 'Custom product line' : 'Custom line' },
+        ...(isRetailSale ? [] : services.map((s) => ({ value: `service:${s.id}`, label: `${s.name} (${currency_code} ${s.price})` }))),
         ...inventory_items.map((item) => ({ value: `inventory:${item.id}`, label: `${item.name}${item.sku ? ` (${item.sku})` : ''} (${currency_code} ${item.selling_price})` })),
-    ]), [services, inventory_items, currency_code]);
+    ]), [isRetailSale, services, inventory_items, currency_code]);
     const staffOptions = useMemo(() => ([
         { value: '', label: 'Unassigned' },
         ...staff_profiles.map((staff) => ({ value: String(staff.id), label: staff.name || `Staff #${staff.id}` })),
@@ -48,7 +49,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
     const revenueCategoryOptions = Object.entries(revenue_categories);
     const costCenterOptions = Object.entries(cost_centers);
 
-    const addRow = () => form.setData('items', [...form.data.items, blankItem()]);
+    const addRow = () => form.setData('items', [...form.data.items, blankItem(sale_type)]);
 
     const removeRow = (idx) => {
         const next = form.data.items.filter((_, i) => i !== idx);
@@ -62,7 +63,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                 ...next[idx],
                 salon_service_id: '',
                 inventory_item_id: '',
-                revenue_category: 'service_income',
+                revenue_category: isRetailSale ? 'retail_product_sales' : 'service_income',
             };
             form.setData('items', next);
             return;
@@ -91,6 +92,11 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
     };
 
     const onAppointment = (id) => {
+        if (isRetailSale) {
+            form.setData('appointment_id', '');
+            return;
+        }
+
         const ap = appointments.find((a) => String(a.id) === String(id));
         if (!ap) {
             form.setData('appointment_id', id);
@@ -124,8 +130,8 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
     };
 
     return (
-        <AuthenticatedLayout header="New tax invoice (draft)">
-            <Head title="New invoice" />
+        <AuthenticatedLayout header={isRetailSale ? 'New product sale' : 'New tax invoice (draft)'}>
+            <Head title={isRetailSale ? 'New product sale' : 'New invoice'} />
 
             <div className="space-y-6">
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
@@ -144,7 +150,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                             form.transform((data) => ({
                                 ...data,
                                 customer_id: data.customer_id || null,
-                                appointment_id: data.appointment_id || null,
+                                appointment_id: isRetailSale ? null : (data.appointment_id || null),
                                 items: data.items.map((row) => ({
                                     salon_service_id: row.salon_service_id || null,
                                     inventory_item_id: row.inventory_item_id || null,
@@ -181,13 +187,21 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                                 {form.errors.customer_display_name && <p className="mt-1 text-xs text-red-600">{form.errors.customer_display_name}</p>}
                             </div>
                             <div>
-                                <SearchableSelect
-                                    label="Link visit (optional)"
-                                    value={form.data.appointment_id}
-                                    onChange={onAppointment}
-                                    options={appointmentOptions}
-                                    placeholder="Search linked visit"
-                                />
+                                {isRetailSale ? (
+                                    <div>
+                                        <label className="ta-field-label">Invoice type</label>
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Retail product sale</div>
+                                    </div>
+                                ) : (
+                                    <SearchableSelect
+                                        label="Link visit (optional)"
+                                        value={form.data.appointment_id}
+                                        onChange={onAppointment}
+                                        options={appointmentOptions}
+                                        placeholder="Search linked visit"
+                                    />
+                                )}
+                                {form.errors.appointment_id && <p className="mt-1 text-xs text-red-600">{form.errors.appointment_id}</p>}
                             </div>
                             <div>
                                 <label className="ta-field-label">Cashier name (optional)</label>
@@ -197,7 +211,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
 
                         <div>
                             <div className="mb-2 flex items-center justify-between">
-                                <label className="ta-field-label">Line items (services)</label>
+                                <label className="ta-field-label">{isRetailSale ? 'Line items (products)' : 'Line items (services or products)'}</label>
                                 <button type="button" className="text-sm text-indigo-600 hover:underline" onClick={addRow}>
                                     + Add line
                                 </button>
@@ -206,7 +220,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                                 {form.data.items.map((row, idx) => (
                                     <div key={idx} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-12 md:items-end">
                                         <div className="md:col-span-3">
-                                            <label className="text-xs text-slate-500">Service</label>
+                                            <label className="text-xs text-slate-500">{isRetailSale ? 'Product' : 'Service or product'}</label>
                                             <SearchableSelect
                                                 className="mt-1"
                                                 value={row.salon_service_id ? `service:${row.salon_service_id}` : (row.inventory_item_id ? `inventory:${row.inventory_item_id}` : '')}
@@ -319,6 +333,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                                 ))}
                             </div>
                             {form.errors.items && <p className="text-xs text-red-600">{form.errors.items}</p>}
+                            {form.errors.invoice && <p className="text-xs text-red-600">{form.errors.invoice}</p>}
                         </div>
 
                         <div>

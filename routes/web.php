@@ -221,8 +221,6 @@ Route::middleware('auth')->group(function () {
             Route::patch('/settings', [FinanceSettingController::class, 'update'])->name('settings.update');
 
             Route::get('/invoices', [TaxInvoiceController::class, 'index'])->name('invoices.index');
-            Route::get('/invoices/create', [TaxInvoiceController::class, 'create'])->name('invoices.create');
-            Route::post('/invoices', [TaxInvoiceController::class, 'store'])->name('invoices.store');
             Route::delete('/invoices/{invoice}', [TaxInvoiceController::class, 'destroy'])->name('invoices.destroy');
             Route::post('/invoices/{invoice}/void', [TaxInvoiceController::class, 'voidInvoice'])->name('invoices.void');
             Route::post('/invoices/{invoice}/refund-adjustment', [TaxInvoiceController::class, 'refundAdjustment'])->name('invoices.refund-adjustment');
@@ -265,6 +263,8 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::middleware('role:owner,manager,reception')->prefix('finance')->name('finance.')->group(function () {
+        Route::get('/invoices/create', [TaxInvoiceController::class, 'create'])->name('invoices.create');
+        Route::post('/invoices', [TaxInvoiceController::class, 'store'])->name('invoices.store');
         Route::get('/invoices/{invoice}', [TaxInvoiceController::class, 'show'])->name('invoices.show');
         Route::put('/invoices/{invoice}', [TaxInvoiceController::class, 'update'])->name('invoices.update');
         Route::post('/invoices/{invoice}/finalize', [TaxInvoiceController::class, 'finalize'])->name('invoices.finalize');

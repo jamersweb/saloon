@@ -121,6 +121,12 @@ export default function AuthenticatedLayout({ header, headerActions = null, chil
                         active: route().current('appointments.*') && (page.url || '').includes('status=completed'),
                         visible: permissions.can_collect_payments && !permissions.can_manage_finance,
                     },
+                    {
+                        label: 'Product sale',
+                        href: route('finance.invoices.create', { sale_type: 'retail' }),
+                        active: route().current('finance.invoices.create') && (page.url || '').includes('sale_type=retail'),
+                        visible: permissions.can_collect_payments && !permissions.can_manage_finance,
+                    },
                     { label: 'Attendance', href: route('attendance.index'), active: route().current('attendance.*'), visible: canOperate },
                     { label: 'Leave Requests', href: route('leave-requests.index'), active: route().current('leave-requests.*'), visible: canOperate },
                 ],

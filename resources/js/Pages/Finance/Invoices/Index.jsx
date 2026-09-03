@@ -44,9 +44,14 @@ export default function FinanceInvoicesIndex({ invoices, filters = {} }) {
                     <Link href={route('finance.index')} className="text-sm text-indigo-600 hover:underline">
                         ← Finance overview
                     </Link>
-                    <Link href={route('finance.invoices.create')} className="ta-btn-primary">
-                        New draft invoice
-                    </Link>
+                    <div className="flex flex-wrap gap-2">
+                        <Link href={route('finance.invoices.create', { sale_type: 'retail' })} className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">
+                            New product sale
+                        </Link>
+                        <Link href={route('finance.invoices.create')} className="ta-btn-primary">
+                            New draft invoice
+                        </Link>
+                    </div>
                 </div>
 
                 <section className="ta-card overflow-hidden">
