@@ -298,6 +298,23 @@ const estimateSelectedServicesTotal = (serviceIds, formData, services, coveredSe
         return sum + getServiceLinePricing(service, index, serviceId, formData, coveredServiceIds).lineTotal;
     }, 0);
 };
+const getAppointmentServicePricing = (row, serviceLookup) => {
+    const service = serviceLookup.get(String(row?.service_id || ''));
+    const quantity = Math.max(1, Number(row?.quantity ?? row?.service_quantity ?? 1));
+    const unitPrice = Math.max(0, Number(row?.service_unit_price ?? service?.price ?? 0));
+    const discountAmount = Math.max(0, Number(row?.service_discount_amount || 0));
+    const packageCovered = Boolean(row?.customer_package_id || row?.package_session_applied);
+    const lineSubtotal = unitPrice * quantity;
+
+    return {
+        quantity,
+        unitPrice,
+        discountAmount,
+        packageCovered,
+        lineSubtotal,
+        lineTotal: packageCovered ? 0 : Math.max(0, lineSubtotal - discountAmount),
+    };
+};
 const addMinutesToDateTimeLocal = (value, minutes) => {
     if (!value) return '';
     const parts = parseDateTimeParts(value);
@@ -437,6 +454,10 @@ const clampAdminEditStartDatetimeLocal = (value, bookingRules, slotIntervalMinut
 export default function AppointmentsIndex({ appointments, appointmentBlocks = [], staffSchedules = [], services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
     const { app_currency_code: currencyCode = 'AED' } = usePage().props;
     const { flash, auth } = usePage().props;
+    const serviceLookup = useMemo(
+        () => new Map((services || []).map((service) => [String(service.id), service])),
+        [services],
+    );
     const serviceCategoryMap = useMemo(
         () => Object.fromEntries((services || []).map((service) => [String(service.id), `${service.category || ''} ${service.name || ''}`.trim() || 'Uncategorized'])),
         [services],
@@ -1587,6 +1608,32 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         const photos = rows.flatMap((row) => row.photos || []);
         const productUsages = rows.flatMap((row) => row.product_usages || []);
         const serviceSummary = rows.map((row) => `${row.service_name}${Number(row.service_quantity || 1) > 1 ? ` x${row.service_quantity}` : ''}`);
+        const groupedServices = rows.map((row) => {
+            const pricing = getAppointmentServicePricing(row, serviceLookup);
+
+            return {
+                id: row.id,
+                service_id: row.service_id,
+                name: row.service_name,
+                quantity: pricing.quantity,
+                service_unit_price: row.service_unit_price,
+                effective_unit_price: pricing.unitPrice,
+                service_discount_amount: pricing.discountAmount,
+                service_line_total: pricing.lineTotal,
+                service_duration_minutes: row.service_duration_minutes,
+                service_extra_minutes: row.service_extra_minutes || 0,
+                scheduled_start: row.scheduled_start,
+                status: row.status,
+                staff_profile_id: row.staff_profile_id,
+                staff_name: row.staff_name || 'Unassigned',
+                customer_package_id: row.customer_package_id,
+                package_session_applied: row.package_session_applied,
+            };
+        });
+        const estimatedServicesTotal = groupedServices.reduce((sum, row) => sum + Number(row.service_line_total || 0), 0);
+        const invoiceTotal = Math.max(...rows.map((row) => Number(row.invoice_total || 0)));
+        const invoiceAmountPaid = Math.max(...rows.map((row) => Number(row.invoice_amount_paid || 0)));
+        const invoiceBalanceDue = Math.max(...rows.map((row) => Number(row.invoice_balance_due || 0)));
 
         return {
             ...actionAppointment,
@@ -1596,26 +1643,15 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             staff_name: staffNames.join(', '),
             photos,
             product_usages: productUsages,
-            grouped_services: rows.map((row) => ({
-                id: row.id,
-                service_id: row.service_id,
-                name: row.service_name,
-                quantity: row.service_quantity || 1,
-                service_unit_price: row.service_unit_price,
-                service_discount_amount: row.service_discount_amount || 0,
-                service_duration_minutes: row.service_duration_minutes,
-                service_extra_minutes: row.service_extra_minutes || 0,
-                scheduled_start: row.scheduled_start,
-                status: row.status,
-                staff_profile_id: row.staff_profile_id,
-                staff_name: row.staff_name || 'Unassigned',
-                customer_package_id: row.customer_package_id,
-            })),
+            grouped_services: groupedServices,
+            estimated_services_total: estimatedServicesTotal,
             awaiting_checkout: rows.some((row) => row.awaiting_checkout),
             checkout_invoice_id: rows.find((row) => row.checkout_invoice_id)?.checkout_invoice_id || null,
-            invoice_total: Math.max(...rows.map((row) => Number(row.invoice_total || 0))),
-            invoice_amount_paid: Math.max(...rows.map((row) => Number(row.invoice_amount_paid || 0))),
-            invoice_balance_due: Math.max(...rows.map((row) => Number(row.invoice_balance_due || 0))),
+            invoice_total: invoiceTotal,
+            invoice_amount_paid: invoiceAmountPaid,
+            invoice_balance_due: invoiceBalanceDue,
+            display_total: invoiceTotal > 0 ? invoiceTotal : estimatedServicesTotal,
+            display_balance_due: invoiceTotal > 0 ? invoiceBalanceDue : Math.max(0, estimatedServicesTotal - invoiceAmountPaid),
         };
     }).sort((a, b) => {
         const aTime = dateTimeLocalMs(a.scheduled_start);
@@ -2990,23 +3026,47 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             <div className="space-y-3">
                                                 {(selectedCalendarAppointment.grouped_services || [{
                                                     id: selectedCalendarAppointment.id,
+                                                    service_id: selectedCalendarAppointment.service_id,
                                                     name: selectedCalendarAppointment.service_name,
                                                     status: selectedCalendarAppointment.status,
                                                     staff_name: selectedCalendarAppointment.staff_name,
                                                     quantity: selectedCalendarAppointment.service_quantity || 1,
-                                                }]).map((service) => (
+                                                    service_unit_price: selectedCalendarAppointment.service_unit_price,
+                                                    service_discount_amount: selectedCalendarAppointment.service_discount_amount,
+                                                    customer_package_id: selectedCalendarAppointment.customer_package_id,
+                                                    package_session_applied: selectedCalendarAppointment.package_session_applied,
+                                                }]).map((service) => {
+                                                    const resolvedPricing = getAppointmentServicePricing(service, serviceLookup);
+                                                    const pricing = {
+                                                        ...resolvedPricing,
+                                                        unitPrice: Number(service.effective_unit_price ?? resolvedPricing.unitPrice),
+                                                        lineTotal: Number(service.service_line_total ?? resolvedPricing.lineTotal),
+                                                    };
+
+                                                    return (
                                                     <div key={service.id} className="rounded-md border border-white/10 bg-[#111112] px-3 py-3">
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div className="min-w-0">
                                                                 <div className="truncate text-sm font-bold text-white">
-                                                                    {service.name || 'Service'}{Number(service.quantity || 1) > 1 ? ` x${service.quantity}` : ''}
+                                                                    {service.name || 'Service'}{pricing.quantity > 1 ? ` x${pricing.quantity}` : ''}
                                                                 </div>
                                                                 <div className="mt-1 text-xs text-slate-400">{service.staff_name || 'Unassigned'}</div>
+                                                                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                                                                    <span>Price <strong className="text-slate-100">{formatMoney(pricing.unitPrice, currencyCode)}</strong></span>
+                                                                    {pricing.discountAmount > 0 ? (
+                                                                        <span>Discount <strong className="text-slate-100">{formatMoney(pricing.discountAmount, currencyCode)}</strong></span>
+                                                                    ) : null}
+                                                                    {pricing.packageCovered ? <span className="font-semibold text-emerald-300">Package session</span> : null}
+                                                                </div>
                                                             </div>
-                                                            <span className="shrink-0 text-xs font-bold capitalize text-slate-300">{String(service.status || '').replace('_', ' ')}</span>
+                                                            <div className="shrink-0 text-right">
+                                                                <span className="text-xs font-bold capitalize text-slate-300">{String(service.status || '').replace('_', ' ')}</span>
+                                                                <div className="mt-2 text-sm font-black text-white">{formatMoney(pricing.lineTotal, currencyCode)}</div>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                ))}
+                                                );
+                                                })}
                                             </div>
                                         </div>
 
@@ -3014,8 +3074,8 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             <div className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Checkout</div>
                                             <div className="space-y-2 text-sm">
                                                 <div className="flex justify-between gap-3 text-slate-300">
-                                                    <span>Total</span>
-                                                    <span className="font-bold text-white">{formatMoney(selectedCalendarAppointment.invoice_total || 0, currencyCode)}</span>
+                                                    <span>{Number(selectedCalendarAppointment.invoice_total || 0) > 0 ? 'Invoice total' : 'Total bill'}</span>
+                                                    <span className="font-bold text-white">{formatMoney(selectedCalendarAppointment.display_total ?? selectedCalendarAppointment.invoice_total ?? selectedCalendarAppointment.estimated_services_total ?? 0, currencyCode)}</span>
                                                 </div>
                                                 <div className="flex justify-between gap-3 text-slate-300">
                                                     <span>Paid</span>
@@ -3023,8 +3083,11 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                 </div>
                                                 <div className="flex justify-between gap-3 border-t border-white/10 pt-2 text-slate-300">
                                                     <span>Balance</span>
-                                                    <span className="font-black text-white">{formatMoney(selectedCalendarAppointment.invoice_balance_due || 0, currencyCode)}</span>
+                                                    <span className="font-black text-white">{formatMoney(selectedCalendarAppointment.display_balance_due ?? selectedCalendarAppointment.invoice_balance_due ?? 0, currencyCode)}</span>
                                                 </div>
+                                                {Number(selectedCalendarAppointment.invoice_total || 0) <= 0 && Number(selectedCalendarAppointment.estimated_services_total || 0) > 0 ? (
+                                                    <div className="pt-1 text-xs text-slate-500">Estimated from booked services until checkout is created.</div>
+                                                ) : null}
                                                 {selectedCalendarAppointment.awaiting_checkout ? (
                                                     <div className="mt-3 rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-bold text-amber-100">
                                                         Needs checkout/payment
