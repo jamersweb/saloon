@@ -7,12 +7,12 @@
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         html {
-            background: #c2bcb8;
+            background: #f1ece9;
         }
         body {
             margin: 0;
             font-family: Georgia, 'Times New Roman', serif;
-            background: #c2bcb8;
+            background: #f1ece9;
             color: #3d2b28;
         }
         .embed-shell {
