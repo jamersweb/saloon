@@ -159,6 +159,115 @@ class FinanceAppointmentInvoiceDraftTest extends TestCase
         $this->assertSame('250.00', $serviceLine->line_subtotal);
     }
 
+    public function test_opening_draft_refreshes_appointment_discount_changed_after_draft_was_created(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+        ]);
+
+        $manager = User::factory()->create([
+            'role_id' => $managerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $staffProfile = StaffProfile::create([
+            'user_id' => $manager->id,
+            'employee_code' => 'OWN-FIN-STALE-DISCOUNT',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-APT-STALE-DISCOUNT',
+            'name' => 'Vanessa',
+            'phone' => '85263659231',
+            'is_active' => true,
+        ]);
+
+        $service = SalonService::create([
+            'name' => 'Gelish/Shellac Classic manicure',
+            'category' => 'Nails',
+            'duration_minutes' => 60,
+            'buffer_minutes' => 0,
+            'price' => 150,
+            'is_active' => true,
+        ]);
+
+        $oldTimestamp = Carbon::parse('2026-09-03 19:40:00');
+        $newTimestamp = Carbon::parse('2026-09-03 19:45:00');
+
+        $appointment = Appointment::create([
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'service_unit_price' => 150,
+            'service_discount_amount' => 0,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => $oldTimestamp,
+            'scheduled_end' => $oldTimestamp->copy()->addHour(),
+            'arrival_time' => $oldTimestamp,
+            'service_start_time' => $oldTimestamp,
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+            'created_at' => $oldTimestamp,
+            'updated_at' => $oldTimestamp,
+        ]);
+
+        $invoice = TaxInvoice::create([
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'status' => TaxInvoice::STATUS_DRAFT,
+            'appointment_id' => $appointment->id,
+            'subtotal' => 150,
+            'vat_amount' => 7.5,
+            'total' => 157.5,
+            'cashier_name' => $manager->name,
+            'created_by' => $manager->id,
+            'notes' => 'Created from appointment #'.$appointment->id,
+            'created_at' => $oldTimestamp,
+            'updated_at' => $oldTimestamp,
+        ]);
+        $invoice->forceFill([
+            'created_at' => $oldTimestamp,
+            'updated_at' => $oldTimestamp,
+        ])->saveQuietly();
+        $invoice->items()->create([
+            'salon_service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'revenue_category' => 'service_income',
+            'cost_center' => 'general_salon',
+            'description' => $service->name,
+            'quantity' => 1,
+            'unit_price' => 150,
+            'discount_amount' => 0,
+            'line_subtotal' => 150,
+            'tax_rate_percent' => 5,
+            'line_tax' => 7.5,
+            'line_total' => 157.5,
+        ]);
+
+        $appointment->forceFill([
+            'service_discount_amount' => 50,
+            'updated_at' => $newTimestamp,
+        ])->saveQuietly();
+
+        $this->actingAs($manager)
+            ->get(route('finance.invoices.show', $invoice))
+            ->assertOk();
+
+        $invoice->refresh()->load('items');
+        $serviceLine = $invoice->items->first();
+
+        $this->assertSame('50.00', $serviceLine->discount_amount);
+        $this->assertSame('100.00', $serviceLine->line_subtotal);
+        $this->assertSame('5.00', $serviceLine->line_tax);
+        $this->assertSame('105.00', $serviceLine->line_total);
+        $this->assertSame('100.00', $invoice->subtotal);
+        $this->assertSame('105.00', $invoice->total);
+    }
+
     public function test_finishing_and_paying_visit_with_products_deducts_inventory_stock(): void
     {
         $managerRole = Role::create([

@@ -25,6 +25,7 @@ use App\Support\TaxReceiptPdfView;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
@@ -738,7 +739,7 @@ class TaxInvoiceController extends Controller
             ->forAppointment($appointment)
             ->loadMissing([
                 'service:id,name,price',
-                'productUsages:id,appointment_id,inventory_item_id,quantity,notes',
+                'productUsages:id,appointment_id,inventory_item_id,quantity,notes,created_at,updated_at',
                 'productUsages.item:id,name,sku,selling_price,cost_price',
             ]);
 
@@ -747,7 +748,13 @@ class TaxInvoiceController extends Controller
             ->count()
             + $visitAppointments->sum(fn (Appointment $visitAppointment) => $visitAppointment->productUsages->filter(fn ($usage) => $usage->item !== null)->count());
 
-        if ($expectedLineCount <= 1 || $invoice->items()->count() >= $expectedLineCount) {
+        $invoice->loadMissing('items');
+        $actualLineCount = $invoice->items->count();
+
+        if ($actualLineCount >= $expectedLineCount
+            && (! $this->visitSourceUpdatedAfterInvoice($visitAppointments, $invoice)
+                || $actualLineCount !== $expectedLineCount
+                || $this->invoiceItemsMatchVisitSource($invoice->items, $visitAppointments))) {
             return $invoice;
         }
 
@@ -756,6 +763,117 @@ class TaxInvoiceController extends Controller
             $request->user()?->id,
             $invoice->cashier_name ?: $request->user()?->name
         );
+    }
+
+    /**
+     * @param  Collection<int, Appointment>  $visitAppointments
+     */
+    private function visitSourceUpdatedAfterInvoice(Collection $visitAppointments, TaxInvoice $invoice): bool
+    {
+        if (! $invoice->updated_at) {
+            return true;
+        }
+
+        return $visitAppointments->contains(function (Appointment $visitAppointment) use ($invoice): bool {
+            if ($visitAppointment->updated_at?->greaterThan($invoice->updated_at)) {
+                return true;
+            }
+
+            return $visitAppointment->productUsages->contains(
+                fn ($usage): bool => $usage->updated_at?->greaterThan($invoice->updated_at) ?? false
+            );
+        });
+    }
+
+    /**
+     * @param  Collection<int, TaxInvoiceItem>  $invoiceItems
+     * @param  Collection<int, Appointment>  $visitAppointments
+     */
+    private function invoiceItemsMatchVisitSource(Collection $invoiceItems, Collection $visitAppointments): bool
+    {
+        $actual = $invoiceItems
+            ->map(fn (TaxInvoiceItem $item): array => $this->invoiceItemSourceSignature($item))
+            ->sortBy(fn (array $signature): string => json_encode($signature) ?: '')
+            ->values()
+            ->all();
+
+        $expected = $this->visitSourceInvoiceItemSignatures($visitAppointments)
+            ->sortBy(fn (array $signature): string => json_encode($signature) ?: '')
+            ->values()
+            ->all();
+
+        return $actual === $expected;
+    }
+
+    /**
+     * @param  Collection<int, Appointment>  $visitAppointments
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function visitSourceInvoiceItemSignatures(Collection $visitAppointments): Collection
+    {
+        return $visitAppointments->flatMap(function (Appointment $visitAppointment): array {
+            $rows = [];
+
+            if ($visitAppointment->service) {
+                $isPackageSession = (bool) $visitAppointment->customer_package_id;
+                $rows[] = [
+                    'kind' => 'service',
+                    'salon_service_id' => (int) $visitAppointment->service_id,
+                    'inventory_item_id' => null,
+                    'staff_profile_id' => $visitAppointment->staff_profile_id ? (int) $visitAppointment->staff_profile_id : null,
+                    'revenue_category' => $isPackageSession ? 'package_sales' : 'service_income',
+                    'quantity' => $this->numericSignature(max(1, (int) ($visitAppointment->service_quantity ?? 1))),
+                    'unit_price' => $this->moneySignature($isPackageSession ? 0 : ($visitAppointment->service_unit_price ?? $visitAppointment->service->price)),
+                    'discount_amount' => $this->moneySignature($isPackageSession ? 0 : ($visitAppointment->service_discount_amount ?? 0)),
+                ];
+            }
+
+            foreach ($visitAppointment->productUsages as $usage) {
+                if (! $usage->item) {
+                    continue;
+                }
+
+                $rows[] = [
+                    'kind' => 'product',
+                    'salon_service_id' => null,
+                    'inventory_item_id' => (int) $usage->inventory_item_id,
+                    'staff_profile_id' => null,
+                    'revenue_category' => 'retail_product_sales',
+                    'quantity' => $this->numericSignature(max(1, (int) $usage->quantity)),
+                    'unit_price' => $this->moneySignature($usage->item->selling_price ?? $usage->item->cost_price ?? 0),
+                    'discount_amount' => $this->moneySignature(0),
+                ];
+            }
+
+            return $rows;
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function invoiceItemSourceSignature(TaxInvoiceItem $item): array
+    {
+        return [
+            'kind' => $item->inventory_item_id ? 'product' : 'service',
+            'salon_service_id' => $item->salon_service_id ? (int) $item->salon_service_id : null,
+            'inventory_item_id' => $item->inventory_item_id ? (int) $item->inventory_item_id : null,
+            'staff_profile_id' => $item->staff_profile_id ? (int) $item->staff_profile_id : null,
+            'revenue_category' => $item->revenue_category ?: ($item->inventory_item_id ? 'retail_product_sales' : 'service_income'),
+            'quantity' => $this->numericSignature($item->quantity),
+            'unit_price' => $this->moneySignature($item->unit_price),
+            'discount_amount' => $this->moneySignature($item->discount_amount),
+        ];
+    }
+
+    private function moneySignature(mixed $value): string
+    {
+        return number_format(round((float) $value, 2), 2, '.', '');
+    }
+
+    private function numericSignature(mixed $value): string
+    {
+        return number_format(round((float) $value, 2), 2, '.', '');
     }
 
     /**
@@ -783,8 +901,8 @@ class TaxInvoiceController extends Controller
                     ? $item->service->name.' (package session)'
                     : $item->service->name,
                 'quantity' => (string) max(1, (int) ($item->service_quantity ?? 1)),
-                'unit_price' => (string) ($item->customer_package_id ? 0 : $item->service->price),
-                'discount_amount' => '0',
+                'unit_price' => (string) ($item->customer_package_id ? 0 : ($item->service_unit_price ?? $item->service->price)),
+                'discount_amount' => (string) ($item->customer_package_id ? 0 : ($item->service_discount_amount ?? 0)),
             ]);
 
         $productItems = $visitAppointments

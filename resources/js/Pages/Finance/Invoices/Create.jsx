@@ -12,6 +12,7 @@ const blankItem = (saleType = 'standard') => ({
     description: '',
     quantity: '1',
     unit_price: '',
+    discount_amount: '0',
 });
 
 export default function FinanceInvoicesCreate({ customers, services, staff_profiles = [], inventory_items = [], revenue_categories = {}, cost_centers = {}, appointments, vat_rate_percent, currency_code, sale_type = 'standard' }) {
@@ -64,6 +65,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                 salon_service_id: '',
                 inventory_item_id: '',
                 revenue_category: isRetailSale ? 'retail_product_sales' : 'service_income',
+                discount_amount: '0',
             };
             form.setData('items', next);
             return;
@@ -87,6 +89,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                 : item
                     ? String(item.selling_price ?? '')
                     : next[idx].unit_price,
+            discount_amount: '0',
         };
         form.setData('items', next);
     };
@@ -160,6 +163,7 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                                     description: row.description,
                                     quantity: parseFloat(row.quantity) || 0,
                                     unit_price: parseFloat(row.unit_price) || 0,
+                                    discount_amount: parseFloat(row.discount_amount) || 0,
                                 })),
                             }));
                             form.post(route('finance.invoices.store'));
@@ -322,6 +326,21 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
                                                     form.setData('items', next);
                                                 }}
                                                 required
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="text-xs text-slate-500">Discount</label>
+                                            <input
+                                                className="ta-input mt-1"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={row.discount_amount || '0'}
+                                                onChange={(e) => {
+                                                    const next = [...form.data.items];
+                                                    next[idx] = { ...next[idx], discount_amount: e.target.value };
+                                                    form.setData('items', next);
+                                                }}
                                             />
                                         </div>
                                         <div className="md:col-span-1 flex md:justify-end">
