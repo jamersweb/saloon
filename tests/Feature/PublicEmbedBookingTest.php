@@ -37,9 +37,18 @@ class PublicEmbedBookingTest extends TestCase
         $this->get(route('embed.booking'))
             ->assertOk()
             ->assertSee('Book Your Appointment', false)
+            ->assertSee('#c2bcb8', false)
             ->assertSee('+971111111111', false)
             ->assertDontSee('Staff Profile', false)
             ->assertSee('action="/embed/book"', false);
+    }
+
+    public function test_embed_booking_thanks_page_uses_site_background(): void
+    {
+        $this->get(route('embed.booking.thanks'))
+            ->assertOk()
+            ->assertSee('Thank you', false)
+            ->assertSee('#c2bcb8', false);
     }
 
     public function test_embed_booking_success_redirects_to_thanks(): void

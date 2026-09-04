@@ -6,10 +6,13 @@
     <title>Book Your Appointment | Vina</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; }
+        html {
+            background: #c2bcb8;
+        }
         body {
             margin: 0;
             font-family: Georgia, 'Times New Roman', serif;
-            background: #f7f4f2;
+            background: #c2bcb8;
             color: #3d2b28;
         }
         .embed-shell {
