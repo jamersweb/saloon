@@ -162,13 +162,30 @@ class WhatsAppTemplateManagerTest extends TestCase
 
     public function test_manager_can_create_meta_template_and_persist_it_locally(): void
     {
-        Http::fake([
-            'https://graph.facebook.com/*' => Http::response([
+        Http::fake(function ($request) {
+            if ($request->method() === 'GET') {
+                return Http::response([
+                    'data' => [
+                        [
+                            'id' => 'tmpl_2',
+                            'name' => 'due_service_notice',
+                            'language' => 'en_US',
+                            'category' => 'UTILITY',
+                            'status' => 'APPROVED',
+                            'components' => [
+                                ['type' => 'BODY', 'text' => 'Hello {{1}}, your {{2}} is due on {{3}}.'],
+                            ],
+                        ],
+                    ],
+                ], 200);
+            }
+
+            return Http::response([
                 'id' => 'tmpl_2',
                 'status' => 'PENDING',
                 'category' => 'UTILITY',
-            ], 200),
-        ]);
+            ], 200);
+        });
 
         FinanceSetting::current()->update([
             'whatsapp_base_url' => 'https://graph.facebook.com',
@@ -201,15 +218,19 @@ class WhatsAppTemplateManagerTest extends TestCase
                     ['type' => 'URL', 'text' => 'Open site', 'url' => 'https://example.com/book'],
                 ],
             ])
-            ->assertSessionHasNoErrors();
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'Meta template submitted and synced.');
 
         $template = WhatsAppMessageTemplate::query()->where('name', 'due_service_notice')->first();
 
         $this->assertNotNull($template);
-        $this->assertSame('PENDING', $template->status);
+        $this->assertSame('APPROVED', $template->status);
         $this->assertSame('en_US', $template->language);
         $this->assertSame('UTILITY', $template->category);
         $this->assertNotEmpty($template->components);
+
+        Http::assertSent(fn ($request) => $request->method() === 'GET'
+            && $request->url() === 'https://graph.facebook.com/v25.0/waba_123/message_templates?limit=100');
     }
 
     public function test_manager_can_create_ycloud_template_and_persist_it_locally(): void
@@ -414,6 +435,20 @@ class WhatsAppTemplateManagerTest extends TestCase
                     'id' => 'tmpl_replaced',
                     'status' => 'PENDING',
                     'category' => 'MARKETING',
+                ], 200)
+                ->push([
+                    'data' => [
+                        [
+                            'id' => 'tmpl_replaced',
+                            'name' => 'promo_template',
+                            'language' => 'en_US',
+                            'category' => 'MARKETING',
+                            'status' => 'APPROVED',
+                            'components' => [
+                                ['type' => 'BODY', 'text' => 'New promo for {{1}}'],
+                            ],
+                        ],
+                    ],
                 ], 200),
         ]);
 

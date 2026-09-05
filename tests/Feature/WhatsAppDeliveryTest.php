@@ -627,6 +627,51 @@ class WhatsAppDeliveryTest extends TestCase
         $this->assertSame(1, $campaign->fresh()->failed_count);
     }
 
+    public function test_whatsapp_delivery_job_does_not_retry_reengagement_window_failures(): void
+    {
+        FinanceSetting::current()->update([
+            'whatsapp_driver' => 'ycloud',
+            'whatsapp_phone_number_id' => '+971501111111',
+            'whatsapp_access_token' => 'ycloud-secret-key',
+        ]);
+
+        $log = CommunicationLog::create([
+            'channel' => 'whatsapp',
+            'context' => 'single_message:25',
+            'recipient' => '+971556354004',
+            'message' => 'Plain follow up',
+            'status' => 'queued',
+            'provider' => 'whatsapp',
+            'provider_status' => 'queued',
+            'message_type' => 'text',
+            'queued_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://api.ycloud.com/*' => Http::response([
+                'error' => [
+                    'message' => '131047 Message failed to send because more than 24 hours have passed since the customer last replied to this number.',
+                ],
+            ], 400),
+        ]);
+
+        $job = new SendWhatsAppDeliveryJob($log->id, [
+            'message_type' => 'text',
+            'recipient' => '+971556354004',
+            'message' => 'Plain follow up',
+        ]);
+
+        $job->handle(app(WhatsAppService::class));
+
+        $log->refresh();
+
+        $this->assertSame('failed', $log->status);
+        $this->assertSame('failed', $log->provider_status);
+        $this->assertSame(1, $log->attempt_count);
+        $this->assertStringContainsString('131047', $log->error_message);
+        $this->assertNotNull($log->failed_at);
+    }
+
     public function test_whatsapp_delivery_job_does_not_retry_template_header_format_failures(): void
     {
         FinanceSetting::current()->update([
@@ -921,6 +966,52 @@ class WhatsAppDeliveryTest extends TestCase
                 'whatsapp_template_variables' => '',
             ])
             ->assertSessionHasErrors('whatsapp_template_variables');
+
+        Queue::assertNothingPushed();
+        $this->assertDatabaseMissing('communication_logs', [
+            'customer_id' => $customer->id,
+            'context' => 'single_message:'.$customer->id,
+        ]);
+    }
+
+    public function test_single_whatsapp_template_requires_approved_template(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-WA-PENDING',
+            'name' => 'Pending Template Customer',
+            'phone' => '923473639710',
+            'is_active' => true,
+        ]);
+
+        $template = WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-template-pending',
+            'name' => 'pending_notice',
+            'language' => 'en_US',
+            'category' => 'UTILITY',
+            'status' => 'PENDING',
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}']],
+            'last_synced_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->from(route('customers.automation.index'))
+            ->post(route('customers.automation.messages.single'), [
+                'customer_id' => $customer->id,
+                'channel' => 'whatsapp',
+                'whatsapp_message_type' => 'template',
+                'whatsapp_template_id' => $template->id,
+                'whatsapp_template_variables' => '',
+            ])
+            ->assertSessionHasErrors('whatsapp_template_id');
 
         Queue::assertNothingPushed();
         $this->assertDatabaseMissing('communication_logs', [

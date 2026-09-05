@@ -169,4 +169,65 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertSame('100 Parameter Invalid', $log->error_message);
         $this->assertNotNull($log->failed_at);
     }
+
+    public function test_whatsapp_webhook_records_meta_error_code_and_details(): void
+    {
+        $customer = Customer::create([
+            'customer_code' => 'CUST-WA-META-FAIL',
+            'name' => 'Meta Failed Customer',
+            'phone' => '923473639710',
+            'is_active' => true,
+        ]);
+
+        $log = CommunicationLog::create([
+            'customer_id' => $customer->id,
+            'channel' => 'whatsapp',
+            'context' => 'single_message:25',
+            'recipient' => '923473639710',
+            'message' => 'Hello',
+            'status' => 'sent',
+            'provider' => 'whatsapp-meta',
+            'provider_status' => 'accepted',
+            'message_type' => 'text',
+            'provider_message_id' => 'wamid.meta-failed',
+            'accepted_at' => now(),
+        ]);
+
+        $this->postJson(route('whatsapp.webhook.receive'), [
+            'entry' => [
+                [
+                    'changes' => [
+                        [
+                            'value' => [
+                                'statuses' => [
+                                    [
+                                        'id' => 'wamid.meta-failed',
+                                        'status' => 'failed',
+                                        'timestamp' => (string) now()->timestamp,
+                                        'errors' => [
+                                            [
+                                                'code' => 131047,
+                                                'title' => 'Re-engagement message',
+                                                'message' => 'Re-engagement message',
+                                                'error_data' => [
+                                                    'details' => 'Message failed to send because more than 24 hours have passed since the customer last replied to this number.',
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $log->refresh();
+
+        $this->assertSame('failed', $log->status);
+        $this->assertStringContainsString('131047', $log->error_message);
+        $this->assertStringContainsString('24 hours', $log->error_message);
+        $this->assertNotNull($log->failed_at);
+    }
 }

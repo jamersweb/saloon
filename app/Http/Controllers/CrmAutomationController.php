@@ -156,11 +156,13 @@ class CrmAutomationController extends Controller
             'whatsappTemplateOptions' => WhatsAppMessageTemplate::query()
                 ->orderBy('name')
                 ->limit(500)
-                ->get(['id', 'name', 'language'])
+                ->get(['id', 'name', 'language', 'category', 'status'])
                 ->map(fn (WhatsAppMessageTemplate $template) => [
                     'id' => $template->id,
                     'name' => $template->name,
                     'language' => $template->language,
+                    'category' => $template->category,
+                    'status' => $template->status,
                 ]),
             'customers' => $customers
                 ->paginate($filters['per_page'])
@@ -451,7 +453,9 @@ class CrmAutomationController extends Controller
             'language' => $template['language'] ?? $data['language'],
         ]);
 
-        return back()->with('status', $this->whatsappTemplateProviderLabel().' template submitted.');
+        $templateManagerService->syncTemplates();
+
+        return back()->with('status', $this->whatsappTemplateProviderLabel().' template submitted and synced.');
     }
 
     public function updateMetaTemplate(Request $request, WhatsAppMessageTemplate $template, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
@@ -474,7 +478,9 @@ class CrmAutomationController extends Controller
             'language' => $updated['language'] ?? $data['language'],
         ]);
 
-        return back()->with('status', $this->whatsappTemplateProviderLabel().' template replaced.');
+        $templateManagerService->syncTemplates();
+
+        return back()->with('status', $this->whatsappTemplateProviderLabel().' template replaced and synced.');
     }
 
     public function uploadMetaTemplateHeaderMedia(Request $request, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
@@ -1142,6 +1148,13 @@ class CrmAutomationController extends Controller
         }
 
         $template = WhatsAppMessageTemplate::findOrFail((int) $data['whatsapp_template_id']);
+
+        if (strtoupper((string) $template->status) !== 'APPROVED') {
+            throw ValidationException::withMessages([
+                'whatsapp_template_id' => 'Only approved WhatsApp templates can be sent.',
+            ]);
+        }
+
         $variables = collect(explode(',', (string) ($data['whatsapp_template_variables'] ?? '')))
             ->map(fn (string $value) => trim($value))
             ->filter()

@@ -144,8 +144,10 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
     const serviceSelectOptions = serviceOptions.map((service) => ({ value: service.id, label: `${service.name}${service.repeat_after_days ? ` (${service.repeat_after_days}d)` : ''}` }));
     const tagSelectOptions = tags.map((tag) => ({ value: tag.id, label: tag.name }));
     const activeTagSelectOptions = tags.filter((tag) => tag.is_active).map((tag) => ({ value: tag.id, label: tag.name }));
+    const approvedWhatsappTemplates = whatsappTemplateOptions.filter((template) => String(template.status || '').toUpperCase() === 'APPROVED');
     const campaignTemplateSelectOptions = campaignTemplateOptions.map((template) => ({ value: template.id, label: `${template.name} (${template.channel})` }));
-    const whatsappTemplateSelectOptions = whatsappTemplateOptions.map((template) => ({ value: template.id, label: `${template.name} (${template.language})` }));
+    const whatsappTemplateSelectOptions = approvedWhatsappTemplates.map((template) => ({ value: template.id, label: `${template.name} (${template.language}, ${template.category || 'template'})` }));
+    const whatsappTemplateNameOptions = approvedWhatsappTemplates.map((template) => ({ value: template.name, label: `${template.name} (${template.language}, ${template.category || 'template'})` }));
 
     const tagForm = useForm({ name: '', color: '#4f46e5', is_active: true });
     const assignForm = useForm({ customer_id: '', customer_tag_id: '' });
@@ -153,7 +155,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
         customer_id: '',
         channel: 'whatsapp',
         message: '',
-        whatsapp_message_type: 'text',
+        whatsapp_message_type: 'template',
         whatsapp_template_id: '',
         whatsapp_template_variables: '',
         whatsapp_template_header_type: '',
@@ -679,71 +681,95 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                         <h3 className="text-sm font-semibold text-slate-700">Marketing</h3>
                         <div className="flex flex-wrap gap-2">
                             <CrmTabButton active={marketingTab === 'campaigns'} onClick={() => setMarketingTab('campaigns')}>Campaigns</CrmTabButton>
-                            <CrmTabButton active={marketingTab === 'message_templates'} onClick={() => setMarketingTab('message_templates')}>Message Templates</CrmTabButton>
                             <CrmTabButton active={marketingTab === 'whatsapp_approval'} onClick={() => setMarketingTab('whatsapp_approval')}>WhatsApp Approval</CrmTabButton>
                         </div>
                     </div>
 
-                    {marketingTab === 'message_templates' && (
-                        <form className="grid gap-3 md:grid-cols-4" onSubmit={(e) => { e.preventDefault(); templateForm.post(route('customers.automation.campaign-templates.store'), { onSuccess: () => templateForm.reset('name', 'content', 'whatsapp_template_name') }); }}>
-                            <input className="ta-input" placeholder="Template name" value={templateForm.data.name} onChange={(e) => templateForm.setData('name', e.target.value)} required />
-                            <label className="ta-field-label">Channel</label><select className="ta-input" value={templateForm.data.channel} onChange={(e) => templateForm.setData('channel', e.target.value)}><option value="sms">SMS</option><option value="email">Email</option><option value="whatsapp">WhatsApp</option></select>
-                            <input className="ta-input md:col-span-2" placeholder="Message (use {name})" value={templateForm.data.content} onChange={(e) => templateForm.setData('content', e.target.value)} required={templateForm.data.channel !== 'whatsapp' || templateForm.data.whatsapp_message_type !== 'template'} />
-                            {templateForm.data.channel === 'whatsapp' && (
-                                <>
-                                    <label className="ta-field-label">WhatsApp type</label>
-                                    <select className="ta-input" value={templateForm.data.whatsapp_message_type} onChange={(e) => templateForm.setData('whatsapp_message_type', e.target.value)}>
-                                        <option value="text">Text</option>
-                                        <option value="template">WhatsApp Template</option>
+                    {marketingTab === 'campaigns' && (
+                        <>
+                            <div className="mb-5 border-b border-slate-100 pb-5">
+                                <h4 className="mb-3 text-sm font-semibold text-slate-700">Campaign Message</h4>
+                                <form className="grid gap-3 md:grid-cols-4" onSubmit={(e) => { e.preventDefault(); templateForm.post(route('customers.automation.campaign-templates.store'), { onSuccess: () => templateForm.reset('name', 'content', 'whatsapp_template_name') }); }}>
+                                    <input className="ta-input" placeholder="Message name" value={templateForm.data.name} onChange={(e) => templateForm.setData('name', e.target.value)} required />
+                                    <select
+                                        className="ta-input"
+                                        value={templateForm.data.channel}
+                                        onChange={(e) => {
+                                            const channel = e.target.value;
+
+                                            templateForm.setData((data) => ({
+                                                ...data,
+                                                channel,
+                                                whatsapp_message_type: channel === 'whatsapp' ? 'template' : 'text',
+                                                whatsapp_template_name: channel === 'whatsapp' ? data.whatsapp_template_name : '',
+                                                whatsapp_header_type: channel === 'whatsapp' ? data.whatsapp_header_type : 'none',
+                                            }));
+                                        }}
+                                    >
+                                        <option value="sms">SMS</option>
+                                        <option value="email">Email</option>
+                                        <option value="whatsapp">WhatsApp</option>
                                     </select>
-                                    <SearchableSelect
-                                        value={templateForm.data.whatsapp_template_name}
-                                        onChange={(name) => templateForm.setData('whatsapp_template_name', name)}
-                                        options={whatsappTemplateOptions.map((template) => ({ value: template.name, label: `${template.name} (${template.language})` }))}
-                                        placeholder={`Search ${templateProviderLabel} template`}
-                                        disabled={templateForm.data.whatsapp_message_type !== 'template'}
-                                    />
-                                    <input className="ta-input" placeholder="Language code" value={templateForm.data.whatsapp_template_language_code} onChange={(e) => templateForm.setData('whatsapp_template_language_code', e.target.value)} disabled={templateForm.data.whatsapp_message_type !== 'template'} />
-                                    {templateForm.data.whatsapp_message_type === 'template' && (
+                                    <input className="ta-input md:col-span-2" placeholder="Message (use {name})" value={templateForm.data.content} onChange={(e) => templateForm.setData('content', e.target.value)} required={templateForm.data.channel !== 'whatsapp' || templateForm.data.whatsapp_message_type !== 'template'} />
+                                    {templateForm.data.channel === 'whatsapp' && (
                                         <>
-                                            <select className="ta-input" value={templateForm.data.whatsapp_header_type} onChange={(e) => templateForm.setData('whatsapp_header_type', e.target.value)}>
-                                                <option value="none">No attachment</option>
-                                                <option value="document">Document/PDF attachment</option>
-                                                <option value="image">Image attachment</option>
-                                                <option value="video">Video attachment</option>
-                                            </select>
-                                            {templateForm.data.whatsapp_header_type !== 'none' && (
+                                    <select className="ta-input" value={templateForm.data.whatsapp_message_type} onChange={(e) => templateForm.setData('whatsapp_message_type', e.target.value)}>
+                                        <option value="template">Approved WhatsApp template</option>
+                                        <option value="text">WhatsApp text (24h window)</option>
+                                    </select>
+                                            <SearchableSelect
+                                                value={templateForm.data.whatsapp_template_name}
+                                                onChange={(name) => {
+                                                    const template = approvedWhatsappTemplates.find((option) => option.name === name);
+
+                                                    templateForm.setData((data) => ({
+                                                        ...data,
+                                                        whatsapp_template_name: name,
+                                                        whatsapp_template_language_code: template?.language || data.whatsapp_template_language_code,
+                                                    }));
+                                                }}
+                                                options={whatsappTemplateNameOptions}
+                                                placeholder={`Search approved ${templateProviderLabel} template`}
+                                                disabled={templateForm.data.whatsapp_message_type !== 'template'}
+                                            />
+                                            <input className="ta-input" placeholder="Language code" value={templateForm.data.whatsapp_template_language_code} onChange={(e) => templateForm.setData('whatsapp_template_language_code', e.target.value)} disabled={templateForm.data.whatsapp_message_type !== 'template'} />
+                                            {templateForm.data.whatsapp_message_type === 'template' && (
                                                 <>
-                                                    <input className="ta-input md:col-span-2" placeholder="Public attachment URL" value={templateForm.data.whatsapp_header_media_url} onChange={(e) => templateForm.setData('whatsapp_header_media_url', e.target.value)} required />
-                                                    <input className="ta-input" placeholder="Attachment filename" value={templateForm.data.whatsapp_header_media_filename} onChange={(e) => templateForm.setData('whatsapp_header_media_filename', e.target.value)} disabled={templateForm.data.whatsapp_header_type !== 'document'} />
-                                                    <div className="flex flex-wrap items-center gap-2 md:col-span-3">
-                                                        <input
-                                                            className="ta-input flex-1"
-                                                            type="file"
-                                                            accept={templateForm.data.whatsapp_header_type === 'image' ? 'image/*' : templateForm.data.whatsapp_header_type === 'video' ? 'video/*' : 'application/pdf,.pdf'}
-                                                            onChange={(e) => setTemplateMediaFile(e.target.files?.[0] || null)}
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
-                                                            disabled={!canManage || templateMediaUploading || !templateMediaFile}
-                                                            onClick={uploadTemplateMedia}
-                                                        >
-                                                            Upload Attachment
-                                                        </button>
-                                                    </div>
+                                                    <select className="ta-input" value={templateForm.data.whatsapp_header_type} onChange={(e) => templateForm.setData('whatsapp_header_type', e.target.value)}>
+                                                        <option value="none">No attachment</option>
+                                                        <option value="document">Document/PDF attachment</option>
+                                                        <option value="image">Image attachment</option>
+                                                        <option value="video">Video attachment</option>
+                                                    </select>
+                                                    {templateForm.data.whatsapp_header_type !== 'none' && (
+                                                        <>
+                                                            <input className="ta-input md:col-span-2" placeholder="Public attachment URL" value={templateForm.data.whatsapp_header_media_url} onChange={(e) => templateForm.setData('whatsapp_header_media_url', e.target.value)} required />
+                                                            <input className="ta-input" placeholder="Attachment filename" value={templateForm.data.whatsapp_header_media_filename} onChange={(e) => templateForm.setData('whatsapp_header_media_filename', e.target.value)} disabled={templateForm.data.whatsapp_header_type !== 'document'} />
+                                                            <div className="flex flex-wrap items-center gap-2 md:col-span-3">
+                                                                <input
+                                                                    className="ta-input flex-1"
+                                                                    type="file"
+                                                                    accept={templateForm.data.whatsapp_header_type === 'image' ? 'image/*' : templateForm.data.whatsapp_header_type === 'video' ? 'video/*' : 'application/pdf,.pdf'}
+                                                                    onChange={(e) => setTemplateMediaFile(e.target.files?.[0] || null)}
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 disabled:opacity-50"
+                                                                    disabled={!canManage || templateMediaUploading || !templateMediaFile}
+                                                                    onClick={uploadTemplateMedia}
+                                                                >
+                                                                    Upload Attachment
+                                                                </button>
+                                                            </div>
+                                                        </>
+                                                    )}
                                                 </>
                                             )}
                                         </>
                                     )}
-                                </>
-                            )}
-                            <button className="ta-btn-primary md:col-span-4" disabled={templateForm.processing || !canManage}>Save Message Template</button>
-                        </form>
-                    )}
-
-                    {marketingTab === 'campaigns' && (
-                        <>
+                                    <button className="ta-btn-primary md:col-span-4" disabled={templateForm.processing || !canManage}>Save Campaign Message</button>
+                                </form>
+                            </div>
                             <div className="mb-4 flex justify-end">
                                 <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.campaigns.run-scheduled'))}>Run Due Scheduled</button>
                             </div>
@@ -877,20 +903,54 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                             });
                         }}
                     >
-                        <SearchableSelect value={singleMessageForm.data.customer_id} onChange={(id) => singleMessageForm.setData('customer_id', id)} options={customerSelectOptions} placeholder="Search contact" />
-                        <select className="ta-input" value={singleMessageForm.data.channel} onChange={(e) => singleMessageForm.setData('channel', e.target.value)}>
-                            <option value="whatsapp">WhatsApp</option>
-                            <option value="sms">SMS</option>
-                            <option value="email">Email</option>
-                        </select>
+                        <SearchableSelect label="Contact" value={singleMessageForm.data.customer_id} onChange={(id) => singleMessageForm.setData('customer_id', id)} options={customerSelectOptions} placeholder="Search contact" />
+                        <div>
+                            <label className="ta-field-label">Channel</label>
+                            <select
+                                className="ta-input"
+                                value={singleMessageForm.data.channel}
+                                onChange={(e) => {
+                                    const channel = e.target.value;
+
+                                    singleMessageForm.setData((data) => ({
+                                        ...data,
+                                        channel,
+                                        whatsapp_message_type: channel === 'whatsapp' ? (data.whatsapp_message_type || 'template') : 'text',
+                                    }));
+                                }}
+                            >
+                                <option value="whatsapp">WhatsApp</option>
+                                <option value="sms">SMS</option>
+                                <option value="email">Email</option>
+                            </select>
+                        </div>
                         {singleMessageForm.data.channel === 'whatsapp' && (
                             <>
-                                <select className="ta-input" value={singleMessageForm.data.whatsapp_message_type} onChange={(e) => singleMessageForm.setData('whatsapp_message_type', e.target.value)}>
-                                    <option value="text">WhatsApp text</option>
-                                    <option value="template">WhatsApp template</option>
-                                </select>
+                                <div>
+                                    <label className="ta-field-label">WhatsApp type</label>
+                                    <select
+                                        className="ta-input"
+                                        value={singleMessageForm.data.whatsapp_message_type}
+                                        onChange={(e) => {
+                                            const messageType = e.target.value;
+
+                                            singleMessageForm.setData((data) => ({
+                                                ...data,
+                                                whatsapp_message_type: messageType,
+                                                whatsapp_template_id: messageType === 'template' ? data.whatsapp_template_id : '',
+                                                whatsapp_template_header_type: messageType === 'template' ? data.whatsapp_template_header_type : '',
+                                                whatsapp_template_header_media_url: messageType === 'template' ? data.whatsapp_template_header_media_url : '',
+                                                whatsapp_template_header_media_filename: messageType === 'template' ? data.whatsapp_template_header_media_filename : '',
+                                            }));
+                                        }}
+                                    >
+                                        <option value="template">Approved template</option>
+                                        <option value="text">Text reply window</option>
+                                    </select>
+                                </div>
                                 {singleMessageForm.data.whatsapp_message_type === 'template' && (
                                     <SearchableSelect
+                                        label="Approved template"
                                         value={singleMessageForm.data.whatsapp_template_id}
                                         onChange={(id) => {
                                             const template = whatsappTemplateOptions.find((option) => String(option.id) === String(id));
@@ -906,7 +966,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                             }));
                                         }}
                                         options={whatsappTemplateSelectOptions}
-                                        placeholder="Search WhatsApp template"
+                                        placeholder="Search approved template"
                                     />
                                 )}
                             </>
@@ -914,7 +974,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                         <textarea
                             className="ta-input md:col-span-2"
                             rows="4"
-                            placeholder={singleMessageForm.data.whatsapp_message_type === 'template' ? 'Optional internal note for this send. Leave blank for template-only send.' : 'Write your message'}
+                            placeholder={singleMessageForm.data.channel === 'whatsapp' && singleMessageForm.data.whatsapp_message_type === 'template' ? 'Optional internal note for this send. Leave blank for template-only send.' : 'Write your message'}
                             value={singleMessageForm.data.message}
                             onChange={(e) => singleMessageForm.setData('message', e.target.value)}
                         />

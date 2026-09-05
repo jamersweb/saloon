@@ -71,7 +71,21 @@ class WhatsAppWebhookController extends Controller
             : now();
 
         $errorMessage = collect($statusPayload['errors'] ?? [])
-            ->map(fn ($error) => trim(((string) ($error['title'] ?? '')) . ' ' . ((string) ($error['message'] ?? ''))))
+            ->map(function ($error): string {
+                if (! is_array($error)) {
+                    return '';
+                }
+
+                return collect([
+                    $error['code'] ?? null,
+                    $error['title'] ?? null,
+                    $error['message'] ?? null,
+                    Arr::get($error, 'error_data.details'),
+                ])
+                    ->filter(fn ($part) => filled($part))
+                    ->map(fn ($part) => (string) $part)
+                    ->implode(' ');
+            })
             ->filter()
             ->implode('; ');
 
