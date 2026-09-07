@@ -285,6 +285,7 @@ class TaxInvoiceController extends Controller
                         'id' => $card->id,
                         'code' => $card->code,
                         'remaining_value' => (float) $card->remaining_value,
+                        'assigned_customer_id' => $card->assigned_customer_id,
                     ])
                     ->values()
                     ->all()
@@ -541,13 +542,18 @@ class TaxInvoiceController extends Controller
             'paid_at' => ['required', 'date'],
             'reference_note' => ['nullable', 'string', 'max:255'],
             'gift_card_id' => ['nullable', 'exists:gift_cards,id'],
+            'gift_voucher_id' => ['nullable', 'exists:gift_cards,id'],
         ]);
 
         $invoice->refresh();
 
         $paymentService = app(TaxInvoicePaymentService::class);
         if (($data['method'] ?? null) !== InvoicePayment::METHOD_GIFT_CARD) {
-            $paymentService->applyAutoVoucher($invoice, $request->user());
+            if (! empty($data['gift_voucher_id'])) {
+                $this->applySelectedGiftVoucher($paymentService, $invoice, (int) $data['gift_voucher_id'], $request->user(), $data['paid_at']);
+            } else {
+                $paymentService->applyAutoVoucher($invoice, $request->user());
+            }
             $invoice->refresh();
             $remainingBalance = $invoice->balanceDue();
             if ($remainingBalance <= 0.009) {
@@ -972,9 +978,35 @@ class TaxInvoiceController extends Controller
         return GiftCard::query()
             ->where('status', 'active')
             ->where('remaining_value', '>', 0)
-            ->where('assigned_customer_id', $customerId)
+            ->where(function ($query) use ($customerId): void {
+                $query
+                    ->where('assigned_customer_id', $customerId)
+                    ->orWhereNull('assigned_customer_id');
+            })
             ->orderBy('code')
             ->get(['id', 'code', 'remaining_value', 'assigned_customer_id']);
+    }
+
+    private function applySelectedGiftVoucher(TaxInvoicePaymentService $paymentService, TaxInvoice $invoice, int $giftCardId, $user, $paidAt): ?InvoicePayment
+    {
+        if ($invoice->status !== TaxInvoice::STATUS_FINALIZED || $invoice->balanceDue() <= 0.009) {
+            return null;
+        }
+
+        $card = GiftCard::query()->findOrFail($giftCardId);
+        $amount = min((float) $card->remaining_value, $invoice->balanceDue());
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        return $paymentService->record($invoice, [
+            'amount' => $amount,
+            'method' => InvoicePayment::METHOD_GIFT_CARD,
+            'paid_at' => $paidAt,
+            'reference_note' => 'Gift voucher',
+            'gift_card_id' => $giftCardId,
+        ], $user);
     }
 
     private function invoicePaymentCustomerId(TaxInvoice $invoice): ?int

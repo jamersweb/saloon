@@ -701,6 +701,13 @@ class ReportServiceReportTest extends TestCase
         ]);
         InvoicePayment::create([
             'tax_invoice_id' => $invoice->id,
+            'amount' => 100,
+            'method' => InvoicePayment::METHOD_GIFT_CARD,
+            'paid_at' => '2026-05-21 13:30:00',
+            'created_by' => $manager->id,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
             'amount' => 25,
             'method' => InvoicePayment::METHOD_CASH,
             'paid_at' => '2026-05-22 12:00:00',
@@ -717,6 +724,7 @@ class ReportServiceReportTest extends TestCase
                 ->component('Reports/Index')
                 ->where('overview.cash_total_payment', 100)
                 ->where('overview.card_total_payment', 75)
+                ->where('overview.gift_card_total_payment', 100)
             );
     }
 
@@ -754,6 +762,13 @@ class ReportServiceReportTest extends TestCase
         ]);
         InvoicePayment::create([
             'tax_invoice_id' => $invoice->id,
+            'amount' => 100,
+            'method' => InvoicePayment::METHOD_GIFT_CARD,
+            'paid_at' => '2026-05-21 13:30:00',
+            'created_by' => $manager->id,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
             'amount' => 25,
             'method' => InvoicePayment::METHOD_CASH,
             'paid_at' => '2026-05-22 12:00:00',
@@ -787,6 +802,7 @@ class ReportServiceReportTest extends TestCase
 
         $this->assertSame(125.0, $totals['cash_total_payment']);
         $this->assertSame(75.0, $totals['card_total_payment']);
+        $this->assertSame(100.0, $totals['gift_card_total_payment']);
     }
 
     public function test_summary_report_uses_service_invoice_line_totals_for_daily_revenue_and_top_services(): void

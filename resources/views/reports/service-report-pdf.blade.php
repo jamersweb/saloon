@@ -76,7 +76,10 @@
                 <div class="card-label">Card Total Payment</div>
                 <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['card_total_payment'], 2) }}</div>
             </td>
-            <td class="card-spacer"></td>
+            <td class="card">
+                <div class="card-label">Gift Voucher Payment</div>
+                <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['gift_card_total_payment'], 2) }}</div>
+            </td>
         </tr>
     </table>
 

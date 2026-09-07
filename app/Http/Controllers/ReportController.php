@@ -440,8 +440,8 @@ class ReportController extends Controller
 
     /**
      * @param  list<array<string, mixed>>  $rows
-     * @param  array{cash_total_payment?: float, card_total_payment?: float}  $paymentTotals
-     * @return array{service_count: int, service_quantity: float, subtotal: float, tax: float, total: float, cash_total_payment: float, card_total_payment: float}
+     * @param  array{cash_total_payment?: float, card_total_payment?: float, gift_card_total_payment?: float}  $paymentTotals
+     * @return array{service_count: int, service_quantity: float, subtotal: float, tax: float, total: float, cash_total_payment: float, card_total_payment: float, gift_card_total_payment: float}
      */
     private function serviceReportTotals(array $rows, array $paymentTotals = []): array
     {
@@ -453,6 +453,7 @@ class ReportController extends Controller
             'total' => round(array_sum(array_map(fn (array $row) => (float) ($row['total'] ?? 0), $rows)), 2),
             'cash_total_payment' => round((float) ($paymentTotals['cash_total_payment'] ?? 0), 2),
             'card_total_payment' => round((float) ($paymentTotals['card_total_payment'] ?? 0), 2),
+            'gift_card_total_payment' => round((float) ($paymentTotals['gift_card_total_payment'] ?? 0), 2),
         ];
     }
 
@@ -618,7 +619,7 @@ class ReportController extends Controller
 
     /**
      * @param  list<array<string, mixed>>  $rows
-     * @return array{cash_total_payment: float, card_total_payment: float}
+     * @return array{cash_total_payment: float, card_total_payment: float, gift_card_total_payment: float}
      */
     private function paymentTotalsForServiceRows(Carbon $dateFrom, Carbon $dateTo, array $rows): array
     {
@@ -634,6 +635,7 @@ class ReportController extends Controller
             return [
                 'cash_total_payment' => 0.0,
                 'card_total_payment' => 0.0,
+                'gift_card_total_payment' => 0.0,
             ];
         }
 
@@ -1296,6 +1298,7 @@ class ReportController extends Controller
                 'completed_revenue' => (float) $serviceReportTotals['total'],
                 'cash_total_payment' => $paymentTotals['cash_total_payment'],
                 'card_total_payment' => $paymentTotals['card_total_payment'],
+                'gift_card_total_payment' => $paymentTotals['gift_card_total_payment'],
                 'new_customers' => Customer::query()->whereBetween('created_at', [$dateFrom, $dateTo])->count(),
                 'inventory_items' => InventoryItem::query()->count(),
                 'inventory_low_stock' => InventoryItem::query()->whereColumn('stock_quantity', '<=', 'reorder_level')->count(),
@@ -1420,13 +1423,13 @@ class ReportController extends Controller
 
     /**
      * @param  list<int>|null  $invoiceIds
-     * @return array{cash_total_payment: float, card_total_payment: float}
+     * @return array{cash_total_payment: float, card_total_payment: float, gift_card_total_payment: float}
      */
     private function paymentTotals(Carbon $dateFrom, Carbon $dateTo, ?array $invoiceIds = null): array
     {
         $query = InvoicePayment::query()
             ->whereBetween('paid_at', [$dateFrom, $dateTo])
-            ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD]);
+            ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD, InvoicePayment::METHOD_GIFT_CARD]);
 
         if ($invoiceIds !== null) {
             $query->whereIn('tax_invoice_id', $invoiceIds);
@@ -1440,6 +1443,7 @@ class ReportController extends Controller
         return [
             'cash_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CASH] ?? 0), 2),
             'card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CARD] ?? 0), 2),
+            'gift_card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_GIFT_CARD] ?? 0), 2),
         ];
     }
 
@@ -1449,13 +1453,13 @@ class ReportController extends Controller
      * was recorded after the service day.
      *
      * @param  list<int>  $invoiceIds
-     * @return array{cash_total_payment: float, card_total_payment: float}
+     * @return array{cash_total_payment: float, card_total_payment: float, gift_card_total_payment: float}
      */
     private function paymentTotalsForInvoices(array $invoiceIds): array
     {
         $paymentTotals = InvoicePayment::query()
             ->whereIn('tax_invoice_id', $invoiceIds)
-            ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD])
+            ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD, InvoicePayment::METHOD_GIFT_CARD])
             ->selectRaw('method, SUM(amount) as total')
             ->groupBy('method')
             ->pluck('total', 'method');
@@ -1463,6 +1467,7 @@ class ReportController extends Controller
         return [
             'cash_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CASH] ?? 0), 2),
             'card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CARD] ?? 0), 2),
+            'gift_card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_GIFT_CARD] ?? 0), 2),
         ];
     }
 

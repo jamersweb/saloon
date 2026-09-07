@@ -143,7 +143,11 @@ class AppointmentController extends Controller
             : GiftCard::query()
                 ->where('status', 'active')
                 ->where('remaining_value', '>', 0)
-                ->whereIn('assigned_customer_id', $customerIds)
+                ->where(function ($query) use ($customerIds): void {
+                    $query
+                        ->whereIn('assigned_customer_id', $customerIds)
+                        ->orWhereNull('assigned_customer_id');
+                })
                 ->orderBy('code')
                 ->limit(200)
                 ->get(['id', 'code', 'remaining_value', 'assigned_customer_id'])
@@ -661,6 +665,7 @@ class AppointmentController extends Controller
                 Rule::requiredIf(fn () => $request->boolean('finish_and_pay') && $request->string('checkout_payment_method')->toString() === InvoicePayment::METHOD_GIFT_CARD),
                 'exists:gift_cards,id',
             ],
+            'checkout_gift_voucher_id' => ['nullable', 'exists:gift_cards,id'],
             'checkout_paid_at' => ['nullable', 'date'],
         ]);
 
@@ -886,6 +891,7 @@ class AppointmentController extends Controller
                         ]);
                     }
                     if ($invoice->customer_id !== null
+                        && $card->assigned_customer_id !== null
                         && (int) $card->assigned_customer_id !== (int) $invoice->customer_id) {
                         throw ValidationException::withMessages([
                             'checkout_gift_card_id' => 'Assign this gift card to the visit customer before using it for payment.',
@@ -895,7 +901,22 @@ class AppointmentController extends Controller
 
                 $paymentService = app(TaxInvoicePaymentService::class);
                 if ($method !== InvoicePayment::METHOD_GIFT_CARD) {
-                    $paymentService->applyAutoVoucher($invoice, $user);
+                    if (! empty($data['checkout_gift_voucher_id'])) {
+                        $card = GiftCard::query()->findOrFail((int) $data['checkout_gift_voucher_id']);
+                        $amount = min((float) $card->remaining_value, $invoice->balanceDue());
+
+                        if ($amount > 0.009) {
+                            $paymentService->record($invoice, [
+                                'amount' => $amount,
+                                'method' => InvoicePayment::METHOD_GIFT_CARD,
+                                'paid_at' => $paidAt,
+                                'reference_note' => 'Gift voucher - appointment #'.$appointment->id,
+                                'gift_card_id' => (int) $data['checkout_gift_voucher_id'],
+                            ], $user);
+                        }
+                    } else {
+                        $paymentService->applyAutoVoucher($invoice, $user);
+                    }
                     $invoice->refresh();
                 }
 

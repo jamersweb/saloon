@@ -522,6 +522,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         finish_and_pay: false,
         checkout_payment_method: 'cash',
         checkout_gift_card_id: '',
+        checkout_gift_voucher_id: '',
         checkout_paid_at: new Date().toISOString().slice(0, 16),
         after_photo: null,
         products: [],
@@ -1132,6 +1133,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
             finish_and_pay: false,
             checkout_payment_method: 'cash',
             checkout_gift_card_id: '',
+            checkout_gift_voucher_id: '',
             checkout_paid_at: new Date().toISOString().slice(0, 16),
             after_photo: null,
             complete_visit_service_ids: selectableServiceIds.length > 0 ? selectableServiceIds : [String(appt.id)],
@@ -1462,6 +1464,19 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const completingGiftCardShortfall = completingCustomerHasGiftCards
         ? Math.max(0, previewTotalAmount - completingCustomerGiftBalance)
         : 0;
+    const completingCustomerId = completingAppt?.customer_id ? String(completingAppt.customer_id) : '';
+    const completingAvailableGiftCards = completingCustomerId
+        ? gift_cards_for_checkout.filter((g) => !g.assigned_customer_id || String(g.assigned_customer_id) === completingCustomerId)
+        : [];
+    const selectedCheckoutGiftCard = completingAvailableGiftCards.find((g) => String(g.id) === String(completeForm.data.checkout_gift_card_id));
+    const checkoutGiftCardBalance = selectedCheckoutGiftCard
+        ? Number(selectedCheckoutGiftCard.remaining_value || 0)
+        : completingCustomerGiftBalance;
+    const selectedCheckoutVoucher = completingAvailableGiftCards.find((g) => String(g.id) === String(completeForm.data.checkout_gift_voucher_id));
+    const checkoutVoucherAmount = selectedCheckoutVoucher
+        ? Math.min(Number(selectedCheckoutVoucher.remaining_value || 0), previewTotalAmount)
+        : 0;
+    const checkoutBalanceAfterVoucher = Math.max(0, previewTotalAmount - checkoutVoucherAmount);
     const boardOpen = salonClockBoundary(bookingRules, 'opening_time', '09:00');
     const boardClose = salonClockBoundary(bookingRules, 'closing_time', '22:00');
     const boardStartMinutes = boardOpen.h * 60 + boardOpen.m;
@@ -2421,7 +2436,15 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                             <select
                                                 className="ta-input"
                                                 value={completeForm.data.checkout_payment_method}
-                                                onChange={(e) => completeForm.setData('checkout_payment_method', e.target.value)}
+                                                onChange={(e) => {
+                                                    const method = e.target.value;
+                                                    completeForm.setData((current) => ({
+                                                        ...current,
+                                                        checkout_payment_method: method,
+                                                        checkout_gift_card_id: method === 'gift_card' ? current.checkout_gift_card_id : '',
+                                                        checkout_gift_voucher_id: method === 'gift_card' ? '' : current.checkout_gift_voucher_id,
+                                                    }));
+                                                }}
                                             >
                                                 <option value="cash">Cash</option>
                                                 <option value="card">Card</option>
@@ -2451,26 +2474,44 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                                     required
                                                 >
                                                     <option value="">Select gift card</option>
-                                                    {(completeServiceId
-                                                        ? gift_cards_for_checkout.filter(
-                                                            (g) => !g.assigned_customer_id
-                                                                || String(g.assigned_customer_id)
-                                                                    === String(appointments.find((ap) => String(ap.id) === String(completeServiceId))?.customer_id),
-                                                        )
-                                                        : []
-                                                    ).map((g) => (
+                                                    {completingAvailableGiftCards.map((g) => (
                                                         <option key={g.id} value={g.id}>
-                                                            {g.code} — balance {g.remaining_value}
+                                                            {g.code} - balance {g.remaining_value}
                                                             {!g.assigned_customer_id ? ' (unassigned)' : ''}
                                                         </option>
                                                     ))}
                                                 </select>
                                                 <p className="mt-1 text-xs text-slate-500">Balance must cover the full invoice total. Cards assigned to another customer are hidden.</p>
-                                                <p className="mt-1 text-xs text-slate-500">Available balance: {formatMoney(completingCustomerGiftBalance, currencyCode)}. Invoice estimate: {formatMoney(previewTotalAmount, currencyCode)}.</p>
-                                                {completingGiftCardShortfall > 0 ? <p className="mt-1 text-xs font-semibold text-red-600">This gift card does not fully cover the visit total.</p> : null}
+                                                <p className="mt-1 text-xs text-slate-500">Available balance: {formatMoney(checkoutGiftCardBalance, currencyCode)}. Invoice estimate: {formatMoney(previewTotalAmount, currencyCode)}.</p>
+                                                {checkoutGiftCardBalance + 0.009 < previewTotalAmount ? <p className="mt-1 text-xs font-semibold text-red-600">This gift card does not fully cover the visit total.</p> : null}
                                                 {fieldError(completeForm, 'checkout_gift_card_id')}
                                             </div>
-                                        ) : null}
+                                        ) : (
+                                            <div className="md:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                                                <label className="ta-field-label">Apply gift voucher</label>
+                                                <select
+                                                    className="ta-input"
+                                                    value={completeForm.data.checkout_gift_voucher_id}
+                                                    onChange={(e) => completeForm.setData('checkout_gift_voucher_id', e.target.value)}
+                                                >
+                                                    <option value="">No voucher</option>
+                                                    {completingAvailableGiftCards.map((g) => (
+                                                        <option key={g.id} value={g.id}>
+                                                            {g.code} - {formatMoney(g.remaining_value, currencyCode)}
+                                                            {!g.assigned_customer_id ? ' (unassigned)' : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {selectedCheckoutVoucher ? (
+                                                    <p className="mt-2 text-xs font-semibold text-emerald-800">
+                                                        Voucher applies {formatMoney(checkoutVoucherAmount, currencyCode)}. Customer pays {formatMoney(checkoutBalanceAfterVoucher, currencyCode)} by {completeForm.data.checkout_payment_method.replaceAll('_', ' ')}.
+                                                    </p>
+                                                ) : (
+                                                    <p className="mt-2 text-xs text-emerald-800">Use this when the customer presents a giveaway voucher and pays the remaining balance separately.</p>
+                                                )}
+                                                {fieldError(completeForm, 'checkout_gift_voucher_id')}
+                                            </div>
+                                        )}
                                             </>
                                         ) : null}
                                     </div>

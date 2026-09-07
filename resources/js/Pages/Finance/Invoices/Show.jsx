@@ -98,6 +98,7 @@ export default function FinanceInvoicesShow({
         paid_at: currentLocalDateTime,
         reference_note: '',
         gift_card_id: '',
+        gift_voucher_id: '',
     });
     const splitForm = useForm({
         payments: [
@@ -116,7 +117,15 @@ export default function FinanceInvoicesShow({
 
     const assignedGiftCards = gift_cards_for_payment || [];
     const singleAssignedGiftCard = assignedGiftCards.length === 1 ? assignedGiftCards[0] : null;
-    const totalAssignedGiftCardBalance = assignedGiftCards.reduce((sum, card) => sum + Number(card.remaining_value || 0), 0);
+    const customerAssignedGiftCardBalance = assignedGiftCards
+        .filter((card) => card.assigned_customer_id)
+        .reduce((sum, card) => sum + Number(card.remaining_value || 0), 0);
+    const unassignedGiftVoucherCount = assignedGiftCards.filter((card) => !card.assigned_customer_id).length;
+    const selectedPaymentVoucher = assignedGiftCards.find((card) => String(card.id) === String(payForm.data.gift_voucher_id));
+    const paymentVoucherAmount = selectedPaymentVoucher
+        ? Math.min(Number(selectedPaymentVoucher.remaining_value || 0), Number(invoice.balance || 0))
+        : 0;
+    const paymentBalanceAfterVoucher = Math.max(0, Number(invoice.balance || 0) - paymentVoucherAmount);
 
     const serviceById = useMemo(() => Object.fromEntries(services.map((s) => [String(s.id), s])), [services]);
     const inventoryById = useMemo(() => Object.fromEntries(inventory_items.map((item) => [String(item.id), item])), [inventory_items]);
@@ -316,20 +325,23 @@ export default function FinanceInvoicesShow({
                     {assignedGiftCards.length > 0 && (
                         <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
                             <p className="font-medium">
-                                Gift card balance available: <strong>{money(totalAssignedGiftCardBalance, currency_code)}</strong>
+                                Assigned gift card balance: <strong>{money(customerAssignedGiftCardBalance, currency_code)}</strong>
                             </p>
                             <p className="mt-1 text-emerald-800">
-                                {assignedGiftCards.length === 1
-                                    ? `Assigned card: ${assignedGiftCards[0].code}`
-                                    : `${assignedGiftCards.length} assigned gift cards are available for this customer.`}
+                                {customerAssignedGiftCardBalance > 0
+                                    ? `${assignedGiftCards.filter((card) => card.assigned_customer_id).length} assigned gift card(s) available.`
+                                    : 'No assigned gift card balance for this customer.'}
                             </p>
-                            {invoice.total > totalAssignedGiftCardBalance ? (
+                            {unassignedGiftVoucherCount > 0 ? (
+                                <p className="mt-1 text-emerald-800">{unassignedGiftVoucherCount} unassigned giveaway voucher(s) can be applied at payment.</p>
+                            ) : null}
+                            {customerAssignedGiftCardBalance > 0 && invoice.total > customerAssignedGiftCardBalance ? (
                                 <p className="mt-1 font-medium text-red-700">
-                                    Services total is short by {money(invoice.total - totalAssignedGiftCardBalance, currency_code)}.
+                                    Services total is short by {money(invoice.total - customerAssignedGiftCardBalance, currency_code)}.
                                 </p>
-                            ) : (
+                            ) : customerAssignedGiftCardBalance > 0 ? (
                                 <p className="mt-1 text-emerald-800">Gift card balance is enough to cover these services.</p>
-                            )}
+                            ) : null}
                         </div>
                     )}
                     {invoice.cashier_name && (
@@ -669,18 +681,15 @@ export default function FinanceInvoicesShow({
                                             value={payForm.data.method}
                                             onChange={(e) => {
                                                 const method = e.target.value;
-                                                payForm.setData('method', method);
-                                                if (method === 'gift_card') {
-                                                    if (Number(invoice.amount_paid || 0) < 0.01) {
-                                                        payForm.setData('amount', String(Number(invoice.subtotal || 0)));
-                                                    }
-                                                    payForm.setData('gift_card_id', singleAssignedGiftCard ? String(singleAssignedGiftCard.id) : '');
-                                                } else {
-                                                    if (Number(invoice.balance || 0) > 0) {
-                                                        payForm.setData('amount', String(Number(invoice.balance || 0)));
-                                                    }
-                                                    payForm.setData('gift_card_id', '');
-                                                }
+                                                payForm.setData((current) => ({
+                                                    ...current,
+                                                    method,
+                                                    amount: method === 'gift_card' && Number(invoice.amount_paid || 0) < 0.01
+                                                        ? String(Number(invoice.subtotal || 0))
+                                                        : String(Number(invoice.balance || 0)),
+                                                    gift_card_id: method === 'gift_card' && singleAssignedGiftCard ? String(singleAssignedGiftCard.id) : '',
+                                                    gift_voucher_id: method === 'gift_card' ? '' : current.gift_voucher_id,
+                                                }));
                                             }}
                                         >
                                             {Object.entries(payment_methods).map(([k, label]) => (
@@ -710,7 +719,7 @@ export default function FinanceInvoicesShow({
                                                 <p className="text-sm font-medium text-red-700">No active gift card with remaining balance is assigned to this customer.</p>
                                             ) : singleAssignedGiftCard ? (
                                                 <>
-                                                    <p className="text-sm font-medium text-emerald-900">Assigned gift card: <strong>{singleAssignedGiftCard.code}</strong></p>
+                                                    <p className="text-sm font-medium text-emerald-900">{singleAssignedGiftCard.assigned_customer_id ? 'Assigned gift card' : 'Presented voucher'}: <strong>{singleAssignedGiftCard.code}</strong></p>
                                                     <p className="mt-1 text-sm text-emerald-800">Remaining balance: {money(singleAssignedGiftCard.remaining_value, currency_code)}</p>
                                                 </>
                                             ) : (
@@ -732,6 +741,32 @@ export default function FinanceInvoicesShow({
                                                     {payForm.errors.gift_card_id && <p className="mt-1 text-xs text-red-600">{payForm.errors.gift_card_id}</p>}
                                                 </div>
                                             )}
+                                        </div>
+                                    ) : null}
+                                    {payForm.data.method !== 'gift_card' ? (
+                                        <div className="md:col-span-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                                            <label className="ta-field-label">Apply gift voucher</label>
+                                            <select
+                                                className="ta-input"
+                                                value={payForm.data.gift_voucher_id}
+                                                onChange={(e) => payForm.setData('gift_voucher_id', e.target.value)}
+                                            >
+                                                <option value="">No voucher</option>
+                                                {assignedGiftCards.map((card) => (
+                                                    <option key={card.id} value={card.id}>
+                                                        {card.code} ({money(card.remaining_value, currency_code)})
+                                                        {!card.assigned_customer_id ? ' - unassigned' : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {selectedPaymentVoucher ? (
+                                                <p className="mt-2 text-xs font-semibold text-emerald-800">
+                                                    Voucher applies {money(paymentVoucherAmount, currency_code)}. Customer pays {money(paymentBalanceAfterVoucher, currency_code)} by {payForm.data.method.replaceAll('_', ' ')}.
+                                                </p>
+                                            ) : (
+                                                <p className="mt-2 text-xs text-emerald-800">Use this when the customer presents a giveaway voucher and pays the remaining balance separately.</p>
+                                            )}
+                                            {payForm.errors.gift_voucher_id && <p className="mt-1 text-xs text-red-600">{payForm.errors.gift_voucher_id}</p>}
                                         </div>
                                     ) : null}
                                     <button type="submit" className="ta-btn-primary md:col-span-4" disabled={payForm.processing}>

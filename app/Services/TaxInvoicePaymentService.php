@@ -56,11 +56,18 @@ class TaxInvoicePaymentService
                     ]);
                 }
 
-                if ($invoice->customer_id !== null
-                    && (int) $card->assigned_customer_id !== (int) $invoice->customer_id) {
+                $paymentCustomerId = $this->paymentCustomerId($invoice);
+
+                if ($paymentCustomerId !== null
+                    && $card->assigned_customer_id !== null
+                    && (int) $card->assigned_customer_id !== $paymentCustomerId) {
                     throw ValidationException::withMessages([
                         'gift_card_id' => 'Assign this gift card to the invoice customer before using it for payment.',
                     ]);
+                }
+
+                if ($paymentCustomerId !== null && $card->assigned_customer_id === null) {
+                    $card->update(['assigned_customer_id' => $paymentCustomerId]);
                 }
 
                 $reason = $invoice->invoice_number
@@ -165,5 +172,20 @@ class TaxInvoicePaymentService
         });
 
         return $created;
+    }
+
+    private function paymentCustomerId(TaxInvoice $invoice): ?int
+    {
+        if ($invoice->customer_id !== null) {
+            return (int) $invoice->customer_id;
+        }
+
+        if ($invoice->appointment_id === null) {
+            return null;
+        }
+
+        $invoice->loadMissing('appointment:id,customer_id');
+
+        return $invoice->appointment?->customer_id ? (int) $invoice->appointment->customer_id : null;
     }
 }
