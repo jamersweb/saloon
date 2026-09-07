@@ -8,6 +8,7 @@ use App\Models\CampaignTemplate;
 use App\Models\CommunicationLog;
 use App\Models\Customer;
 use App\Models\CustomerDueService;
+use App\Models\WhatsAppMessageTemplate;
 use Illuminate\Database\Eloquent\Builder;
 
 class CampaignDispatchService
@@ -19,6 +20,15 @@ class CampaignDispatchService
     public function dispatch(Campaign $campaign): array
     {
         $campaign->loadMissing('template');
+
+        if ($campaign->channel === 'whatsapp' && ! $this->hasApprovedWhatsAppTemplate($campaign->template)) {
+            $campaign->update([
+                'status' => 'failed',
+                'last_run_at' => now(),
+            ]);
+
+            return ['queued' => 0, 'sent' => 0, 'failed' => 0];
+        }
 
         $queued = 0;
 
@@ -175,6 +185,19 @@ class CampaignDispatchService
             ->where('channel', $campaign->channel)
             ->where('context', 'campaign:'.$campaign->id)
             ->whereIn('status', ['queued', 'sent'])
+            ->exists();
+    }
+
+    private function hasApprovedWhatsAppTemplate(?CampaignTemplate $template): bool
+    {
+        if (! $template || ($template->whatsapp_message_type ?? 'text') !== 'template' || blank($template->whatsapp_template_name)) {
+            return false;
+        }
+
+        return WhatsAppMessageTemplate::query()
+            ->where('name', (string) $template->whatsapp_template_name)
+            ->when(filled($template->whatsapp_template_language_code), fn ($query) => $query->where('language', (string) $template->whatsapp_template_language_code))
+            ->whereRaw('UPPER(status) = ?', ['APPROVED'])
             ->exists();
     }
 }

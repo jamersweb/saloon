@@ -145,7 +145,9 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
     const tagSelectOptions = tags.map((tag) => ({ value: tag.id, label: tag.name }));
     const activeTagSelectOptions = tags.filter((tag) => tag.is_active).map((tag) => ({ value: tag.id, label: tag.name }));
     const approvedWhatsappTemplates = whatsappTemplateOptions.filter((template) => String(template.status || '').toUpperCase() === 'APPROVED');
-    const campaignTemplateSelectOptions = campaignTemplateOptions.map((template) => ({ value: template.id, label: `${template.name} (${template.channel})` }));
+    const campaignTemplateSelectOptions = campaignTemplateOptions
+        .filter((template) => template.channel !== 'whatsapp' || template.whatsapp_ready)
+        .map((template) => ({ value: template.id, label: `${template.name} (${template.channel})` }));
     const whatsappTemplateSelectOptions = approvedWhatsappTemplates.map((template) => ({ value: template.id, label: `${template.name} (${template.language}, ${template.category || 'template'})` }));
     const whatsappTemplateNameOptions = approvedWhatsappTemplates.map((template) => ({ value: template.name, label: `${template.name} (${template.language}, ${template.category || 'template'})` }));
 

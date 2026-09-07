@@ -60,6 +60,21 @@ class WhatsAppDeliveryTest extends TestCase
             'status' => 'pending',
         ]);
 
+        FinanceSetting::current()->update([
+            'whatsapp_due_service_template_name' => 'due_service_notice',
+            'whatsapp_default_language_code' => 'en_US',
+        ]);
+
+        WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-due-service-notice',
+            'name' => 'due_service_notice',
+            'language' => 'en_US',
+            'category' => 'UTILITY',
+            'status' => 'APPROVED',
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}, your {{2}} is due on {{3}}.']],
+            'last_synced_at' => now(),
+        ]);
+
         $this->actingAs($user)
             ->post(route('customers.automation.due-services.remind', $dueService), [
                 'channel' => 'whatsapp',
@@ -73,7 +88,7 @@ class WhatsAppDeliveryTest extends TestCase
             'channel' => 'whatsapp',
             'status' => 'queued',
             'provider_status' => 'queued',
-            'message_type' => 'text',
+            'message_type' => 'template',
         ]);
         $this->assertNotNull($dueService->fresh()->reminder_sent_at);
     }
@@ -100,7 +115,20 @@ class WhatsAppDeliveryTest extends TestCase
             'name' => 'WhatsApp Blast',
             'channel' => 'whatsapp',
             'content' => 'Hi {name}, this is a test campaign.',
+            'whatsapp_message_type' => 'template',
+            'whatsapp_template_name' => 'campaign_notice',
+            'whatsapp_template_language_code' => 'en_US',
             'is_active' => true,
+        ]);
+
+        WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-campaign-notice',
+            'name' => 'campaign_notice',
+            'language' => 'en_US',
+            'category' => 'MARKETING',
+            'status' => 'APPROVED',
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}']],
+            'last_synced_at' => now(),
         ]);
 
         $campaign = Campaign::create([
@@ -127,6 +155,53 @@ class WhatsAppDeliveryTest extends TestCase
         $this->assertNotNull($log);
         $this->assertSame('queued', $log->status);
         $this->assertSame('queued', $log->provider_status);
+        $this->assertSame('template', $log->message_type);
+    }
+
+    public function test_whatsapp_campaign_dispatch_rejects_text_campaign_messages(): void
+    {
+        Queue::fake();
+
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        Customer::create([
+            'customer_code' => 'CUST-WA-TEXT-CAMPAIGN',
+            'name' => 'Text Campaign Customer',
+            'phone' => '971505555555',
+            'is_active' => true,
+        ]);
+
+        $template = CampaignTemplate::create([
+            'name' => 'Old WhatsApp Text Blast',
+            'channel' => 'whatsapp',
+            'content' => 'Hi {name}, this text campaign should not send.',
+            'whatsapp_message_type' => 'text',
+            'is_active' => true,
+        ]);
+
+        $campaign = Campaign::create([
+            'name' => 'Blocked Text Campaign',
+            'campaign_template_id' => $template->id,
+            'channel' => 'whatsapp',
+            'audience_type' => 'all',
+            'status' => 'draft',
+            'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->from(route('customers.automation.index'))
+            ->post(route('customers.automation.campaigns.dispatch', $campaign))
+            ->assertSessionHasErrors('campaign_template_id');
+
+        Queue::assertNothingPushed();
+        $this->assertDatabaseMissing('communication_logs', [
+            'context' => 'campaign:'.$campaign->id,
+        ]);
     }
 
     public function test_campaign_dispatch_includes_whatsapp_document_header_for_template_campaigns(): void
@@ -158,6 +233,16 @@ class WhatsAppDeliveryTest extends TestCase
             'whatsapp_header_media_url' => 'https://example.com/vina-luxury-beauty-offer.pdf',
             'whatsapp_header_media_filename' => 'vina-luxury-beauty-offer.pdf',
             'is_active' => true,
+        ]);
+
+        WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-vina-emirati-womens-day',
+            'name' => 'vina_emirati_womens_day_2026_offer',
+            'language' => 'en_US',
+            'category' => 'MARKETING',
+            'status' => 'APPROVED',
+            'components' => [['type' => 'BODY', 'text' => 'Dear {{1}}, view our latest offer.']],
+            'last_synced_at' => now(),
         ]);
 
         $campaign = Campaign::create([
@@ -220,7 +305,20 @@ class WhatsAppDeliveryTest extends TestCase
             'name' => 'Tagged WhatsApp Blast',
             'channel' => 'whatsapp',
             'content' => 'Hi {name}, this is a tagged campaign.',
+            'whatsapp_message_type' => 'template',
+            'whatsapp_template_name' => 'tagged_campaign_notice',
+            'whatsapp_template_language_code' => 'en_US',
             'is_active' => true,
+        ]);
+
+        WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-tagged-campaign-notice',
+            'name' => 'tagged_campaign_notice',
+            'language' => 'en_US',
+            'category' => 'MARKETING',
+            'status' => 'APPROVED',
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}']],
+            'last_synced_at' => now(),
         ]);
 
         $campaign = Campaign::create([
@@ -280,7 +378,20 @@ class WhatsAppDeliveryTest extends TestCase
             'name' => 'Retry WhatsApp Blast',
             'channel' => 'whatsapp',
             'content' => 'Hi {name}, this is a retry-safe campaign.',
+            'whatsapp_message_type' => 'template',
+            'whatsapp_template_name' => 'retry_campaign_notice',
+            'whatsapp_template_language_code' => 'en_US',
             'is_active' => true,
+        ]);
+
+        WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-retry-campaign-notice',
+            'name' => 'retry_campaign_notice',
+            'language' => 'en_US',
+            'category' => 'MARKETING',
+            'status' => 'APPROVED',
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}']],
+            'last_synced_at' => now(),
         ]);
 
         $campaign = Campaign::create([
@@ -538,6 +649,21 @@ class WhatsAppDeliveryTest extends TestCase
             'salon_service_id' => $service->id,
             'due_date' => now()->toDateString(),
             'status' => 'pending',
+        ]);
+
+        FinanceSetting::current()->update([
+            'whatsapp_due_service_template_name' => 'due_service_notice',
+            'whatsapp_default_language_code' => 'en_US',
+        ]);
+
+        WhatsAppMessageTemplate::create([
+            'template_uid' => 'meta-due-service-invalid-recipient',
+            'name' => 'due_service_notice',
+            'language' => 'en_US',
+            'category' => 'UTILITY',
+            'status' => 'APPROVED',
+            'components' => [['type' => 'BODY', 'text' => 'Hello {{1}}, your {{2}} is due on {{3}}.']],
+            'last_synced_at' => now(),
         ]);
 
         $this->actingAs($user)

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\FinanceSetting;
 use App\Models\CustomerDueService;
+use App\Models\WhatsAppMessageTemplate;
 use App\Services\CommunicationDeliveryService;
 use Illuminate\Console\Command;
 
@@ -74,6 +75,14 @@ class SendDueServiceReminders extends Command
 
             foreach ($attemptChannels as $attemptChannel) {
                 $recipient = $this->resolveRecipient($dueService, $attemptChannel);
+                $deliveryOptions = $this->deliveryOptions($attemptChannel, $dueService);
+
+                if (($deliveryOptions['configuration_error'] ?? null) !== null) {
+                    $this->warn((string) $deliveryOptions['configuration_error']);
+
+                    continue;
+                }
+
                 $log = $communicationDeliveryService->deliver(
                     $dueService->customer,
                     $attemptChannel,
@@ -85,7 +94,7 @@ class SendDueServiceReminders extends Command
                         $dueService->due_date?->toDateString()
                     ),
                     'due_service_reminder_auto:' . $dueService->id,
-                    $this->deliveryOptions($attemptChannel, $dueService),
+                    $deliveryOptions,
                 );
 
                 if (! in_array($log->status, ['queued', 'sent'], true)) {
@@ -129,28 +138,44 @@ class SendDueServiceReminders extends Command
         $templateName = $settings->whatsapp_due_service_template_name;
         $languageCode = $settings->whatsapp_default_language_code ?: config('services.whatsapp.default_language_code', 'en_US');
 
-        if (filled($templateName)) {
+        if (! filled($templateName) || ! $this->isApprovedWhatsAppTemplateName((string) $templateName, (string) $languageCode)) {
             return [
-                'async' => true,
-                'message_type' => 'template',
-                'template_name' => $templateName,
-                'language_code' => $languageCode,
-                'components' => [
-                    [
-                        'type' => 'body',
-                        'parameters' => [
-                            ['type' => 'text', 'text' => (string) ($dueService->customer?->name ?? 'Customer')],
-                            ['type' => 'text', 'text' => (string) ($dueService->service?->name ?? 'service')],
-                            ['type' => 'text', 'text' => (string) $dueService->due_date?->toDateString()],
-                        ],
-                    ],
-                ],
+                'async' => false,
+                'message_type' => 'text',
+                'configuration_error' => 'Configure an approved due-service WhatsApp template before sending WhatsApp reminders.',
             ];
         }
 
         return [
             'async' => true,
-            'message_type' => 'text',
+            'message_type' => 'template',
+            'template_name' => $templateName,
+            'language_code' => $languageCode,
+            'components' => [
+                [
+                    'type' => 'body',
+                    'parameters' => [
+                        ['type' => 'text', 'text' => (string) ($dueService->customer?->name ?? 'Customer')],
+                        ['type' => 'text', 'text' => (string) ($dueService->service?->name ?? 'service')],
+                        ['type' => 'text', 'text' => (string) $dueService->due_date?->toDateString()],
+                    ],
+                ],
+            ],
         ];
+    }
+
+    private function isApprovedWhatsAppTemplateName(string $name, string $language = ''): bool
+    {
+        $name = trim($name);
+
+        if ($name === '') {
+            return false;
+        }
+
+        return WhatsAppMessageTemplate::query()
+            ->where('name', $name)
+            ->when(trim($language) !== '', fn ($query) => $query->where('language', trim($language)))
+            ->whereRaw('UPPER(status) = ?', ['APPROVED'])
+            ->exists();
     }
 }

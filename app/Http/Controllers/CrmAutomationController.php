@@ -147,11 +147,18 @@ class CrmAutomationController extends Controller
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->limit(500)
-                ->get(['id', 'name', 'channel'])
+                ->get(['id', 'name', 'channel', 'whatsapp_message_type', 'whatsapp_template_name', 'whatsapp_template_language_code'])
                 ->map(fn (CampaignTemplate $template) => [
                     'id' => $template->id,
                     'name' => $template->name,
                     'channel' => $template->channel,
+                    'whatsapp_message_type' => $template->whatsapp_message_type,
+                    'whatsapp_template_name' => $template->whatsapp_template_name,
+                    'whatsapp_template_language_code' => $template->whatsapp_template_language_code,
+                    'whatsapp_ready' => $template->channel !== 'whatsapp' || $this->isApprovedWhatsAppTemplateName(
+                        (string) $template->whatsapp_template_name,
+                        (string) $template->whatsapp_template_language_code,
+                    ),
                 ]),
             'whatsappTemplateOptions' => WhatsAppMessageTemplate::query()
                 ->orderBy('name')
@@ -395,6 +402,10 @@ class CrmAutomationController extends Controller
 
         $template = CampaignTemplate::findOrFail((int) $data['campaign_template_id']);
 
+        if ($error = $this->whatsAppCampaignTemplateError($template)) {
+            return back()->withErrors(['campaign_template_id' => $error]);
+        }
+
         if ($data['audience_type'] === 'tag' && empty($data['customer_tag_id'])) {
             return back()->withErrors(['customer_tag_id' => 'Tag is required for tag-based audience.']);
         }
@@ -564,9 +575,14 @@ class CrmAutomationController extends Controller
     public function dispatchCampaign(Request $request, Campaign $campaign, CampaignDispatchService $dispatcher): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
+        $campaign->loadMissing('template');
 
         if ($campaign->status === 'cancelled') {
             return back()->withErrors(['status' => 'Cancelled campaign cannot be dispatched.']);
+        }
+
+        if ($error = $this->whatsAppCampaignTemplateError($campaign->template)) {
+            return back()->withErrors(['campaign_template_id' => $error]);
         }
 
         $result = $dispatcher->dispatch($campaign);
@@ -590,6 +606,13 @@ class CrmAutomationController extends Controller
         $queued = 0;
 
         foreach ($campaigns as $campaign) {
+            $campaign->loadMissing('template');
+            if ($this->whatsAppCampaignTemplateError($campaign->template)) {
+                $campaign->update(['status' => 'failed']);
+
+                continue;
+            }
+
             $result = $dispatcher->dispatch($campaign);
             $queued += $result['queued'];
         }
@@ -1105,28 +1128,27 @@ class CrmAutomationController extends Controller
         $templateName = $settings->whatsapp_due_service_template_name;
         $languageCode = $settings->whatsapp_default_language_code ?: config('services.whatsapp.default_language_code', 'en_US');
 
-        if (filled($templateName)) {
-            return [
-                'async' => true,
-                'message_type' => 'template',
-                'template_name' => $templateName,
-                'language_code' => $languageCode,
-                'components' => [
-                    [
-                        'type' => 'body',
-                        'parameters' => [
-                            ['type' => 'text', 'text' => (string) ($dueService->customer?->name ?? 'Customer')],
-                            ['type' => 'text', 'text' => (string) ($dueService->service?->name ?? 'service')],
-                            ['type' => 'text', 'text' => (string) $dueService->due_date?->toDateString()],
-                        ],
-                    ],
-                ],
-            ];
+        if (! filled($templateName) || ! $this->isApprovedWhatsAppTemplateName((string) $templateName, (string) $languageCode)) {
+            throw ValidationException::withMessages([
+                'channel' => 'Configure an approved due-service WhatsApp template before sending WhatsApp reminders.',
+            ]);
         }
 
         return [
             'async' => true,
-            'message_type' => 'text',
+            'message_type' => 'template',
+            'template_name' => $templateName,
+            'language_code' => $languageCode,
+            'components' => [
+                [
+                    'type' => 'body',
+                    'parameters' => [
+                        ['type' => 'text', 'text' => (string) ($dueService->customer?->name ?? 'Customer')],
+                        ['type' => 'text', 'text' => (string) ($dueService->service?->name ?? 'service')],
+                        ['type' => 'text', 'text' => (string) $dueService->due_date?->toDateString()],
+                    ],
+                ],
+            ],
         ];
     }
 
@@ -1315,6 +1337,38 @@ class CrmAutomationController extends Controller
         } catch (\InvalidArgumentException) {
             return false;
         }
+    }
+
+    private function whatsAppCampaignTemplateError(?CampaignTemplate $template): ?string
+    {
+        if (! $template || $template->channel !== 'whatsapp') {
+            return null;
+        }
+
+        if (($template->whatsapp_message_type ?? 'text') !== 'template' || blank($template->whatsapp_template_name)) {
+            return 'WhatsApp campaigns must use an approved WhatsApp template from WhatsApp Approval.';
+        }
+
+        if (! $this->isApprovedWhatsAppTemplateName((string) $template->whatsapp_template_name, (string) $template->whatsapp_template_language_code)) {
+            return 'The selected WhatsApp campaign template is not approved yet.';
+        }
+
+        return null;
+    }
+
+    private function isApprovedWhatsAppTemplateName(string $name, string $language = ''): bool
+    {
+        $name = trim($name);
+
+        if ($name === '') {
+            return false;
+        }
+
+        return WhatsAppMessageTemplate::query()
+            ->where('name', $name)
+            ->when(trim($language) !== '', fn ($query) => $query->where('language', trim($language)))
+            ->whereRaw('UPPER(status) = ?', ['APPROVED'])
+            ->exists();
     }
 
     private function validateMetaTemplatePayload(Request $request): array
