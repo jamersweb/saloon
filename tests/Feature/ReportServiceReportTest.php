@@ -466,6 +466,85 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(128.0, $rows[0]['subtotal']);
         $this->assertSame(6.4, $rows[0]['tax']);
         $this->assertSame(134.4, $rows[0]['total']);
+        $this->assertCount(2, $rows[0]['items']);
+        $this->assertSame(60.0, $rows[0]['items'][0]['unit_price']);
+        $this->assertSame(100.0, $rows[0]['items'][1]['unit_price']);
+    }
+
+    public function test_service_pdf_keeps_extension_quantities_separate_and_shows_package_payments(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Extension Client', 'RCT-EXT');
+        $colorService = SalonService::create([
+            'name' => 'Hair color Root',
+            'category' => 'Hair',
+            'duration_minutes' => 60,
+            'price' => 300,
+            'is_active' => true,
+        ]);
+        foreach ([
+            [$appointment->service_id, 'Hair Extension Fix & Remove', 44, 6, 176, 88, 4.4, 92.4],
+            [$colorService->id, 'Hair color Root', 1, 300, 100, 200, 10, 210],
+        ] as [$serviceId, $description, $quantity, $price, $discount, $subtotal, $tax, $total]) {
+            $invoice->items()->create([
+                'salon_service_id' => $serviceId,
+                'description' => $description,
+                'quantity' => $quantity,
+                'unit_price' => $price,
+                'discount_amount' => $discount,
+                'line_subtotal' => $subtotal,
+                'tax_rate_percent' => 5,
+                'line_tax' => $tax,
+                'line_total' => $total,
+            ]);
+        }
+        $invoice->update(['subtotal' => 288, 'vat_amount' => 14.4, 'total' => 302.4]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 252,
+            'method' => InvoicePayment::METHOD_PACKAGE_CREDIT,
+            'paid_at' => '2026-05-21 19:00:00',
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 50.4,
+            'method' => InvoicePayment::METHOD_BANK_TRANSFER,
+            'paid_at' => '2026-05-22 10:00:00',
+        ]);
+
+        $controller = app(ReportController::class);
+        $dateFrom = Carbon::parse('2026-05-21')->startOfDay();
+        $dateTo = Carbon::parse('2026-05-21')->endOfDay();
+        $filters = ['customer_name' => '', 'invoice_number' => ''];
+        $rows = (new ReflectionMethod($controller, 'collectAppointmentServiceReportRows'))
+            ->invoke($controller, $dateFrom, $dateTo, $filters);
+        $payments = (new ReflectionMethod($controller, 'paymentTotalsForServiceRows'))
+            ->invoke($controller, $dateFrom, $dateTo, $rows);
+        $totals = (new ReflectionMethod($controller, 'serviceReportTotals'))
+            ->invoke($controller, $rows, $payments);
+
+        $this->assertSame(252.0, $totals['package_credit_total_payment']);
+        $this->assertSame(50.4, $totals['other_total_payment']);
+        $this->assertSame(302.4, $totals['total_payment']);
+        $this->assertSame(0.0, $totals['card_total_payment']);
+        $this->assertSame(1, $totals['service_count']);
+        $this->assertSame(44.0, $rows[0]['items'][0]['quantity']);
+        $this->assertSame(1.0, $rows[0]['items'][1]['quantity']);
+
+        $html = view('reports.service-report-pdf', [
+            'dateFrom' => $dateFrom, 'dateTo' => $dateTo, 'filters' => $filters,
+            'currencyCode' => 'AED', 'serviceReports' => $rows, 'totals' => $totals,
+        ])->render();
+        $dom = new \DOMDocument;
+        @$dom->loadHTML($html);
+        $xpath = new \DOMXPath($dom);
+        $itemRows = $xpath->query('//table[@class="grid"]/tbody/tr');
+        $this->assertSame(2, $itemRows->length);
+        $firstCells = $xpath->query('td', $itemRows->item(0));
+        $this->assertSame('44', trim($firstCells->item(4)->textContent));
+        $this->assertSame('6.00', trim($firstCells->item(5)->textContent));
+        $this->assertSame('176.00', trim($firstCells->item(6)->textContent));
+        $this->assertSame('88.00', trim($firstCells->item(7)->textContent));
+        $this->assertStringContainsString('Package Credit Payment', $html);
     }
 
     public function test_service_report_excludes_package_sales_invoice_lines_from_service_rows(): void

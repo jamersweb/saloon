@@ -366,8 +366,8 @@ class ReportController extends Controller
     }
 
     /**
-     * The service PDF is appointment-facing, so one appointment should print
-     * once even when checkout has several invoice service lines for it.
+     * Count each appointment once, retaining its individual invoice items for
+     * the PDF so different services do not share a quantity or unit price.
      *
      * @param  array{customer_name: string, invoice_number: string}  $filters
      * @return list<array<string, mixed>>
@@ -421,6 +421,7 @@ class ReportController extends Controller
             ->values();
 
         return array_replace($first, [
+            'items' => $rows->all(),
             'id' => isset($first['appointment_id']) ? (string) $first['appointment_id'] : (string) $first['id'],
             'invoice_number' => $invoiceNumbers->implode(', '),
             'invoice_ids' => $invoiceIds->all(),
@@ -440,8 +441,8 @@ class ReportController extends Controller
 
     /**
      * @param  list<array<string, mixed>>  $rows
-     * @param  array{cash_total_payment?: float, card_total_payment?: float, gift_card_total_payment?: float}  $paymentTotals
-     * @return array{service_count: int, service_quantity: float, subtotal: float, tax: float, total: float, cash_total_payment: float, card_total_payment: float, gift_card_total_payment: float}
+     * @param  array<string, float>  $paymentTotals
+     * @return array<string, int|float>
      */
     private function serviceReportTotals(array $rows, array $paymentTotals = []): array
     {
@@ -454,6 +455,9 @@ class ReportController extends Controller
             'cash_total_payment' => round((float) ($paymentTotals['cash_total_payment'] ?? 0), 2),
             'card_total_payment' => round((float) ($paymentTotals['card_total_payment'] ?? 0), 2),
             'gift_card_total_payment' => round((float) ($paymentTotals['gift_card_total_payment'] ?? 0), 2),
+            'package_credit_total_payment' => round((float) ($paymentTotals['package_credit_total_payment'] ?? 0), 2),
+            'other_total_payment' => round((float) ($paymentTotals['other_total_payment'] ?? 0), 2),
+            'total_payment' => round((float) ($paymentTotals['total_payment'] ?? 0), 2),
         ];
     }
 
@@ -619,7 +623,7 @@ class ReportController extends Controller
 
     /**
      * @param  list<array<string, mixed>>  $rows
-     * @return array{cash_total_payment: float, card_total_payment: float, gift_card_total_payment: float}
+     * @return array<string, float>
      */
     private function paymentTotalsForServiceRows(Carbon $dateFrom, Carbon $dateTo, array $rows): array
     {
@@ -632,11 +636,7 @@ class ReportController extends Controller
             ->all();
 
         if ($invoiceIds === []) {
-            return [
-                'cash_total_payment' => 0.0,
-                'card_total_payment' => 0.0,
-                'gift_card_total_payment' => 0.0,
-            ];
+            return $this->paymentTotalsForInvoices([]);
         }
 
         return $this->paymentTotalsForInvoices($invoiceIds);
@@ -1449,17 +1449,16 @@ class ReportController extends Controller
 
     /**
      * Service reports are service-date based. Once an invoice is included in the
-     * report rows, show the cash/card collected for that invoice even if payment
+     * report rows, show every payment method for that invoice even if payment
      * was recorded after the service day.
      *
      * @param  list<int>  $invoiceIds
-     * @return array{cash_total_payment: float, card_total_payment: float, gift_card_total_payment: float}
+     * @return array<string, float>
      */
     private function paymentTotalsForInvoices(array $invoiceIds): array
     {
         $paymentTotals = InvoicePayment::query()
             ->whereIn('tax_invoice_id', $invoiceIds)
-            ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD, InvoicePayment::METHOD_GIFT_CARD])
             ->selectRaw('method, SUM(amount) as total')
             ->groupBy('method')
             ->pluck('total', 'method');
@@ -1468,6 +1467,14 @@ class ReportController extends Controller
             'cash_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CASH] ?? 0), 2),
             'card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_CARD] ?? 0), 2),
             'gift_card_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_GIFT_CARD] ?? 0), 2),
+            'package_credit_total_payment' => round((float) ($paymentTotals[InvoicePayment::METHOD_PACKAGE_CREDIT] ?? 0), 2),
+            'other_total_payment' => round((float) $paymentTotals->except([
+                InvoicePayment::METHOD_CASH,
+                InvoicePayment::METHOD_CARD,
+                InvoicePayment::METHOD_GIFT_CARD,
+                InvoicePayment::METHOD_PACKAGE_CREDIT,
+            ])->sum(), 2),
+            'total_payment' => round((float) $paymentTotals->sum(), 2),
         ];
     }
 

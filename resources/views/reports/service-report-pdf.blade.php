@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <title>Service Reports</title>
     <style>
-        body { font-family: DejaVu Sans, sans-serif; color: #0f172a; font-size: 10px; }
+        @page { margin: 24px; }
+        body { font-family: DejaVu Sans, sans-serif; color: #0f172a; font-size: 9px; }
         .report-header { background: #111827; color: #fff; padding: 12px 14px; margin: -8px -8px 12px; }
         h1 { margin: 0 0 5px; font-size: 20px; font-weight: 800; }
         .muted { color: #475569; }
@@ -15,18 +16,19 @@
         .card-value { font-size: 13px; line-height: 1.2; font-weight: 800; margin-top: 3px; white-space: normal; word-break: break-word; }
         .card-spacer { width: 25%; }
         .grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .grid th, .grid td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: left; vertical-align: top; }
-        .grid th { background: #e2e8f0; font-size: 9px; text-transform: uppercase; color: #0f172a; font-weight: 800; }
+        .grid th, .grid td { border: 1px solid #cbd5e1; padding: 4px; text-align: left; vertical-align: top; word-wrap: break-word; }
+        .grid th { background: #e2e8f0; font-size: 8px; text-transform: uppercase; color: #0f172a; font-weight: 800; }
+        .grid tr { page-break-inside: avoid; }
         .grid tfoot td { background: #fef3c7; font-weight: 800; }
-        .date { width: 66px; }
-        .customer { width: 102px; }
-        .invoice { width: 78px; }
-        .service { width: 110px; }
-        .qty { width: 34px; text-align: right; }
-        .money { width: 72px; text-align: right; }
-        .staff { width: 80px; }
+        .date { width: 7%; }
+        .customer { width: 11%; }
+        .invoice { width: 7%; }
+        .service { width: 18%; }
+        .qty { width: 4%; }
+        .money { width: 7%; }
+        .staff { width: 10%; }
         .report { white-space: pre-line; word-wrap: break-word; }
-        .right { text-align: right; }
+        .grid .right { text-align: right; }
     </style>
 </head>
 <body>
@@ -81,7 +83,24 @@
                 <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['gift_card_total_payment'], 2) }}</div>
             </td>
         </tr>
+        <tr>
+            <td class="card">
+                <div class="card-label">Package Credit Payment</div>
+                <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['package_credit_total_payment'], 2) }}</div>
+            </td>
+            <td class="card">
+                <div class="card-label">Other Payments</div>
+                <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['other_total_payment'], 2) }}</div>
+            </td>
+            <td class="card">
+                <div class="card-label">Total Payments</div>
+                <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['total_payment'], 2) }}</div>
+            </td>
+            <td class="card-spacer"></td>
+        </tr>
     </table>
+
+    <p class="muted">Amounts in {{ $currencyCode }}. Each billed item is shown separately; subtotal is quantity &times; unit price less discount. Payments include all recorded payments for the listed invoices, including payments made after the service date.</p>
 
     <table class="grid">
         <thead>
@@ -91,7 +110,8 @@
                 <th class="invoice">Invoice No.</th>
                 <th class="service">Items</th>
                 <th class="qty">Qty</th>
-                <th class="money">Amount</th>
+                <th class="money">Unit Price</th>
+                <th class="money">Discount</th>
                 <th class="money">Subtotal</th>
                 <th class="money">Tax</th>
                 <th class="money">Final Earning</th>
@@ -100,7 +120,8 @@
             </tr>
         </thead>
         <tbody>
-            @forelse($serviceReports as $row)
+            @forelse($serviceReports as $appointmentRow)
+                @foreach($appointmentRow['items'] ?? [$appointmentRow] as $row)
                 <tr>
                     <td>{{ $row['date'] }}</td>
                     <td>
@@ -112,15 +133,17 @@
                     <td>{{ $row['invoice_number'] ?: '-' }}</td>
                     <td>{{ $row['service_name'] ?: '-' }}</td>
                     <td class="right">{{ rtrim(rtrim(number_format((float) $row['quantity'], 2), '0'), '.') }}</td>
-                    <td class="right">{{ $currencyCode }} {{ number_format((float) $row['unit_price'], 2) }}</td>
-                    <td class="right">{{ $currencyCode }} {{ number_format((float) $row['subtotal'], 2) }}</td>
-                    <td class="right">{{ $currencyCode }} {{ number_format((float) $row['tax'], 2) }}</td>
-                    <td class="right">{{ $currencyCode }} {{ number_format((float) $row['total'], 2) }}</td>
+                    <td class="right">{{ number_format((float) $row['unit_price'], 2) }}</td>
+                    <td class="right">{{ number_format((float) $row['discount_amount'], 2) }}</td>
+                    <td class="right">{{ number_format((float) $row['subtotal'], 2) }}</td>
+                    <td class="right">{{ number_format((float) $row['tax'], 2) }}</td>
+                    <td class="right">{{ number_format((float) $row['total'], 2) }}</td>
                     <td>{{ $row['staff_name'] ?: '-' }}</td>
                     <td class="report">{{ $row['service_report'] ?: '-' }}</td>
                 </tr>
+                @endforeach
             @empty
-                <tr><td colspan="11">No report rows found for the selected filters.</td></tr>
+                <tr><td colspan="12">No report rows found for the selected filters.</td></tr>
             @endforelse
         </tbody>
         @if(count($serviceReports) > 0)
@@ -129,9 +152,10 @@
                     <td colspan="4">Report total</td>
                     <td class="right">{{ rtrim(rtrim(number_format((float) $totals['service_quantity'], 2), '0'), '.') }}</td>
                     <td></td>
-                    <td class="right">{{ $currencyCode }} {{ number_format((float) $totals['subtotal'], 2) }}</td>
-                    <td class="right">{{ $currencyCode }} {{ number_format((float) $totals['tax'], 2) }}</td>
-                    <td class="right">{{ $currencyCode }} {{ number_format((float) $totals['total'], 2) }}</td>
+                    <td></td>
+                    <td class="right">{{ number_format((float) $totals['subtotal'], 2) }}</td>
+                    <td class="right">{{ number_format((float) $totals['tax'], 2) }}</td>
+                    <td class="right">{{ number_format((float) $totals['total'], 2) }}</td>
                     <td colspan="2"></td>
                 </tr>
             </tfoot>
