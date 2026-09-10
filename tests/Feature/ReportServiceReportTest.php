@@ -235,14 +235,15 @@ class ReportServiceReportTest extends TestCase
 
         $this->assertCount(0, $serviceOnlyRows);
         $this->assertCount(1, $pdfRows);
-        $this->assertSame('Acrylic gel refill', $pdfRows[0]['service_name']);
+        $this->assertStringContainsString('Wella Pro EIMI Mistify-Me Strong Hairspray 500ml', $pdfRows[0]['service_name']);
+        $this->assertStringContainsString('Pepsi (012000067150)', $pdfRows[0]['service_name']);
         $this->assertSame('RCT00279', $pdfRows[0]['invoice_number']);
-        $this->assertSame(0.0, $pdfRows[0]['unit_price']);
-        $this->assertSame(0.0, $pdfRows[0]['subtotal']);
-        $this->assertSame(0.0, $pdfRows[0]['tax']);
-        $this->assertSame(0.0, $pdfRows[0]['total']);
+        $this->assertCount(3, $pdfRows[0]['items']);
+        $this->assertSame(214.29, $pdfRows[0]['subtotal']);
+        $this->assertSame(10.71, $pdfRows[0]['tax']);
+        $this->assertSame(225.0, $pdfRows[0]['total']);
         $this->assertSame(0.0, $pdfPaymentTotals['cash_total_payment']);
-        $this->assertSame(0.0, $pdfPaymentTotals['card_total_payment']);
+        $this->assertSame(225.0, $pdfPaymentTotals['card_total_payment']);
         $this->assertCount(3, $rowsWithRetail);
         $this->assertFalse($rowsWithRetail->pluck('service_name')->contains('Acrylic gel refill'));
         $this->assertSame(225.0, round((float) $rowsWithRetail->sum('total'), 2));
@@ -642,6 +643,68 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame('88.00', trim($firstCells->item(7)->textContent));
         $this->assertStringContainsString('Products used: Premium Color Mix (COLOR-MIX-01) x2 - Used for root color.', $html);
         $this->assertStringContainsString('Package Credit Payment', $html);
+    }
+
+    public function test_service_pdf_includes_retail_product_invoice_lines(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Retail Client', 'RCT-PRODUCT');
+        $product = InventoryItem::create([
+            'sku' => 'PROTECT-300',
+            'name' => 'Frizz Control Protector 300ML',
+            'category' => 'Retail',
+            'unit' => 'bottle',
+            'cost_price' => 35,
+            'selling_price' => 79,
+            'stock_quantity' => 4,
+            'reorder_level' => 1,
+            'is_active' => true,
+        ]);
+
+        $invoice->update([
+            'subtotal' => 79,
+            'vat_amount' => 3.95,
+            'total' => 82.95,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => null,
+            'inventory_item_id' => $product->id,
+            'revenue_category' => 'retail_product_sales',
+            'description' => 'Frizz Control Protector 300ML (PROTECT-300)',
+            'quantity' => 1,
+            'unit_price' => 79,
+            'discount_amount' => 0,
+            'line_subtotal' => 79,
+            'tax_rate_percent' => 5,
+            'line_tax' => 3.95,
+            'line_total' => 82.95,
+        ]);
+
+        $controller = app(ReportController::class);
+        $dateFrom = Carbon::parse('2026-05-21')->startOfDay();
+        $dateTo = Carbon::parse('2026-05-21')->endOfDay();
+        $filters = ['customer_name' => 'Retail', 'invoice_number' => 'RCT-PRODUCT'];
+        $rows = (new ReflectionMethod($controller, 'collectAppointmentServiceReportRows'))
+            ->invoke($controller, $dateFrom, $dateTo, $filters);
+        $payments = (new ReflectionMethod($controller, 'paymentTotalsForServiceRows'))
+            ->invoke($controller, $dateFrom, $dateTo, $rows);
+        $totals = (new ReflectionMethod($controller, 'serviceReportTotals'))
+            ->invoke($controller, $rows, $payments);
+
+        $this->assertCount(1, $rows);
+        $this->assertCount(1, $rows[0]['items']);
+        $this->assertSame('Frizz Control Protector 300ML (PROTECT-300)', $rows[0]['items'][0]['service_name']);
+        $this->assertSame(79.0, $totals['subtotal']);
+        $this->assertSame(3.95, $totals['tax']);
+        $this->assertSame(82.95, $totals['total']);
+
+        $html = view('reports.service-report-pdf', [
+            'dateFrom' => $dateFrom, 'dateTo' => $dateTo, 'filters' => $filters,
+            'currencyCode' => 'AED', 'serviceReports' => $rows, 'totals' => $totals,
+        ])->render();
+
+        $this->assertStringContainsString('Frizz Control Protector 300ML (PROTECT-300)', $html);
+        $this->assertStringContainsString('82.95', $html);
+        $this->assertStringNotContainsString('<td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td>', $html);
     }
 
     public function test_service_report_excludes_package_sales_invoice_lines_from_service_rows(): void

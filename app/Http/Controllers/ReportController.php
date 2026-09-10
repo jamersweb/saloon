@@ -380,7 +380,7 @@ class ReportController extends Controller
      */
     private function collectAppointmentServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters): array
     {
-        return collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters, false, true))
+        return collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters, true, true))
             ->groupBy(fn (array $row): string => isset($row['appointment_id'])
                 ? 'appointment-'.$row['appointment_id']
                 : 'row-'.$row['id'])
@@ -399,6 +399,12 @@ class ReportController extends Controller
      */
     private function appointmentServiceReportRow(Collection $rows): array
     {
+        if ($rows->count() > 1 && $rows->contains(fn (array $row): bool => (bool) ($row['is_zero_billed_fallback'] ?? false))) {
+            $rows = $rows
+                ->reject(fn (array $row): bool => (bool) ($row['is_zero_billed_fallback'] ?? false))
+                ->values();
+        }
+
         $first = $rows->first();
         $invoiceNumbers = $rows
             ->flatMap(fn (array $row): array => array_filter(array_map('trim', explode(',', (string) ($row['invoice_number'] ?? '')))))
@@ -705,6 +711,7 @@ class ReportController extends Controller
                     ->values()
                     ->map(fn (TaxInvoiceItem $item, int $index): array => [
                         'id' => sprintf('product-%d-%d', $invoice->id, $item->id ?: $index),
+                        'appointment_id' => $reportAppointment->id,
                         'date' => optional($reportAppointment->scheduled_start)->format('Y-m-d H:i'),
                         'customer_name' => $invoice->customer_display_name ?: $reportAppointment->customer?->name ?: $reportAppointment->customer_name,
                         'customer_phone' => $reportAppointment->customer_phone,
@@ -719,6 +726,7 @@ class ReportController extends Controller
                         'total' => round((float) $item->line_total, 2),
                         'staff_name' => $reportAppointment->staffProfile?->user?->name,
                         'service_report' => 'Retail product sale',
+                        'is_retail_product' => true,
                     ]);
             })
             ->values()
@@ -947,6 +955,7 @@ class ReportController extends Controller
             'staff_name' => $appointment->staffProfile?->user?->name,
             'service_report' => $this->serviceReportDetails($appointment),
             'count_payment_totals' => false,
+            'is_zero_billed_fallback' => true,
         ];
     }
 
