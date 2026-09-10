@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Controllers\ReportController;
 use App\Models\Appointment;
 use App\Models\Customer;
+use App\Models\InventoryItem;
 use App\Models\InvoicePayment;
 use App\Models\Role;
 use App\Models\SalonService;
@@ -474,6 +475,22 @@ class ReportServiceReportTest extends TestCase
     public function test_service_pdf_keeps_extension_quantities_separate_and_shows_package_payments(): void
     {
         [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Extension Client', 'RCT-EXT');
+        $product = InventoryItem::create([
+            'sku' => 'COLOR-MIX-01',
+            'name' => 'Premium Color Mix',
+            'category' => 'Color',
+            'unit' => 'tube',
+            'cost_price' => 20,
+            'selling_price' => 35,
+            'stock_quantity' => 10,
+            'reorder_level' => 2,
+            'is_active' => true,
+        ]);
+        $appointment->productUsages()->create([
+            'inventory_item_id' => $product->id,
+            'quantity' => 2,
+            'notes' => 'Used for root color.',
+        ]);
         $colorService = SalonService::create([
             'name' => 'Hair color Root',
             'category' => 'Hair',
@@ -529,6 +546,7 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(1, $totals['service_count']);
         $this->assertSame(44.0, $rows[0]['items'][0]['quantity']);
         $this->assertSame(1.0, $rows[0]['items'][1]['quantity']);
+        $this->assertStringContainsString('Premium Color Mix (COLOR-MIX-01) x2', $rows[0]['service_report']);
 
         $html = view('reports.service-report-pdf', [
             'dateFrom' => $dateFrom, 'dateTo' => $dateTo, 'filters' => $filters,
@@ -540,10 +558,13 @@ class ReportServiceReportTest extends TestCase
         $itemRows = $xpath->query('//table[@class="grid"]/tbody/tr');
         $this->assertSame(2, $itemRows->length);
         $firstCells = $xpath->query('td', $itemRows->item(0));
+        $this->assertSame('2', $firstCells->item(0)->attributes->getNamedItem('rowspan')->nodeValue);
+        $this->assertSame('2', $firstCells->item(11)->attributes->getNamedItem('rowspan')->nodeValue);
         $this->assertSame('44', trim($firstCells->item(4)->textContent));
         $this->assertSame('6.00', trim($firstCells->item(5)->textContent));
         $this->assertSame('176.00', trim($firstCells->item(6)->textContent));
         $this->assertSame('88.00', trim($firstCells->item(7)->textContent));
+        $this->assertStringContainsString('Products used: Premium Color Mix (COLOR-MIX-01) x2 - Used for root color.', $html);
         $this->assertStringContainsString('Package Credit Payment', $html);
     }
 

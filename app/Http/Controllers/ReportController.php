@@ -303,7 +303,13 @@ class ReportController extends Controller
         $vatRatePercent = (float) $financeSetting->vat_rate_percent;
 
         $query = Appointment::query()
-            ->with(['customer:id,name', 'service:id,name,price', 'staffProfile.user:id,name'])
+            ->with([
+                'customer:id,name',
+                'productUsages.item:id,name,sku',
+                'service:id,name,price',
+                'serviceExecution:id,appointment_id,materials_used',
+                'staffProfile.user:id,name',
+            ])
             ->where('status', Appointment::STATUS_COMPLETED)
             ->whereBetween('scheduled_start', [$dateFrom, $dateTo])
             ->orderBy('scheduled_start');
@@ -907,7 +913,7 @@ class ReportController extends Controller
             'tax' => round($tax, 2),
             'total' => round($total, 2),
             'staff_name' => $appointment->staffProfile?->user?->name,
-            'service_report' => $appointment->notes,
+            'service_report' => $this->serviceReportDetails($appointment),
         ];
     }
 
@@ -934,7 +940,7 @@ class ReportController extends Controller
             'tax' => 0.0,
             'total' => 0.0,
             'staff_name' => $appointment->staffProfile?->user?->name,
-            'service_report' => $appointment->notes,
+            'service_report' => $this->serviceReportDetails($appointment),
             'count_payment_totals' => false,
         ];
     }
@@ -961,8 +967,40 @@ class ReportController extends Controller
             'tax' => round((float) $item->line_tax, 2),
             'total' => round((float) $item->line_total, 2),
             'staff_name' => $item->staffProfile?->user?->name ?: $appointment->staffProfile?->user?->name,
-            'service_report' => $appointment->notes,
+            'service_report' => $this->serviceReportDetails($appointment),
         ];
+    }
+
+    private function serviceReportDetails(Appointment $appointment): string
+    {
+        $details = collect([
+            trim((string) $appointment->notes),
+        ])->filter();
+
+        $materialsUsed = trim((string) $appointment->serviceExecution?->materials_used);
+        if ($materialsUsed !== '') {
+            $details->push('Materials: '.$materialsUsed);
+        }
+
+        $productsUsed = $appointment->productUsages
+            ->filter(fn ($usage): bool => $usage->item !== null)
+            ->map(function ($usage): string {
+                $itemName = trim((string) $usage->item->name);
+                $sku = trim((string) $usage->item->sku);
+                $quantity = rtrim(rtrim(number_format((float) $usage->quantity, 2), '0'), '.');
+                $notes = trim((string) $usage->notes);
+
+                $line = $itemName.($sku !== '' ? ' ('.$sku.')' : '').' x'.$quantity;
+
+                return $notes !== '' ? $line.' - '.$notes : $line;
+            })
+            ->values();
+
+        if ($productsUsed->isNotEmpty()) {
+            $details->push('Products used: '.$productsUsed->implode(', '));
+        }
+
+        return $details->implode("\n");
     }
 
     private function serviceReportCustomerName(Appointment $appointment, TaxInvoiceItem $item): string

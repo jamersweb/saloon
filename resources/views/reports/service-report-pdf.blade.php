@@ -120,17 +120,47 @@
             </tr>
         </thead>
         <tbody>
-            @forelse($serviceReports as $appointmentRow)
-                @foreach($appointmentRow['items'] ?? [$appointmentRow] as $row)
+            @php
+                $reportGroups = collect($serviceReports)
+                    ->groupBy(function (array $appointmentRow): string {
+                        $invoiceNumber = trim((string) ($appointmentRow['invoice_number'] ?? ''));
+                        $invoiceKey = $invoiceNumber !== ''
+                            ? 'invoice-'.$invoiceNumber
+                            : 'appointment-'.($appointmentRow['appointment_id'] ?? $appointmentRow['id']);
+
+                        return implode('|', [
+                            $appointmentRow['date'] ?? '',
+                            $appointmentRow['customer_name'] ?? '',
+                            $appointmentRow['customer_phone'] ?? '',
+                            $invoiceKey,
+                        ]);
+                    })
+                    ->values();
+            @endphp
+            @forelse($reportGroups as $reportGroup)
+                @php
+                    $groupRow = $reportGroup->first();
+                    $groupItems = $reportGroup
+                        ->flatMap(fn (array $appointmentRow): array => $appointmentRow['items'] ?? [$appointmentRow])
+                        ->values();
+                    $groupServiceReport = $reportGroup
+                        ->pluck('service_report')
+                        ->filter(fn ($value): bool => trim((string) $value) !== '')
+                        ->unique()
+                        ->implode("\n");
+                @endphp
+                @foreach($groupItems as $rowIndex => $row)
                 <tr>
-                    <td>{{ $row['date'] }}</td>
-                    <td>
-                        {{ $row['customer_name'] }}
-                        @if(! empty($row['customer_phone']))
-                            <br><span class="muted">{{ $row['customer_phone'] }}</span>
-                        @endif
-                    </td>
-                    <td>{{ $row['invoice_number'] ?: '-' }}</td>
+                    @if($rowIndex === 0)
+                        <td rowspan="{{ count($groupItems) }}">{{ $groupRow['date'] }}</td>
+                        <td rowspan="{{ count($groupItems) }}">
+                            {{ $groupRow['customer_name'] }}
+                            @if(! empty($groupRow['customer_phone']))
+                                <br><span class="muted">{{ $groupRow['customer_phone'] }}</span>
+                            @endif
+                        </td>
+                        <td rowspan="{{ count($groupItems) }}">{{ $groupRow['invoice_number'] ?: '-' }}</td>
+                    @endif
                     <td>{{ $row['service_name'] ?: '-' }}</td>
                     <td class="right">{{ rtrim(rtrim(number_format((float) $row['quantity'], 2), '0'), '.') }}</td>
                     <td class="right">{{ number_format((float) $row['unit_price'], 2) }}</td>
@@ -139,7 +169,9 @@
                     <td class="right">{{ number_format((float) $row['tax'], 2) }}</td>
                     <td class="right">{{ number_format((float) $row['total'], 2) }}</td>
                     <td>{{ $row['staff_name'] ?: '-' }}</td>
-                    <td class="report">{{ $row['service_report'] ?: '-' }}</td>
+                    @if($rowIndex === 0)
+                        <td rowspan="{{ count($groupItems) }}" class="report">{{ $groupServiceReport ?: '-' }}</td>
+                    @endif
                 </tr>
                 @endforeach
             @empty
