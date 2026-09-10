@@ -334,6 +334,82 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(425.0, $rows[$secondAppointment->id]['subtotal']);
     }
 
+    public function test_visit_service_report_does_not_force_removed_invoice_lines_onto_remaining_appointment(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Sima Zoghi', 'RCT00298');
+
+        $blowdryService = SalonService::create([
+            'name' => 'Blowdry Curly/wavy w/ Iron Short',
+            'category' => 'Hair',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 100,
+            'is_active' => true,
+        ]);
+        $removedThreadingService = SalonService::create([
+            'name' => 'Threading Full face',
+            'category' => 'Threading',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 90,
+            'is_active' => true,
+        ]);
+        $visitId = 'visit-rct00298';
+
+        $appointment->update([
+            'service_id' => $blowdryService->id,
+            'visit_id' => $visitId,
+        ]);
+        Appointment::create([
+            'customer_id' => $appointment->customer_id,
+            'service_id' => $removedThreadingService->id,
+            'staff_profile_id' => $appointment->staff_profile_id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CANCELLED,
+            'scheduled_start' => '2026-05-21 18:15:00',
+            'scheduled_end' => '2026-05-21 18:45:00',
+            'customer_name' => $appointment->customer_name,
+            'customer_phone' => $appointment->customer_phone,
+            'visit_id' => $visitId,
+        ]);
+
+        $invoice->items()->create([
+            'salon_service_id' => $blowdryService->id,
+            'description' => 'Blowdry Curly/wavy w/ Iron Short',
+            'quantity' => 1,
+            'unit_price' => 100,
+            'discount_amount' => 0,
+            'line_subtotal' => 100,
+            'tax_rate_percent' => 5,
+            'line_tax' => 5,
+            'line_total' => 105,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $removedThreadingService->id,
+            'description' => 'Threading Full face',
+            'quantity' => 1,
+            'unit_price' => 90,
+            'discount_amount' => 0,
+            'line_subtotal' => 90,
+            'tax_rate_percent' => 5,
+            'line_tax' => 4.5,
+            'line_total' => 94.5,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectAppointmentServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = $method->invoke(app(ReportController::class), Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(), [
+            'customer_name' => 'Sima',
+            'invoice_number' => 'RCT00298',
+        ]);
+
+        $this->assertCount(1, $rows);
+        $this->assertCount(1, $rows[0]['items']);
+        $this->assertSame('Blowdry Curly/wavy w/ Iron Short', $rows[0]['items'][0]['service_name']);
+        $this->assertFalse(collect($rows[0]['items'])->pluck('service_name')->contains('Threading Full face'));
+    }
+
     public function test_service_report_includes_all_service_invoice_lines_for_a_single_completed_appointment(): void
     {
         [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Tima', 'RCT00125');

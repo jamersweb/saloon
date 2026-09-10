@@ -781,7 +781,7 @@ class ReportController extends Controller
 
             $invoice->items->each(fn (TaxInvoiceItem $item) => $item->setRelation('taxInvoice', $invoice));
 
-            foreach ($this->assignInvoiceItemsToAppointments($invoiceAppointments, $invoice->items) as $appointmentId => $appointmentItems) {
+            foreach ($this->assignInvoiceItemsToAppointments($invoiceAppointments, $invoice->items, ! $visitId) as $appointmentId => $appointmentItems) {
                 $items[$appointmentId] = ($items[$appointmentId] ?? collect())->concat($appointmentItems);
             }
         }
@@ -798,7 +798,7 @@ class ReportController extends Controller
      * @param  Collection<int, TaxInvoiceItem>  $invoiceItems
      * @return array<int, Collection<int, TaxInvoiceItem>>
      */
-    private function assignInvoiceItemsToAppointments(Collection $appointments, Collection $invoiceItems): array
+    private function assignInvoiceItemsToAppointments(Collection $appointments, Collection $invoiceItems, bool $allowAssigningExtraItemsToMatchedAppointment = true): array
     {
         $appointments = $appointments
             ->sortBy([
@@ -859,13 +859,18 @@ class ReportController extends Controller
                 $targetAppointment = null;
 
                 if ($item->staff_profile_id) {
-                    $targetAppointment = $appointments->first(
+                    $staffMatchAppointments = $allowAssigningExtraItemsToMatchedAppointment ? $appointments : $pendingAppointments;
+                    $targetAppointment = $staffMatchAppointments->first(
                         fn (Appointment $appointment) => (int) $appointment->staff_profile_id === (int) $item->staff_profile_id
                     );
                 }
 
                 if (! $targetAppointment) {
-                    $targetAppointment = $pendingAppointments->first() ?? $appointments->first();
+                    $targetAppointment = $pendingAppointments->first();
+                }
+
+                if (! $targetAppointment && $allowAssigningExtraItemsToMatchedAppointment) {
+                    $targetAppointment = $appointments->first();
                 }
 
                 if ($targetAppointment) {
