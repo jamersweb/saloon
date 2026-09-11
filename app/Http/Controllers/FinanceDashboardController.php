@@ -35,8 +35,10 @@ class FinanceDashboardController extends Controller
             ->sum('vat_amount');
 
         $paymentsCollected = (float) InvoicePayment::query()
+            ->join('tax_invoices', 'invoice_payments.tax_invoice_id', '=', 'tax_invoices.id')
             ->whereBetween('paid_at', [$dateFrom, $dateTo])
-            ->sum('amount');
+            ->where('tax_invoices.status', TaxInvoice::STATUS_FINALIZED)
+            ->sum('invoice_payments.amount');
 
         $expenseTotal = (float) ExpenseEntry::query()
             ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
@@ -271,9 +273,12 @@ class FinanceDashboardController extends Controller
             ->get();
 
         $payments = InvoicePayment::query()
+            ->join('tax_invoices', 'invoice_payments.tax_invoice_id', '=', 'tax_invoices.id')
             ->whereBetween('paid_at', [$dateFrom, $dateTo])
+            ->where('tax_invoices.status', TaxInvoice::STATUS_FINALIZED)
             ->with('taxInvoice:id,invoice_number,customer_display_name')
-            ->orderBy('paid_at')
+            ->orderBy('invoice_payments.paid_at')
+            ->select('invoice_payments.*')
             ->get();
 
         $expenses = ExpenseEntry::query()

@@ -330,15 +330,14 @@ class ReportController extends Controller
     private function applyAppointmentWithoutReportInvoices(Builder $query): void
     {
         $query
-            ->whereDoesntHave('taxInvoices', fn (Builder $invoiceQuery) => $invoiceQuery->where('status', '!=', TaxInvoice::STATUS_VOID))
+            ->whereDoesntHave('taxInvoices')
             ->whereNotExists(function ($subQuery): void {
                 $subQuery
                     ->selectRaw('1')
                     ->from('appointments as visit_appointments')
                     ->join('tax_invoices as visit_tax_invoices', 'visit_tax_invoices.appointment_id', '=', 'visit_appointments.id')
                     ->whereColumn('visit_appointments.visit_id', 'appointments.visit_id')
-                    ->whereNotNull('appointments.visit_id')
-                    ->where('visit_tax_invoices.status', '!=', TaxInvoice::STATUS_VOID);
+                    ->whereNotNull('appointments.visit_id');
             });
     }
 

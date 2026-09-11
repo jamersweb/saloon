@@ -1045,6 +1045,34 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame([$invoice->id], $rows[0]['invoice_ids']);
     }
 
+    public function test_void_invoice_does_not_return_as_unbilled_service_report_fallback(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Voided Client', 'RCT-VOID-1');
+
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Hair Styling',
+            'quantity' => 1,
+            'unit_price' => 120,
+            'discount_amount' => 0,
+            'line_subtotal' => 120,
+            'tax_rate_percent' => 5,
+            'line_tax' => 6,
+            'line_total' => 126,
+        ]);
+        $invoice->update(['status' => TaxInvoice::STATUS_VOID]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectAppointmentServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = $method->invoke(app(ReportController::class), Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(), [
+            'customer_name' => 'Voided',
+            'invoice_number' => '',
+        ]);
+
+        $this->assertCount(0, $rows);
+    }
+
     public function test_appointments_csv_export_includes_invoice_number_and_service_report(): void
     {
         $manager = $this->managerUser();

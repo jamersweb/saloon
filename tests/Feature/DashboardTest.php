@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Appointment;
 use App\Models\ExpenseEntry;
+use App\Models\InvoicePayment;
 use App\Models\TaxInvoice;
 use App\Models\TaxInvoiceItem;
 use App\Models\Role;
@@ -137,5 +138,80 @@ class DashboardTest extends TestCase
                 ->where('data_quality.default_cost_center_expenses.count', 1)
                 ->where('data_quality.default_cost_center_expenses.total', 52.5)
             );
+    }
+
+    public function test_finance_dashboard_and_export_ignore_void_invoice_payments(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-05 12:00:00'));
+
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+            'permissions' => Permissions::defaultsForRole('owner'),
+        ]);
+
+        $owner = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        $finalizedInvoice = TaxInvoice::create([
+            'invoice_number' => 'RCT-FINAL',
+            'customer_display_name' => 'Final Customer',
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'subtotal' => 100,
+            'vat_amount' => 5,
+            'total' => 105,
+            'issued_at' => '2026-09-05 10:00:00',
+            'created_by' => $owner->id,
+        ]);
+        $voidInvoice = TaxInvoice::create([
+            'invoice_number' => 'RCT-VOID',
+            'customer_display_name' => 'Void Customer',
+            'status' => TaxInvoice::STATUS_VOID,
+            'subtotal' => 300,
+            'vat_amount' => 15,
+            'total' => 315,
+            'issued_at' => '2026-09-05 11:00:00',
+            'created_by' => $owner->id,
+        ]);
+
+        InvoicePayment::create([
+            'tax_invoice_id' => $finalizedInvoice->id,
+            'amount' => 105,
+            'method' => InvoicePayment::METHOD_CARD,
+            'paid_at' => '2026-09-05 10:05:00',
+            'created_by' => $owner->id,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $voidInvoice->id,
+            'amount' => 315,
+            'method' => InvoicePayment::METHOD_CARD,
+            'paid_at' => '2026-09-05 11:05:00',
+            'created_by' => $owner->id,
+        ]);
+
+        $this->actingAs($owner)
+            ->get(route('finance.index', [
+                'date_from' => '2026-09-05',
+                'date_to' => '2026-09-05',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Finance/Dashboard')
+                ->where('summary.invoiced_total', 105)
+                ->where('summary.payments_collected', 105)
+            );
+
+        $csv = $this->actingAs($owner)
+            ->get(route('finance.export', [
+                'date_from' => '2026-09-05',
+                'date_to' => '2026-09-05',
+            ]))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('RCT-FINAL', $csv);
+        $this->assertStringNotContainsString('RCT-VOID', $csv);
+        $this->assertStringNotContainsString('Void Customer', $csv);
     }
 }
