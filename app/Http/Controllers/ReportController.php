@@ -923,7 +923,7 @@ class ReportController extends Controller
         }
 
         $invoices = TaxInvoice::query()
-            ->with(['customer:id,name', 'items.staffProfile.user:id,name'])
+            ->with(['customer:id,name', 'items.staffProfile.user:id,name', 'payments:id,tax_invoice_id,method'])
             ->where('status', '!=', TaxInvoice::STATUS_VOID)
             ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
             ->when($dateFrom && $dateTo, fn (Builder $query) => $query->whereBetween('issued_at', [$dateFrom, $dateTo]))
@@ -1206,8 +1206,21 @@ class ReportController extends Controller
 
     private function isServiceReportInvoiceItem(TaxInvoiceItem $item): bool
     {
-        return $item->salon_service_id !== null
-            && $this->invoiceItemRevenueCategory($item) !== 'package_sales';
+        if ($item->salon_service_id === null) {
+            return false;
+        }
+
+        if ($this->invoiceItemRevenueCategory($item) === 'package_sales') {
+            return false;
+        }
+
+        $invoice = $item->relationLoaded('taxInvoice') ? $item->taxInvoice : null;
+        if ($invoice?->relationLoaded('payments')
+            && $invoice->payments->contains(fn (InvoicePayment $payment): bool => $payment->method === InvoicePayment::METHOD_PACKAGE_CREDIT)) {
+            return false;
+        }
+
+        return true;
     }
 
     private function isRetailProductReportItem(TaxInvoiceItem $item): bool

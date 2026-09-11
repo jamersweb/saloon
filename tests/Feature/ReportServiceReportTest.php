@@ -549,7 +549,7 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(100.0, $rows[0]['items'][1]['unit_price']);
     }
 
-    public function test_service_pdf_keeps_extension_quantities_separate_and_shows_package_payments(): void
+    public function test_service_pdf_keeps_extension_quantities_separate_and_shows_non_package_payments(): void
     {
         [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Extension Client', 'RCT-EXT');
         $product = InventoryItem::create([
@@ -595,7 +595,7 @@ class ReportServiceReportTest extends TestCase
         InvoicePayment::create([
             'tax_invoice_id' => $invoice->id,
             'amount' => 252,
-            'method' => InvoicePayment::METHOD_PACKAGE_CREDIT,
+            'method' => InvoicePayment::METHOD_CARD,
             'paid_at' => '2026-05-21 19:00:00',
         ]);
         InvoicePayment::create([
@@ -616,10 +616,10 @@ class ReportServiceReportTest extends TestCase
         $totals = (new ReflectionMethod($controller, 'serviceReportTotals'))
             ->invoke($controller, $rows, $payments);
 
-        $this->assertSame(252.0, $totals['package_credit_total_payment']);
+        $this->assertSame(0.0, $totals['package_credit_total_payment']);
+        $this->assertSame(252.0, $totals['card_total_payment']);
         $this->assertSame(50.4, $totals['other_total_payment']);
         $this->assertSame(302.4, $totals['total_payment']);
-        $this->assertSame(0.0, $totals['card_total_payment']);
         $this->assertSame(1, $totals['service_count']);
         $this->assertSame(44.0, $rows[0]['items'][0]['quantity']);
         $this->assertSame(1.0, $rows[0]['items'][1]['quantity']);
@@ -642,7 +642,58 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame('176.00', trim($firstCells->item(7)->textContent));
         $this->assertSame('88.00', trim($firstCells->item(8)->textContent));
         $this->assertStringContainsString('Products used: Premium Color Mix (COLOR-MIX-01) x2 - Used for root color.', $html);
-        $this->assertStringContainsString('Package Credit Payment', $html);
+        $this->assertStringContainsString('Card Total Payment', $html);
+    }
+
+    public function test_package_credit_invoice_does_not_appear_in_service_report_revenue(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Sima Zoghi', 'RCT00298');
+        $appointment->service->update([
+            'name' => 'Blowdry Curly/wavy w/ Iron Short',
+            'price' => 100,
+        ]);
+        $invoice->update([
+            'subtotal' => 100,
+            'vat_amount' => 5,
+            'total' => 105,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'revenue_category' => 'service_income',
+            'staff_profile_id' => $appointment->staff_profile_id,
+            'description' => 'Blowdry Curly/wavy w/ Iron Short',
+            'quantity' => 1,
+            'unit_price' => 100,
+            'discount_amount' => 0,
+            'line_subtotal' => 100,
+            'tax_rate_percent' => 5,
+            'line_tax' => 5,
+            'line_total' => 105,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 105,
+            'method' => InvoicePayment::METHOD_PACKAGE_CREDIT,
+            'paid_at' => '2026-05-21 19:00:00',
+        ]);
+
+        $controller = app(ReportController::class);
+        $dateFrom = Carbon::parse('2026-05-21')->startOfDay();
+        $dateTo = Carbon::parse('2026-05-21')->endOfDay();
+        $rows = (new ReflectionMethod($controller, 'collectAppointmentServiceReportRows'))
+            ->invoke($controller, $dateFrom, $dateTo, [
+                'customer_name' => 'Sima',
+                'invoice_number' => 'RCT00298',
+            ]);
+        $payments = (new ReflectionMethod($controller, 'paymentTotalsForServiceRows'))
+            ->invoke($controller, $dateFrom, $dateTo, $rows);
+        $totals = (new ReflectionMethod($controller, 'serviceReportTotals'))
+            ->invoke($controller, $rows, $payments);
+
+        $this->assertCount(0, $rows);
+        $this->assertSame(0, $totals['service_count']);
+        $this->assertSame(0.0, $totals['total']);
+        $this->assertSame(0.0, $totals['package_credit_total_payment']);
     }
 
     public function test_service_pdf_includes_retail_product_invoice_lines(): void
