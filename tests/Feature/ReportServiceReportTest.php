@@ -1073,6 +1073,45 @@ class ReportServiceReportTest extends TestCase
         $this->assertCount(0, $rows);
     }
 
+    public function test_unbilled_completed_appointment_does_not_appear_in_service_report_totals(): void
+    {
+        $staffUser = User::factory()->create(['name' => 'Jocelyn Caburnay Caquista']);
+        $staffProfile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'SR-UNBILLED-1',
+            'is_active' => true,
+        ]);
+        $service = SalonService::create([
+            'name' => 'Hair wash',
+            'category' => 'Hair',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 60,
+            'is_active' => true,
+        ]);
+
+        Appointment::create([
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => '2026-09-05 13:20:00',
+            'scheduled_end' => '2026-09-05 13:50:00',
+            'customer_name' => 'Mahra Arabic',
+            'customer_phone' => '0547788336',
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectAppointmentServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = $method->invoke(app(ReportController::class), Carbon::parse('2026-09-05')->startOfDay(), Carbon::parse('2026-09-05')->endOfDay(), [
+            'customer_name' => 'Mahra',
+            'invoice_number' => '',
+        ]);
+
+        $this->assertCount(0, $rows);
+    }
+
     public function test_appointments_csv_export_includes_invoice_number_and_service_report(): void
     {
         $manager = $this->managerUser();
