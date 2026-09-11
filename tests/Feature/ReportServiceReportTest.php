@@ -636,17 +636,18 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(2, $itemRows->length);
         $firstCells = $xpath->query('td', $itemRows->item(0));
         $this->assertSame('2', $firstCells->item(0)->attributes->getNamedItem('rowspan')->nodeValue);
-        $this->assertSame('2', $firstCells->item(11)->attributes->getNamedItem('rowspan')->nodeValue);
-        $this->assertSame('44', trim($firstCells->item(4)->textContent));
-        $this->assertSame('6.00', trim($firstCells->item(5)->textContent));
-        $this->assertSame('176.00', trim($firstCells->item(6)->textContent));
-        $this->assertSame('88.00', trim($firstCells->item(7)->textContent));
+        $this->assertSame('2', $firstCells->item(12)->attributes->getNamedItem('rowspan')->nodeValue);
+        $this->assertSame('44', trim($firstCells->item(5)->textContent));
+        $this->assertSame('6.00', trim($firstCells->item(6)->textContent));
+        $this->assertSame('176.00', trim($firstCells->item(7)->textContent));
+        $this->assertSame('88.00', trim($firstCells->item(8)->textContent));
         $this->assertStringContainsString('Products used: Premium Color Mix (COLOR-MIX-01) x2 - Used for root color.', $html);
         $this->assertStringContainsString('Package Credit Payment', $html);
     }
 
     public function test_service_pdf_includes_retail_product_invoice_lines(): void
     {
+        $manager = $this->managerUser();
         [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Retail Client', 'RCT-PRODUCT');
         $product = InventoryItem::create([
             'sku' => 'PROTECT-300',
@@ -678,6 +679,13 @@ class ReportServiceReportTest extends TestCase
             'line_tax' => 3.95,
             'line_total' => 82.95,
         ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 82.95,
+            'method' => InvoicePayment::METHOD_CARD,
+            'paid_at' => '2026-05-21 19:10:00',
+            'created_by' => $manager->id,
+        ]);
 
         $controller = app(ReportController::class);
         $dateFrom = Carbon::parse('2026-05-21')->startOfDay();
@@ -703,6 +711,8 @@ class ReportServiceReportTest extends TestCase
         ])->render();
 
         $this->assertStringContainsString('Frizz Control Protector 300ML (PROTECT-300)', $html);
+        $this->assertStringContainsString('Payment', $html);
+        $this->assertStringContainsString('Card', $html);
         $this->assertStringContainsString('82.95', $html);
         $this->assertStringNotContainsString('<td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td>', $html);
     }

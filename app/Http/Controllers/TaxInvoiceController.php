@@ -496,15 +496,15 @@ class TaxInvoiceController extends Controller
             return back()->withErrors(['invoice' => 'Only finalized invoices can be voided.']);
         }
 
-        if ($invoice->amountPaid() > 0.009) {
-            return back()->withErrors(['invoice' => 'Voiding is blocked while payments exist.']);
-        }
+        $voidedPaymentTotal = $invoice->amountPaid();
 
         $invoice->update(['status' => TaxInvoice::STATUS_VOID]);
 
-        Audit::log($request->user()->id, 'finance.invoice.voided', 'TaxInvoice', $invoice->id, []);
+        Audit::log($request->user()->id, 'finance.invoice.voided', 'TaxInvoice', $invoice->id, [
+            'voided_payment_total' => round($voidedPaymentTotal, 2),
+        ]);
 
-        return back()->with('status', 'Invoice voided.');
+        return back()->with('status', 'Invoice voided and removed from report totals.');
     }
 
     public function refundAdjustment(Request $request, TaxInvoice $invoice): RedirectResponse

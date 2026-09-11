@@ -432,7 +432,15 @@ class ReportController extends Controller
      */
     private function collectAppointmentServiceReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters): array
     {
-        return collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters, true, true))
+        $rows = collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters, true, true));
+        $paymentMethodLabels = $this->paymentMethodLabelsForRows($rows->all());
+
+        return $rows
+            ->map(function (array $row) use ($paymentMethodLabels): array {
+                return array_replace($row, [
+                    'payment_method' => $this->paymentMethodLabelForRow($row, $paymentMethodLabels),
+                ]);
+            })
             ->groupBy(fn (array $row): string => isset($row['appointment_id'])
                 ? 'appointment-'.$row['appointment_id']
                 : (isset($row['standalone_invoice_id'])
@@ -547,6 +555,11 @@ class ReportController extends Controller
             ->filter(fn ($value): bool => trim((string) $value) !== '')
             ->unique()
             ->values();
+        $paymentMethods = $rows
+            ->pluck('payment_method')
+            ->filter(fn ($value): bool => trim((string) $value) !== '')
+            ->unique()
+            ->values();
 
         return array_replace($first, [
             'items' => $rows->all(),
@@ -564,7 +577,67 @@ class ReportController extends Controller
             'total' => round((float) $rows->sum(fn (array $row) => (float) ($row['total'] ?? 0)), 2),
             'staff_name' => $staffNames->implode(', '),
             'service_report' => $serviceReports->implode("\n"),
+            'payment_method' => $paymentMethods->implode(', '),
         ]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<int, string>
+     */
+    private function paymentMethodLabelsForRows(array $rows): array
+    {
+        $invoiceIds = collect($rows)
+            ->flatMap(fn (array $row): array => $row['invoice_ids'] ?? [])
+            ->filter()
+            ->map(fn ($id): int => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($invoiceIds === []) {
+            return [];
+        }
+
+        $labels = InvoicePayment::methodLabels();
+
+        return InvoicePayment::query()
+            ->whereIn('tax_invoice_id', $invoiceIds)
+            ->orderBy('paid_at')
+            ->get(['tax_invoice_id', 'method'])
+            ->groupBy('tax_invoice_id')
+            ->map(fn (Collection $payments): string => $payments
+                ->pluck('method')
+                ->map(fn (string $method): string => $labels[$method] ?? str($method)->replace('_', ' ')->title()->toString())
+                ->unique()
+                ->values()
+                ->implode(', '))
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<int, string>  $paymentMethodLabels
+     */
+    private function paymentMethodLabelForRow(array $row, array $paymentMethodLabels): string
+    {
+        $invoiceIds = collect($row['invoice_ids'] ?? [])
+            ->filter()
+            ->map(fn ($id): int => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($invoiceIds->isEmpty()) {
+            return '';
+        }
+
+        $labels = $invoiceIds
+            ->map(fn (int $invoiceId): string => $paymentMethodLabels[$invoiceId] ?? 'Unpaid')
+            ->filter(fn (string $label): bool => trim($label) !== '')
+            ->unique()
+            ->values();
+
+        return $labels->implode(', ');
     }
 
     /**
@@ -1616,11 +1689,13 @@ class ReportController extends Controller
     private function paymentTotals(Carbon $dateFrom, Carbon $dateTo, ?array $invoiceIds = null): array
     {
         $query = InvoicePayment::query()
+            ->join('tax_invoices', 'invoice_payments.tax_invoice_id', '=', 'tax_invoices.id')
             ->whereBetween('paid_at', [$dateFrom, $dateTo])
+            ->where('tax_invoices.status', '!=', TaxInvoice::STATUS_VOID)
             ->whereIn('method', [InvoicePayment::METHOD_CASH, InvoicePayment::METHOD_CARD, InvoicePayment::METHOD_GIFT_CARD]);
 
         if ($invoiceIds !== null) {
-            $query->whereIn('tax_invoice_id', $invoiceIds);
+            $query->whereIn('invoice_payments.tax_invoice_id', $invoiceIds);
         }
 
         $paymentTotals = $query
@@ -1646,7 +1721,9 @@ class ReportController extends Controller
     private function paymentTotalsForInvoices(array $invoiceIds): array
     {
         $paymentTotals = InvoicePayment::query()
-            ->whereIn('tax_invoice_id', $invoiceIds)
+            ->join('tax_invoices', 'invoice_payments.tax_invoice_id', '=', 'tax_invoices.id')
+            ->whereIn('invoice_payments.tax_invoice_id', $invoiceIds)
+            ->where('tax_invoices.status', '!=', TaxInvoice::STATUS_VOID)
             ->selectRaw('method, SUM(amount) as total')
             ->groupBy('method')
             ->pluck('total', 'method');

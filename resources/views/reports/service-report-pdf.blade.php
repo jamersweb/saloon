@@ -23,10 +23,11 @@
         .date { width: 7%; }
         .customer { width: 11%; }
         .invoice { width: 7%; }
-        .service { width: 18%; }
+        .payment { width: 7%; }
+        .service { width: 15%; }
         .qty { width: 4%; }
-        .money { width: 7%; }
-        .staff { width: 10%; }
+        .money { width: 6%; }
+        .staff { width: 9%; }
         .report { white-space: pre-line; word-wrap: break-word; }
         .grid .right { text-align: right; }
     </style>
@@ -108,6 +109,7 @@
                 <th class="date">Date</th>
                 <th class="customer">Customer</th>
                 <th class="invoice">Invoice No.</th>
+                <th class="payment">Payment</th>
                 <th class="service">Items</th>
                 <th class="qty">Qty</th>
                 <th class="money">Unit Price</th>
@@ -160,6 +162,7 @@
                             @endif
                         </td>
                         <td rowspan="{{ count($groupItems) }}">{{ $groupRow['invoice_number'] ?: '-' }}</td>
+                        <td rowspan="{{ count($groupItems) }}">{{ $groupRow['payment_method'] ?: '-' }}</td>
                     @endif
                     <td>{{ $row['service_name'] ?: '-' }}</td>
                     <td class="right">{{ rtrim(rtrim(number_format((float) $row['quantity'], 2), '0'), '.') }}</td>
@@ -175,13 +178,13 @@
                 </tr>
                 @endforeach
             @empty
-                <tr><td colspan="12">No report rows found for the selected filters.</td></tr>
+                <tr><td colspan="13">No report rows found for the selected filters.</td></tr>
             @endforelse
         </tbody>
         @if(count($serviceReports) > 0)
             <tfoot>
                 <tr>
-                    <td colspan="4">Report total</td>
+                    <td colspan="5">Report total</td>
                     <td class="right">{{ rtrim(rtrim(number_format((float) $totals['service_quantity'], 2), '0'), '.') }}</td>
                     <td></td>
                     <td></td>

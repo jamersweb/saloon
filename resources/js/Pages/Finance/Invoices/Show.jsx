@@ -964,7 +964,7 @@ export default function FinanceInvoicesShow({
                             </section>
                         )}
 
-                        {can_manage_full_finance && invoice.status === 'finalized' && invoice.amount_paid < 0.01 && (
+                        {can_manage_full_finance && invoice.status === 'finalized' && (
                             <button
                                 type="button"
                                 className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900"
@@ -978,7 +978,7 @@ export default function FinanceInvoicesShow({
                 <ConfirmActionModal
                     show={Boolean(invoiceConfirm)}
                     title={invoiceConfirm === 'void' ? 'Void this invoice?' : 'Delete this draft?'}
-                    message={invoiceConfirm === 'void' ? 'Voiding cannot be undone.' : 'This removes the draft invoice permanently.'}
+                    message={invoiceConfirm === 'void' ? 'Voiding cannot be undone. This removes the invoice and its payments from report totals.' : 'This removes the draft invoice permanently.'}
                     confirmText={invoiceConfirm === 'void' ? 'Void invoice' : 'Delete draft'}
                     confirmClassName={
                         invoiceConfirm === 'void'

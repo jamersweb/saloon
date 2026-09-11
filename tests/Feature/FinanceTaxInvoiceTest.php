@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\TaxInvoiceReceiptMail;
+use App\Http\Controllers\ReportController;
 use App\Models\Appointment;
 use App\Models\Customer;
 use App\Models\CustomerMembershipCard;
@@ -19,8 +20,10 @@ use App\Models\TaxInvoice;
 use App\Support\FinanceStructure;
 use App\Models\User;
 use App\Support\TaxReceiptPdfView;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use ReflectionMethod;
 use Tests\TestCase;
 
 class FinanceTaxInvoiceTest extends TestCase
@@ -105,6 +108,77 @@ class FinanceTaxInvoiceTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertLessThan(0.02, $invoice->fresh()->balanceDue());
+    }
+
+    public function test_owner_can_void_paid_finalized_invoice_and_remove_it_from_payment_totals(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $service = SalonService::create([
+            'name' => 'Gelish Manicure (Men)',
+            'category' => 'Manicure',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 300,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.store'), [
+                'customer_display_name' => 'Dario Vukelic',
+                'items' => [
+                    [
+                        'salon_service_id' => $service->id,
+                        'description' => $service->name,
+                        'quantity' => 1,
+                        'unit_price' => 300,
+                        'discount_amount' => 0,
+                    ],
+                ],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice = TaxInvoice::query()->latest()->firstOrFail();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.finalize', $invoice))
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.payments.store', $invoice->fresh()), [
+                'amount' => 315,
+                'method' => InvoicePayment::METHOD_CARD,
+                'paid_at' => '2026-09-05 16:43:00',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(315.0, $invoice->fresh()->amountPaid());
+
+        $this->actingAs($user)
+            ->post(route('finance.invoices.void', $invoice->fresh()))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(TaxInvoice::STATUS_VOID, $invoice->fresh()->status);
+        $this->assertSame(1, $invoice->payments()->count());
+
+        $method = new ReflectionMethod(ReportController::class, 'paymentTotals');
+        $method->setAccessible(true);
+        $totals = $method->invoke(
+            app(ReportController::class),
+            Carbon::parse('2026-09-05')->startOfDay(),
+            Carbon::parse('2026-09-05')->endOfDay()
+        );
+
+        $this->assertSame(0.0, $totals['card_total_payment']);
     }
 
     public function test_owner_can_email_finalized_receipt(): void
