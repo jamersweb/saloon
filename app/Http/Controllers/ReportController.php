@@ -481,7 +481,7 @@ class ReportController extends Controller
         return $this->staffServiceSalesRowsFromServiceRows($this->collectServiceReportRows($dateFrom, $dateTo, [
             'customer_name' => '',
             'invoice_number' => '',
-        ]));
+        ], true));
     }
 
     /**
@@ -1252,7 +1252,7 @@ class ReportController extends Controller
         $serviceReportRows = $this->collectServiceReportRows($dateFrom, $dateTo, [
             'customer_name' => '',
             'invoice_number' => '',
-        ]);
+        ], true);
         $serviceReportTotals = $this->serviceReportTotals($serviceReportRows);
 
         $appointmentsInRange = Appointment::query()

@@ -1352,6 +1352,69 @@ class AppointmentServiceWorkflowTest extends TestCase
         }
     }
 
+    public function test_appointment_index_can_filter_by_date_search_staff_and_service(): void
+    {
+        $manager = $this->createManagerUser();
+        $staffUser = User::factory()->create(['name' => 'Jocelyn Caburnay Caquista']);
+        $staffProfile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'APPT-FILTER-1',
+            'is_active' => true,
+        ]);
+        $service = SalonService::create([
+            'name' => 'Blowdry Curly/wavy w/ Iron Medium',
+            'category' => 'Hair',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 120,
+            'is_active' => true,
+        ]);
+
+        $matching = Appointment::create([
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-09-03 13:20:00',
+            'scheduled_end' => '2026-09-03 14:05:00',
+            'customer_name' => 'Amani Chbaklo',
+            'customer_phone' => '0563863086',
+            'customer_email' => 'amanichbaklo@gmail.com',
+        ]);
+
+        Appointment::create([
+            'service_id' => $service->id,
+            'staff_profile_id' => $staffProfile->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_CONFIRMED,
+            'scheduled_start' => '2026-09-04 13:20:00',
+            'scheduled_end' => '2026-09-04 14:05:00',
+            'customer_name' => 'Other Client',
+            'customer_phone' => '0500000000',
+        ]);
+
+        $this->actingAs($manager)
+            ->get(route('appointments.index', [
+                'date_from' => '2026-09-03',
+                'date_to' => '2026-09-03',
+                'search' => 'Amani',
+                'staff_profile_id' => $staffProfile->id,
+                'service_id' => $service->id,
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Appointments/Index')
+                ->where('filters.date_from', '2026-09-03')
+                ->where('filters.date_to', '2026-09-03')
+                ->where('filters.search', 'Amani')
+                ->where('filters.staff_profile_id', (string) $staffProfile->id)
+                ->where('filters.service_id', (string) $service->id)
+                ->has('appointments', 1)
+                ->where('appointments.0.id', $matching->id)
+                ->where('appointments.0.customer_name', 'Amani Chbaklo')
+            );
+    }
+
     public function test_appointment_index_can_filter_needs_pay(): void
     {
         $manager = $this->createManagerUser();

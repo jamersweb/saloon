@@ -451,7 +451,7 @@ const clampAdminEditStartDatetimeLocal = (value, bookingRules, slotIntervalMinut
     return v;
 };
 
-export default function AppointmentsIndex({ appointments, appointmentBlocks = [], staffSchedules = [], services, customers = [], staffProfiles, inventoryItems, statusFilter, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
+export default function AppointmentsIndex({ appointments, appointmentBlocks = [], staffSchedules = [], services, customers = [], staffProfiles, inventoryItems, statusFilter, filters = {}, bookingRules, defaultStart, gift_cards_for_checkout = [] }) {
     const { app_currency_code: currencyCode = 'AED' } = usePage().props;
     const { flash, auth } = usePage().props;
     const serviceLookup = useMemo(
@@ -488,6 +488,14 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
     const [createCustomerSearch, setCreateCustomerSearch] = useState('');
     const [createServiceSearch, setCreateServiceSearch] = useState('');
     const [editServiceSearch, setEditServiceSearch] = useState('');
+    const [filterForm, setFilterForm] = useState({
+        status: filters.status || statusFilter || '',
+        date_from: filters.date_from || '',
+        date_to: filters.date_to || '',
+        search: filters.search || '',
+        staff_profile_id: filters.staff_profile_id || '',
+        service_id: filters.service_id || '',
+    });
     const [showBoardView, setShowBoardView] = useState(false);
     const [boardDate, setBoardDate] = useState(() => salonTodayYmd());
     const [boardStaffFilter, setBoardStaffFilter] = useState('all');
@@ -534,6 +542,17 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         const y = (defaultStart || '').split('T')[0] || salonTodayYmd();
         setCreateStartYmd(y);
     }, [defaultStart]);
+
+    useEffect(() => {
+        setFilterForm({
+            status: filters.status || statusFilter || '',
+            date_from: filters.date_from || '',
+            date_to: filters.date_to || '',
+            search: filters.search || '',
+            staff_profile_id: filters.staff_profile_id || '',
+            service_id: filters.service_id || '',
+        });
+    }, [filters.status, filters.date_from, filters.date_to, filters.search, filters.staff_profile_id, filters.service_id, statusFilter]);
 
     const createStartDefault = useMemo(
         () => clampStaffStartDatetimeLocal(defaultStart || '', bookingRules, slotIntervalMinutes),
@@ -1149,7 +1168,37 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
         completeForm.clearErrors();
     };
 
-    const changeFilter = (value) => router.get(route('appointments.index'), { status: value || undefined }, { preserveState: true, replace: true });
+    const appointmentFilterPayload = (overrides = {}) => {
+        const payload = {
+            ...filterForm,
+            ...overrides,
+        };
+
+        return Object.fromEntries(
+            Object.entries(payload).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== ''),
+        );
+    };
+    const updateFilterForm = (key, value) => setFilterForm((current) => ({ ...current, [key]: value }));
+    const applyAppointmentFilters = (event) => {
+        event?.preventDefault();
+        router.get(route('appointments.index'), appointmentFilterPayload(), { preserveState: true, replace: true });
+    };
+    const resetAppointmentFilters = () => {
+        setFilterForm({
+            status: '',
+            date_from: '',
+            date_to: '',
+            search: '',
+            staff_profile_id: '',
+            service_id: '',
+        });
+        router.get(route('appointments.index'), {}, { preserveState: true, replace: true });
+    };
+    const changeFilter = (value) => {
+        const nextStatus = value || '';
+        setFilterForm((current) => ({ ...current, status: nextStatus }));
+        router.get(route('appointments.index'), appointmentFilterPayload({ status: nextStatus }), { preserveState: true, replace: true });
+    };
     const transition = (id, nextStatus) => router.patch(route('appointments.transition', id), { status: nextStatus });
     const handleAppointmentsImport = (event) => {
         const file = event.target.files?.[0];
@@ -2078,26 +2127,89 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 </section> : null}
 
                 <section className="ta-card p-4">
-                    <label className="ta-field-label mb-2 block">Filter Status</label>
-                    <div className="flex flex-wrap gap-2">
-                        {[
-                            { value: '', label: 'All' },
-                            { value: 'today', label: 'Today' },
-                            { value: 'needs_pay', label: 'Needs Pay' },
-                            { value: 'pending', label: 'Pending' },
-                            { value: 'confirmed', label: 'Confirmed' },
-                            { value: 'upcoming', label: 'Upcoming' },
-                            { value: 'completed', label: 'Completed' },
-                        ].map((filter) => (
-                            <button
-                                key={filter.value || 'all'}
-                                type="button"
-                                onClick={() => changeFilter(filter.value)}
-                                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${String(statusFilter || '') === String(filter.value) ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`}
-                            >
-                                {filter.label}
-                            </button>
-                        ))}
+                    <div className="mb-4 flex flex-col gap-1">
+                        <h3 className="text-sm font-semibold text-slate-700">Appointment filters</h3>
+                        <p className="text-xs text-slate-500">Search by date, customer, phone, email, service, staff, notes, or status.</p>
+                    </div>
+                    <form onSubmit={applyAppointmentFilters} className="grid gap-3 lg:grid-cols-6">
+                        <div className="lg:col-span-2">
+                            <label className="ta-field-label">Search</label>
+                            <input
+                                className="ta-input w-full min-w-0"
+                                value={filterForm.search}
+                                onChange={(e) => updateFilterForm('search', e.target.value)}
+                                placeholder="Customer, phone, service, staff..."
+                            />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">From date</label>
+                            <input className="ta-input w-full min-w-0" type="date" value={filterForm.date_from} onChange={(e) => updateFilterForm('date_from', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">To date</label>
+                            <input className="ta-input w-full min-w-0" type="date" value={filterForm.date_to} onChange={(e) => updateFilterForm('date_to', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Status</label>
+                            <select className="ta-input w-full min-w-0" value={filterForm.status} onChange={(e) => updateFilterForm('status', e.target.value)}>
+                                <option value="">All statuses</option>
+                                <option value="today">Today</option>
+                                <option value="needs_pay">Needs pay</option>
+                                <option value="upcoming">Upcoming</option>
+                                <option value="pending">Pending</option>
+                                <option value="confirmed">Confirmed</option>
+                                <option value="in_progress">In progress</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                                <option value="no_show">No-show</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="ta-field-label">Staff</label>
+                            <select className="ta-input w-full min-w-0" value={filterForm.staff_profile_id} onChange={(e) => updateFilterForm('staff_profile_id', e.target.value)}>
+                                <option value="">All staff</option>
+                                {staffProfiles.map((staff) => (
+                                    <option key={staff.id} value={staff.id}>{staff.name || staff.employee_code}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="lg:col-span-2">
+                            <label className="ta-field-label">Service</label>
+                            <select className="ta-input w-full min-w-0" value={filterForm.service_id} onChange={(e) => updateFilterForm('service_id', e.target.value)}>
+                                <option value="">All services</option>
+                                {services.map((service) => (
+                                    <option key={service.id} value={service.id}>{service.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex flex-wrap items-end gap-2 lg:col-span-4">
+                            <button type="submit" className="ta-btn-primary">Apply filters</button>
+                            <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700" onClick={resetAppointmentFilters}>Reset</button>
+                            <span className="text-xs text-slate-500">{appointments.length} appointment{appointments.length === 1 ? '' : 's'} shown</span>
+                        </div>
+                    </form>
+                    <div className="mt-4">
+                        <label className="ta-field-label mb-2 block">Quick status</label>
+                        <div className="flex flex-wrap gap-2">
+                            {[
+                                { value: '', label: 'All' },
+                                { value: 'today', label: 'Today' },
+                                { value: 'needs_pay', label: 'Needs Pay' },
+                                { value: 'pending', label: 'Pending' },
+                                { value: 'confirmed', label: 'Confirmed' },
+                                { value: 'upcoming', label: 'Upcoming' },
+                                { value: 'completed', label: 'Completed' },
+                            ].map((filter) => (
+                                <button
+                                    key={filter.value || 'all'}
+                                    type="button"
+                                    onClick={() => changeFilter(filter.value)}
+                                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${String(filterForm.status || '') === String(filter.value) ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                                >
+                                    {filter.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </section>
 
@@ -2195,6 +2307,13 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                                         </td>
                                     </tr>
                                 ))}
+                                {appointmentQueueRows.length === 0 && (
+                                    <tr className="border-t border-slate-100">
+                                        <td className="px-5 py-6 text-sm text-slate-500" colSpan="6">
+                                            No appointments match the current filters.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>

@@ -1097,6 +1097,49 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(84.0, $report['servicePerformance'][1]['revenue']);
     }
 
+    public function test_reports_dashboard_includes_retail_product_sales(): void
+    {
+        $manager = $this->managerUser();
+        [, $invoice] = $this->completedAppointmentWithInvoice('Retail Client', 'RCT-PRODUCT-1');
+
+        $invoice->update([
+            'subtotal' => 214.29,
+            'vat_amount' => 10.71,
+            'total' => 225,
+        ]);
+
+        $invoice->items()->create([
+            'salon_service_id' => null,
+            'description' => 'Wella Pro EIMI Hairspray',
+            'revenue_category' => 'retail_product_sales',
+            'quantity' => 1,
+            'unit_price' => 214.29,
+            'discount_amount' => 0,
+            'line_subtotal' => 214.29,
+            'tax_rate_percent' => 5,
+            'line_tax' => 10.71,
+            'line_total' => 225,
+        ]);
+
+        $this->actingAs($manager)
+            ->get(route('reports.index', [
+                'date_from' => '2026-05-21',
+                'date_to' => '2026-05-21',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Reports/Index')
+                ->where('overview.completed_services', 1)
+                ->where('overview.completed_revenue', 225)
+                ->where('servicePerformance.0.service_name', 'Wella Pro EIMI Hairspray')
+                ->where('servicePerformance.0.revenue', 225)
+                ->where('staffPerformance.0.revenue', 225)
+                ->where('staffServiceSales.0.service_name', 'Wella Pro EIMI Hairspray')
+                ->where('staffServiceSales.0.total', 225)
+                ->where('staffServiceTotals.0.total', 225)
+                ->where('dailyRevenue.0.revenue', 225));
+    }
+
     public function test_staff_service_sales_groups_services_and_sales_by_staff(): void
     {
         [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Staff Sales Client', 'INV-STAFF-1');

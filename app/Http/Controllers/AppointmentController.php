@@ -91,6 +91,11 @@ class AppointmentController extends Controller
     public function index(Request $request): Response
     {
         $status = $request->string('status')->toString();
+        $dateFrom = $request->date('date_from')?->startOfDay();
+        $dateTo = $request->date('date_to')?->endOfDay();
+        $search = trim((string) $request->query('search', ''));
+        $filterStaffProfileId = $request->query('staff_profile_id');
+        $filterServiceId = $request->query('service_id');
         $today = now();
         $todayStart = $today->copy()->startOfDay();
         $todayEnd = $today->copy()->endOfDay();
@@ -118,6 +123,24 @@ class AppointmentController extends Controller
                 'taxInvoices.payments',
             ])
             ->when($isStaff, fn ($query) => $query->where('staff_profile_id', $staffProfileId ?: 0))
+            ->when($dateFrom, fn ($query) => $query->where('scheduled_start', '>=', $dateFrom))
+            ->when($dateTo, fn ($query) => $query->where('scheduled_start', '<=', $dateTo))
+            ->when(filled($filterStaffProfileId), fn ($query) => $query->where('staff_profile_id', $filterStaffProfileId))
+            ->when(filled($filterServiceId), fn ($query) => $query->where('service_id', $filterServiceId))
+            ->when($search !== '', function ($query) use ($search): void {
+                $needle = '%'.$search.'%';
+
+                $query->where(function ($nested) use ($needle): void {
+                    $nested
+                        ->where('customer_name', 'like', $needle)
+                        ->orWhere('customer_phone', 'like', $needle)
+                        ->orWhere('customer_email', 'like', $needle)
+                        ->orWhere('notes', 'like', $needle)
+                        ->orWhereHas('customer', fn ($customerQuery) => $customerQuery->where('name', 'like', $needle)->orWhere('phone', 'like', $needle)->orWhere('email', 'like', $needle))
+                        ->orWhereHas('service', fn ($serviceQuery) => $serviceQuery->where('name', 'like', $needle)->orWhere('category', 'like', $needle))
+                        ->orWhereHas('staffProfile.user', fn ($staffQuery) => $staffQuery->where('name', 'like', $needle)->orWhere('email', 'like', $needle));
+                });
+            })
             ->when($status === 'today', function ($query) use ($todayStart, $todayEnd): void {
                 $query->whereBetween('scheduled_start', [$todayStart, $todayEnd]);
             })
@@ -225,6 +248,14 @@ class AppointmentController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'sku', 'unit', 'selling_price']),
             'statusFilter' => $status,
+            'filters' => [
+                'status' => $status,
+                'date_from' => $dateFrom?->toDateString() ?? '',
+                'date_to' => $dateTo?->toDateString() ?? '',
+                'search' => $search,
+                'staff_profile_id' => filled($filterStaffProfileId) ? (string) $filterStaffProfileId : '',
+                'service_id' => filled($filterServiceId) ? (string) $filterServiceId : '',
+            ],
             'bookingRules' => $rules,
             'defaultStart' => $rules->nextDefaultAppointmentStart(),
             'gift_cards_for_checkout' => $giftCardsForCheckout,
