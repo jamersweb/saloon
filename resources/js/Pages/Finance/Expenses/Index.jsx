@@ -1,4 +1,5 @@
 import ConfirmActionModal from '@/Components/ConfirmActionModal';
+import TablePagination from '@/Components/TablePagination';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -98,6 +99,10 @@ export default function FinanceExpensesIndex({
 
     const applyFilter = (key, value) => {
         router.get(route('finance.expenses.index'), { ...filters, [key]: value }, { preserveState: true, replace: true });
+    };
+
+    const changeLedgerPage = (page) => {
+        router.get(route('finance.expenses.index'), { ...filters, page }, { preserveState: true, replace: true });
     };
 
     const pettyCashReportParams = new URLSearchParams({
@@ -767,8 +772,68 @@ export default function FinanceExpensesIndex({
                 </section>
 
                 <section className="ta-card overflow-hidden">
-                    <div className="border-b border-slate-200 px-5 py-4">
-                        <h3 className="text-sm font-semibold text-slate-700">Expense ledger</h3>
+                    <div className="space-y-4 border-b border-slate-200 px-5 py-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-700">Expense ledger</h3>
+                                <p className="mt-1 text-xs text-slate-500">Showing {expenses.from || 0}-{expenses.to || 0} of {expenses.total || 0} expenses</p>
+                            </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                            <div>
+                                <label className="ta-field-label">From</label>
+                                <input type="date" className="ta-input w-full min-w-0" value={filters.date_from} onChange={(e) => applyFilter('date_from', e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">To</label>
+                                <input type="date" className="ta-input w-full min-w-0" value={filters.date_to} onChange={(e) => applyFilter('date_to', e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Type</label>
+                                <select className="ta-input w-full min-w-0" value={filters.expense_type} onChange={(e) => applyFilter('expense_type', e.target.value)}>
+                                    <option value="">All</option>
+                                    {typeOptions.map(([value, label]) => (
+                                        <option key={value} value={value}>
+                                            {label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Approval</label>
+                                <select className="ta-input w-full min-w-0" value={filters.approval_status} onChange={(e) => applyFilter('approval_status', e.target.value)}>
+                                    <option value="all">All</option>
+                                    {approvalStatusOptions.map(([value, label]) => (
+                                        <option key={value} value={value}>
+                                            {label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Payment</label>
+                                <select className="ta-input w-full min-w-0" value={filters.payment_status} onChange={(e) => applyFilter('payment_status', e.target.value)}>
+                                    <option value="all">All</option>
+                                    <option value="paid">Paid</option>
+                                    <option value="unpaid">Unpaid</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="ta-field-label">Staff</label>
+                                <select className="ta-input w-full min-w-0" value={filters.staff_profile_id} onChange={(e) => applyFilter('staff_profile_id', e.target.value)}>
+                                    <option value="">All staff</option>
+                                    {staffProfiles.map((staff) => (
+                                        <option key={staff.id} value={staff.id}>
+                                            {staff.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="sm:col-span-2 xl:col-span-6">
+                                <label className="ta-field-label">Search</label>
+                                <input className="ta-input w-full min-w-0" value={filters.search} onChange={(e) => applyFilter('search', e.target.value)} placeholder="Vendor, receipt number, notes, or subcategory" />
+                            </div>
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
@@ -848,9 +913,24 @@ export default function FinanceExpensesIndex({
                                         </td>
                                     </tr>
                                 ))}
+                                {expenses.data.length === 0 && (
+                                    <tr className="border-t border-slate-100">
+                                        <td className="px-5 py-6 text-sm text-slate-500" colSpan="9">
+                                            No expenses match the current filters.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
+                    <TablePagination
+                        page={expenses.current_page}
+                        totalPages={expenses.last_page}
+                        totalItems={expenses.total}
+                        pageSize={expenses.per_page}
+                        itemLabel="expenses"
+                        onPageChange={changeLedgerPage}
+                    />
                 </section>
 
                 <ConfirmActionModal

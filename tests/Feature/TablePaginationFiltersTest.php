@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\InventoryItem;
+use App\Models\ExpenseEntry;
 use App\Models\LeaveRequest;
 use App\Models\Role;
 use App\Models\SalonService;
@@ -220,6 +221,85 @@ class TablePaginationFiltersTest extends TestCase
                 ->where('items.total', 1)
                 ->has('items.data', 1)
                 ->where('items.data.0.sku', 'INV-001'));
+    }
+
+    public function test_expenses_index_supports_filters_and_pagination(): void
+    {
+        $manager = $this->managerUser();
+        $staffRole = Role::firstOrCreate(
+            ['name' => 'staff'],
+            ['label' => 'Staff', 'permissions' => Permissions::defaultsForRole('staff')]
+        );
+
+        $staffUser = User::factory()->create([
+            'role_id' => $staffRole->id,
+            'name' => 'Analisa Expense',
+        ]);
+
+        $profile = StaffProfile::create([
+            'user_id' => $staffUser->id,
+            'employee_code' => 'EMP-501',
+            'phone' => '971500000501',
+            'skills' => [],
+            'is_active' => true,
+        ]);
+
+        ExpenseEntry::create([
+            'category' => 'hospitality',
+            'cost_center' => 'general_salon',
+            'expense_type' => 'operational',
+            'expense_subcategory' => 'rent',
+            'vendor_name' => 'Green Land Hypermarket',
+            'expense_date' => '2026-08-26',
+            'amount_subtotal' => 17.36,
+            'vat_amount' => 18.22,
+            'total_amount' => 35.58,
+            'payment_status' => ExpenseEntry::STATUS_PAID,
+            'payment_method' => 'cash',
+            'approval_status' => ExpenseEntry::APPROVAL_APPROVED,
+            'receipt_number' => 'RE-20118200008',
+            'staff_profile_id' => $profile->id,
+            'created_by' => $manager->id,
+        ]);
+
+        ExpenseEntry::create([
+            'category' => 'utilities',
+            'cost_center' => 'general_salon',
+            'expense_type' => 'staff_welfare',
+            'expense_subcategory' => 'staff_meal',
+            'vendor_name' => 'Other Vendor',
+            'expense_date' => '2026-09-01',
+            'amount_subtotal' => 20,
+            'vat_amount' => 1,
+            'total_amount' => 21,
+            'payment_status' => ExpenseEntry::STATUS_UNPAID,
+            'payment_method' => 'bank_transfer',
+            'approval_status' => ExpenseEntry::APPROVAL_PENDING,
+            'created_by' => $manager->id,
+        ]);
+
+        $this->actingAs($manager)
+            ->get(route('finance.expenses.index', [
+                'approval_status' => ExpenseEntry::APPROVAL_APPROVED,
+                'date_from' => '2026-08-01',
+                'date_to' => '2026-08-31',
+                'expense_type' => 'operational',
+                'payment_status' => ExpenseEntry::STATUS_PAID,
+                'search' => 're',
+                'staff_profile_id' => $profile->id,
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Finance/Expenses/Index')
+                ->where('filters.search', 're')
+                ->where('filters.approval_status', ExpenseEntry::APPROVAL_APPROVED)
+                ->where('filters.payment_status', ExpenseEntry::STATUS_PAID)
+                ->where('filters.staff_profile_id', (string) $profile->id)
+                ->where('expenses.total', 1)
+                ->has('expenses.data', 1)
+                ->where('expenses.data.0.vendor_name', 'Green Land Hypermarket')
+                ->where('expenses.current_page', 1)
+                ->where('expenses.per_page', 25));
     }
 
     public function test_schedules_index_supports_filters_and_pagination(): void
