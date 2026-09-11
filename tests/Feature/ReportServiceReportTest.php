@@ -785,6 +785,66 @@ class ReportServiceReportTest extends TestCase
                 ->where('dailyRevenue.0.revenue', 162.50));
     }
 
+    public function test_billed_service_report_rows_follow_invoice_issue_date_not_appointment_date(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Vanessa', 'RCT00283');
+        $appointment->update([
+            'scheduled_start' => '2026-09-03 19:40:00',
+            'scheduled_end' => '2026-09-03 20:25:00',
+            'customer_phone' => '+85263659231',
+        ]);
+        $invoice->update([
+            'subtotal' => 154.76,
+            'vat_amount' => 7.74,
+            'total' => 162.50,
+            'issued_at' => '2026-09-04 11:56:46',
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'staff_profile_id' => $appointment->staff_profile_id,
+            'description' => 'Gelish/Shellac Classic manicure',
+            'quantity' => 1,
+            'unit_price' => 150,
+            'discount_amount' => 0,
+            'line_subtotal' => 150,
+            'tax_rate_percent' => 5,
+            'line_tax' => 7.50,
+            'line_total' => 157.50,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => null,
+            'revenue_category' => 'retail_product_sales',
+            'description' => 'Pepsi Diet (012000051685)',
+            'quantity' => 1,
+            'unit_price' => 5,
+            'discount_amount' => 0.24,
+            'line_subtotal' => 4.76,
+            'tax_rate_percent' => 5,
+            'line_tax' => 0.24,
+            'line_total' => 5,
+        ]);
+
+        $controller = app(ReportController::class);
+        $rowsForThird = (new ReflectionMethod($controller, 'collectAppointmentServiceReportRows'))
+            ->invoke($controller, Carbon::parse('2026-09-03')->startOfDay(), Carbon::parse('2026-09-03')->endOfDay(), [
+                'customer_name' => 'Vanessa',
+                'invoice_number' => 'RCT00283',
+            ]);
+        $rowsForFourth = (new ReflectionMethod($controller, 'collectAppointmentServiceReportRows'))
+            ->invoke($controller, Carbon::parse('2026-09-04')->startOfDay(), Carbon::parse('2026-09-04')->endOfDay(), [
+                'customer_name' => 'Vanessa',
+                'invoice_number' => 'RCT00283',
+            ]);
+
+        $this->assertCount(0, $rowsForThird);
+        $this->assertCount(1, $rowsForFourth);
+        $this->assertSame('2026-09-04 11:56', $rowsForFourth[0]['date']);
+        $this->assertSame('Vanessa', $rowsForFourth[0]['customer_name']);
+        $this->assertSame('RCT00283', $rowsForFourth[0]['invoice_number']);
+        $this->assertSame(162.50, $rowsForFourth[0]['total']);
+        $this->assertCount(2, $rowsForFourth[0]['items']);
+    }
+
     public function test_service_report_excludes_package_sales_invoice_lines_from_service_rows(): void
     {
         [$packageAppointment, $invoice] = $this->completedAppointmentWithInvoice('Rezvan Khedri', 'RCT00253');

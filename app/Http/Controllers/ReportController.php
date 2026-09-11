@@ -293,6 +293,55 @@ class ReportController extends Controller
         ];
     }
 
+    private function applyServiceReportDateScope(Builder $query, Carbon $dateFrom, Carbon $dateTo): void
+    {
+        $query
+            ->where(function (Builder $query) use ($dateFrom, $dateTo): void {
+                $this->applyAppointmentInvoiceIssuedBetween($query, $dateFrom, $dateTo);
+            })
+            ->orWhere(function (Builder $query) use ($dateFrom, $dateTo): void {
+                $query->whereBetween('scheduled_start', [$dateFrom, $dateTo]);
+                $this->applyAppointmentWithoutReportInvoices($query);
+            });
+    }
+
+    private function applyAppointmentInvoiceIssuedBetween(Builder $query, Carbon $dateFrom, Carbon $dateTo): void
+    {
+        $query->where(function (Builder $query) use ($dateFrom, $dateTo): void {
+            $query
+                ->whereHas('taxInvoices', function (Builder $invoiceQuery) use ($dateFrom, $dateTo): void {
+                    $invoiceQuery
+                        ->where('status', '!=', TaxInvoice::STATUS_VOID)
+                        ->whereBetween('issued_at', [$dateFrom, $dateTo]);
+                })
+                ->orWhereExists(function ($subQuery) use ($dateFrom, $dateTo): void {
+                    $subQuery
+                        ->selectRaw('1')
+                        ->from('appointments as visit_appointments')
+                        ->join('tax_invoices as visit_tax_invoices', 'visit_tax_invoices.appointment_id', '=', 'visit_appointments.id')
+                        ->whereColumn('visit_appointments.visit_id', 'appointments.visit_id')
+                        ->whereNotNull('appointments.visit_id')
+                        ->where('visit_tax_invoices.status', '!=', TaxInvoice::STATUS_VOID)
+                        ->whereBetween('visit_tax_invoices.issued_at', [$dateFrom, $dateTo]);
+                });
+        });
+    }
+
+    private function applyAppointmentWithoutReportInvoices(Builder $query): void
+    {
+        $query
+            ->whereDoesntHave('taxInvoices', fn (Builder $invoiceQuery) => $invoiceQuery->where('status', '!=', TaxInvoice::STATUS_VOID))
+            ->whereNotExists(function ($subQuery): void {
+                $subQuery
+                    ->selectRaw('1')
+                    ->from('appointments as visit_appointments')
+                    ->join('tax_invoices as visit_tax_invoices', 'visit_tax_invoices.appointment_id', '=', 'visit_appointments.id')
+                    ->whereColumn('visit_appointments.visit_id', 'appointments.visit_id')
+                    ->whereNotNull('appointments.visit_id')
+                    ->where('visit_tax_invoices.status', '!=', TaxInvoice::STATUS_VOID);
+            });
+    }
+
     /**
      * @param  array{customer_name: string, invoice_number: string}  $filters
      * @return list<array<string, mixed>>
@@ -311,15 +360,17 @@ class ReportController extends Controller
                 'staffProfile.user:id,name',
             ])
             ->where('status', Appointment::STATUS_COMPLETED)
-            ->whereBetween('scheduled_start', [$dateFrom, $dateTo])
+            ->where(function (Builder $query) use ($dateFrom, $dateTo): void {
+                $this->applyServiceReportDateScope($query, $dateFrom, $dateTo);
+            })
             ->orderBy('scheduled_start');
 
         $this->applyServiceReportFilters($query, $filters);
 
         $appointments = $query->get();
-        $invoiceLabels = $this->invoiceLabelsForAppointments($appointments);
-        $invoiceIds = $this->invoiceIdsForAppointments($appointments);
-        $invoiceItems = $this->invoiceItemsForAppointments($appointments);
+        $invoiceLabels = $this->invoiceLabelsForAppointments($appointments, $dateFrom, $dateTo);
+        $invoiceIds = $this->invoiceIdsForAppointments($appointments, $dateFrom, $dateTo);
+        $invoiceItems = $this->invoiceItemsForAppointments($appointments, $dateFrom, $dateTo);
 
         $rows = $appointments
             ->flatMap(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $vatRatePercent, $includeZeroBilledInvoiceFallback): Collection {
@@ -362,7 +413,7 @@ class ReportController extends Controller
         }
 
         return collect($rows)
-            ->concat($this->retailProductReportRows($appointments))
+            ->concat($this->retailProductReportRows($appointments, $dateFrom, $dateTo))
             ->concat($this->standaloneRetailProductReportRows($dateFrom, $dateTo, $filters))
             ->sortBy([
                 ['date', 'asc'],
@@ -723,7 +774,7 @@ class ReportController extends Controller
      * @param  Collection<int, Appointment>  $appointments
      * @return list<array<string, mixed>>
      */
-    private function retailProductReportRows(Collection $appointments): array
+    private function retailProductReportRows(Collection $appointments, Carbon $dateFrom, Carbon $dateTo): array
     {
         if ($appointments->isEmpty()) {
             return [];
@@ -757,6 +808,7 @@ class ReportController extends Controller
             ->with(['items', 'appointment'])
             ->where('status', '!=', TaxInvoice::STATUS_VOID)
             ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
+            ->whereBetween('issued_at', [$dateFrom, $dateTo])
             ->orderByRaw('invoice_number IS NULL')
             ->orderBy('invoice_number')
             ->get()
@@ -777,7 +829,7 @@ class ReportController extends Controller
                     ->map(fn (TaxInvoiceItem $item, int $index): array => [
                         'id' => sprintf('product-%d-%d', $invoice->id, $item->id ?: $index),
                         'appointment_id' => $reportAppointment->id,
-                        'date' => optional($reportAppointment->scheduled_start)->format('Y-m-d H:i'),
+                        'date' => optional($invoice->issued_at ?? $reportAppointment->scheduled_start)->format('Y-m-d H:i'),
                         'customer_name' => $invoice->customer_display_name ?: $reportAppointment->customer?->name ?: $reportAppointment->customer_name,
                         'customer_phone' => $reportAppointment->customer_phone,
                         'invoice_number' => $invoice->invoice_number ?? '',
@@ -802,7 +854,7 @@ class ReportController extends Controller
      * @param  Collection<int, Appointment>  $appointments
      * @return array<int, Collection<int, TaxInvoiceItem>>
      */
-    private function invoiceItemsForAppointments(Collection $appointments): array
+    private function invoiceItemsForAppointments(Collection $appointments, ?Carbon $dateFrom = null, ?Carbon $dateTo = null): array
     {
         if ($appointments->isEmpty()) {
             return [];
@@ -825,6 +877,7 @@ class ReportController extends Controller
             ->with(['customer:id,name', 'items.staffProfile.user:id,name'])
             ->where('status', '!=', TaxInvoice::STATUS_VOID)
             ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
+            ->when($dateFrom && $dateTo, fn (Builder $query) => $query->whereBetween('issued_at', [$dateFrom, $dateTo]))
             ->orderByRaw('invoice_number IS NULL')
             ->orderBy('invoice_number')
             ->get();
@@ -1030,10 +1083,12 @@ class ReportController extends Controller
      */
     private function serviceReportRowFromInvoiceItem(Appointment $appointment, TaxInvoiceItem $item, string $invoiceNumber, array $invoiceIds, int $index = 0): array
     {
+        $invoice = $item->relationLoaded('taxInvoice') ? $item->taxInvoice : null;
+
         return [
             'id' => sprintf('%d-%d-%d', $appointment->id, $item->tax_invoice_id, $item->id ?: $index),
             'appointment_id' => $appointment->id,
-            'date' => optional($appointment->scheduled_start)->format('Y-m-d H:i'),
+            'date' => optional($invoice?->issued_at ?? $appointment->scheduled_start)->format('Y-m-d H:i'),
             'customer_name' => $this->serviceReportCustomerName($appointment, $item),
             'customer_phone' => $appointment->customer_phone,
             'invoice_number' => $this->serviceReportInvoiceNumber($item, $invoiceNumber),
@@ -1212,7 +1267,7 @@ class ReportController extends Controller
      * @param  Collection<int, Appointment>  $appointments
      * @return array<int, string>
      */
-    private function invoiceLabelsForAppointments(Collection $appointments): array
+    private function invoiceLabelsForAppointments(Collection $appointments, ?Carbon $dateFrom = null, ?Carbon $dateTo = null): array
     {
         if ($appointments->isEmpty()) {
             return [];
@@ -1234,6 +1289,7 @@ class ReportController extends Controller
         $invoices = TaxInvoice::query()
             ->where('status', '!=', TaxInvoice::STATUS_VOID)
             ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
+            ->when($dateFrom && $dateTo, fn (Builder $query) => $query->whereBetween('issued_at', [$dateFrom, $dateTo]))
             ->orderByRaw('invoice_number IS NULL')
             ->orderBy('invoice_number')
             ->get(['id', 'appointment_id', 'invoice_number']);
@@ -1273,7 +1329,7 @@ class ReportController extends Controller
      * @param  Collection<int, Appointment>  $appointments
      * @return array<int, list<int>>
      */
-    private function invoiceIdsForAppointments(Collection $appointments): array
+    private function invoiceIdsForAppointments(Collection $appointments, ?Carbon $dateFrom = null, ?Carbon $dateTo = null): array
     {
         if ($appointments->isEmpty()) {
             return [];
@@ -1295,6 +1351,7 @@ class ReportController extends Controller
         $invoices = TaxInvoice::query()
             ->where('status', '!=', TaxInvoice::STATUS_VOID)
             ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
+            ->when($dateFrom && $dateTo, fn (Builder $query) => $query->whereBetween('issued_at', [$dateFrom, $dateTo]))
             ->orderByRaw('invoice_number IS NULL')
             ->orderBy('invoice_number')
             ->get(['id', 'appointment_id']);
