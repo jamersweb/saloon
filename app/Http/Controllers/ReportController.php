@@ -363,6 +363,7 @@ class ReportController extends Controller
 
         return collect($rows)
             ->concat($this->retailProductReportRows($appointments))
+            ->concat($this->standaloneRetailProductReportRows($dateFrom, $dateTo, $filters))
             ->sortBy([
                 ['date', 'asc'],
                 ['id', 'asc'],
@@ -383,12 +384,76 @@ class ReportController extends Controller
         return collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters, true, true))
             ->groupBy(fn (array $row): string => isset($row['appointment_id'])
                 ? 'appointment-'.$row['appointment_id']
-                : 'row-'.$row['id'])
+                : (isset($row['standalone_invoice_id'])
+                    ? 'invoice-'.$row['standalone_invoice_id']
+                    : 'row-'.$row['id']))
             ->map(fn (Collection $group): array => $this->appointmentServiceReportRow($group))
             ->sortBy([
                 ['date', 'asc'],
                 ['id', 'asc'],
             ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array{customer_name: string, invoice_number: string}  $filters
+     * @return list<array<string, mixed>>
+     */
+    private function standaloneRetailProductReportRows(Carbon $dateFrom, Carbon $dateTo, array $filters): array
+    {
+        $query = TaxInvoice::query()
+            ->with(['customer:id,name,phone', 'items.staffProfile.user:id,name'])
+            ->where('status', '!=', TaxInvoice::STATUS_VOID)
+            ->whereNull('appointment_id')
+            ->whereBetween('issued_at', [$dateFrom, $dateTo])
+            ->whereHas('items', fn (Builder $itemQuery) => $this->applyRetailProductItemFilter($itemQuery));
+
+        if ($filters['customer_name'] !== '') {
+            $customerName = $filters['customer_name'];
+
+            $query->where(function (Builder $invoiceQuery) use ($customerName): void {
+                $invoiceQuery
+                    ->where('customer_display_name', 'like', "%{$customerName}%")
+                    ->orWhereHas('customer', fn (Builder $customerQuery) => $customerQuery->where('name', 'like', "%{$customerName}%"));
+            });
+        }
+
+        if ($filters['invoice_number'] !== '') {
+            $invoiceNumber = $filters['invoice_number'];
+
+            $query->where('invoice_number', 'like', "%{$invoiceNumber}%");
+        }
+
+        return $query
+            ->orderBy('issued_at')
+            ->orderByRaw('invoice_number IS NULL')
+            ->orderBy('invoice_number')
+            ->get()
+            ->flatMap(function (TaxInvoice $invoice): Collection {
+                return $invoice->items
+                    ->filter(fn (TaxInvoiceItem $item) => $this->isRetailProductReportItem($item))
+                    ->values()
+                    ->map(fn (TaxInvoiceItem $item, int $index): array => [
+                        'id' => sprintf('standalone-product-%d-%d', $invoice->id, $item->id ?: $index),
+                        'standalone_invoice_id' => $invoice->id,
+                        'date' => optional($invoice->issued_at)->format('Y-m-d H:i'),
+                        'customer_name' => $invoice->customer_display_name ?: $invoice->customer?->name ?: 'Walk-in / Unnamed',
+                        'customer_phone' => $invoice->customer?->phone ?? '',
+                        'invoice_number' => $invoice->invoice_number ?? '',
+                        'invoice_ids' => [$invoice->id],
+                        'service_name' => $item->description,
+                        'quantity' => round((float) $item->quantity, 2),
+                        'unit_price' => round((float) $item->unit_price, 2),
+                        'discount_amount' => round((float) $item->discount_amount, 2),
+                        'subtotal' => round((float) $item->line_subtotal, 2),
+                        'tax' => round((float) $item->line_tax, 2),
+                        'total' => round((float) $item->line_total, 2),
+                        'staff_name' => $item->staffProfile?->user?->name ?: $invoice->cashier_name,
+                        'service_report' => 'Retail product sale',
+                        'is_retail_product' => true,
+                    ]);
+            })
             ->values()
             ->all();
     }
@@ -1052,6 +1117,20 @@ class ReportController extends Controller
         return $category === 'retail_product_sales'
             || $item->inventory_item_id !== null
             || $category === 'service_income';
+    }
+
+    private function applyRetailProductItemFilter(Builder $query): void
+    {
+        $query
+            ->whereNull('salon_service_id')
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('revenue_category', 'retail_product_sales')
+                    ->orWhereNotNull('inventory_item_id')
+                    ->orWhere('revenue_category', 'service_income')
+                    ->orWhereNull('revenue_category')
+                    ->orWhere('revenue_category', '');
+            });
     }
 
     private function invoiceItemRevenueCategory(TaxInvoiceItem $item): string

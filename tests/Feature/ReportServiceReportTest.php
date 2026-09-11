@@ -707,6 +707,84 @@ class ReportServiceReportTest extends TestCase
         $this->assertStringNotContainsString('<td class="right">0.00</td><td class="right">0.00</td><td class="right">0.00</td>', $html);
     }
 
+    public function test_service_report_includes_standalone_retail_product_sale_invoices(): void
+    {
+        $manager = $this->managerUser();
+        $customer = Customer::create([
+            'customer_code' => 'SR-VANESSA',
+            'name' => 'Vanessa',
+            'phone' => '0501234567',
+            'is_active' => true,
+        ]);
+        $invoice = TaxInvoice::create([
+            'invoice_number' => 'RCT00283',
+            'customer_id' => $customer->id,
+            'customer_display_name' => 'Vanessa',
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'appointment_id' => null,
+            'subtotal' => 154.76,
+            'vat_amount' => 7.74,
+            'total' => 162.50,
+            'issued_at' => '2026-09-04 11:56:46',
+            'cashier_name' => 'Vina Owner',
+            'created_by' => $manager->id,
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => null,
+            'revenue_category' => 'retail_product_sales',
+            'description' => 'Retail product sale',
+            'quantity' => 1,
+            'unit_price' => 154.76,
+            'discount_amount' => 0,
+            'line_subtotal' => 154.76,
+            'tax_rate_percent' => 5,
+            'line_tax' => 7.74,
+            'line_total' => 162.50,
+        ]);
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id,
+            'amount' => 162.50,
+            'method' => InvoicePayment::METHOD_CARD,
+            'paid_at' => '2026-09-04 11:57:00',
+            'created_by' => $manager->id,
+        ]);
+
+        $controller = app(ReportController::class);
+        $dateFrom = Carbon::parse('2026-09-04')->startOfDay();
+        $dateTo = Carbon::parse('2026-09-04')->endOfDay();
+        $filters = ['customer_name' => 'Vane', 'invoice_number' => 'RCT00283'];
+        $rows = (new ReflectionMethod($controller, 'collectAppointmentServiceReportRows'))
+            ->invoke($controller, $dateFrom, $dateTo, $filters);
+        $payments = (new ReflectionMethod($controller, 'paymentTotalsForServiceRows'))
+            ->invoke($controller, $dateFrom, $dateTo, $rows);
+        $totals = (new ReflectionMethod($controller, 'serviceReportTotals'))
+            ->invoke($controller, $rows, $payments);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Vanessa', $rows[0]['customer_name']);
+        $this->assertSame('RCT00283', $rows[0]['invoice_number']);
+        $this->assertSame('Retail product sale', $rows[0]['service_name']);
+        $this->assertSame(162.50, $rows[0]['total']);
+        $this->assertSame(162.50, $totals['total']);
+        $this->assertSame(162.50, $totals['card_total_payment']);
+
+        $this->actingAs($manager)
+            ->get(route('reports.index', [
+                'date_from' => '2026-09-04',
+                'date_to' => '2026-09-04',
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Reports/Index')
+                ->where('overview.completed_services', 1)
+                ->where('overview.completed_revenue', 162.50)
+                ->where('servicePerformance.0.service_name', 'Retail product sale')
+                ->where('servicePerformance.0.revenue', 162.50)
+                ->where('staffServiceSales.0.staff_name', 'Vina Owner')
+                ->where('staffServiceSales.0.total', 162.50)
+                ->where('dailyRevenue.0.revenue', 162.50));
+    }
+
     public function test_service_report_excludes_package_sales_invoice_lines_from_service_rows(): void
     {
         [$packageAppointment, $invoice] = $this->completedAppointmentWithInvoice('Rezvan Khedri', 'RCT00253');
