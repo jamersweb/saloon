@@ -160,6 +160,23 @@ export default function FinanceInvoicesShow({
         || editForm.data.customer_display_name
         || 'Walk-in';
 
+    const draftTotals = useMemo(() => editForm.data.items.reduce((sum, row) => {
+        const totals = lineTotals(row, vat_rate_percent);
+
+        return {
+            subtotal: sum.subtotal + Math.max(0, totals.subtotal - Number(row.discount_amount || 0)),
+            vat: sum.vat + totals.vat,
+            total: sum.total + totals.total,
+        };
+    }, { subtotal: 0, vat: 0, total: 0 }), [editForm.data.items, vat_rate_percent]);
+    const headerTotals = isDraft
+        ? draftTotals
+        : {
+              subtotal: Number(invoice.subtotal || 0),
+              vat: Number(invoice.vat_amount || 0),
+              total: Number(invoice.total || 0),
+          };
+
     const addRow = () => editForm.setData('items', [...editForm.data.items, blankItem()]);
     const removeRow = (idx) => {
         const next = editForm.data.items.filter((_, i) => i !== idx);
@@ -307,9 +324,9 @@ export default function FinanceInvoicesShow({
                         </div>
                         <div className="text-right">
                             <p className="text-xs text-slate-500">Total / VAT / Subtotal</p>
-                            <p className="text-xl font-bold text-slate-900">{money(invoice.total, currency_code)}</p>
+                            <p className="text-xl font-bold text-slate-900">{money(headerTotals.total, currency_code)}</p>
                             <p className="text-sm text-slate-600">
-                                VAT {money(invoice.vat_amount, currency_code)} · Net {money(invoice.subtotal, currency_code)}
+                                VAT {money(headerTotals.vat, currency_code)} · Net {money(headerTotals.subtotal, currency_code)}
                             </p>
                             {!isDraft && (
                                 <p className="mt-1 text-sm">
@@ -335,9 +352,9 @@ export default function FinanceInvoicesShow({
                             {unassignedGiftVoucherCount > 0 ? (
                                 <p className="mt-1 text-emerald-800">{unassignedGiftVoucherCount} unassigned giveaway voucher(s) can be applied at payment.</p>
                             ) : null}
-                            {customerAssignedGiftCardBalance > 0 && invoice.total > customerAssignedGiftCardBalance ? (
+                            {customerAssignedGiftCardBalance > 0 && headerTotals.total > customerAssignedGiftCardBalance ? (
                                 <p className="mt-1 font-medium text-red-700">
-                                    Services total is short by {money(invoice.total - customerAssignedGiftCardBalance, currency_code)}.
+                                    Services total is short by {money(headerTotals.total - customerAssignedGiftCardBalance, currency_code)}.
                                 </p>
                             ) : customerAssignedGiftCardBalance > 0 ? (
                                 <p className="mt-1 text-emerald-800">Gift card balance is enough to cover these services.</p>
