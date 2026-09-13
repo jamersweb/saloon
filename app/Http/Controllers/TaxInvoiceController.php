@@ -388,6 +388,7 @@ class TaxInvoiceController extends Controller
             'appointment_id' => ['nullable', 'exists:appointments,id'],
             'cashier_name' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'finalize_after_save' => ['nullable', 'boolean'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.salon_service_id' => ['nullable', 'exists:salon_services,id'],
             'items.*.inventory_item_id' => ['nullable', 'exists:inventory_items,id'],
@@ -443,6 +444,17 @@ class TaxInvoiceController extends Controller
         });
 
         Audit::log($request->user()->id, 'finance.invoice.updated', 'TaxInvoice', $invoice->id, []);
+
+        if ($request->boolean('finalize_after_save')) {
+            $invoice->refresh()->loadMissing('items');
+            app(TaxInvoiceFinalizeService::class)->finalize($invoice, $request->user()->id);
+
+            Audit::log($request->user()->id, 'finance.invoice.finalized', 'TaxInvoice', $invoice->id, [
+                'invoice_number' => $invoice->fresh()->invoice_number,
+            ]);
+
+            return back()->with('status', 'Tax invoice issued: '.$invoice->fresh()->invoice_number);
+        }
 
         return back()->with('status', 'Invoice updated.');
     }

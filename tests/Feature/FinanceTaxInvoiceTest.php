@@ -183,6 +183,94 @@ class FinanceTaxInvoiceTest extends TestCase
         $this->assertEqualsWithDelta(210.0, (float) $line->line_total, 0.02);
     }
 
+    public function test_issuing_draft_invoice_saves_removed_lines_before_finalizing(): void
+    {
+        $ownerRole = Role::create([
+            'name' => 'owner',
+            'label' => 'Owner',
+        ]);
+
+        $user = User::factory()->create([
+            'role_id' => $ownerRole->id,
+        ]);
+
+        FinanceSetting::current();
+
+        $pedicure = SalonService::create([
+            'name' => 'Classic Pedicure',
+            'category' => 'Pedicure',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 95,
+            'is_active' => true,
+        ]);
+
+        $manicure = SalonService::create([
+            'name' => 'Classic Manicure',
+            'category' => 'Manicure',
+            'duration_minutes' => 45,
+            'buffer_minutes' => 0,
+            'price' => 85,
+            'is_active' => true,
+        ]);
+
+        $invoice = TaxInvoice::create([
+            'customer_display_name' => 'Samiha Arabic guest',
+            'status' => TaxInvoice::STATUS_DRAFT,
+            'subtotal' => 275,
+            'vat_amount' => 13.75,
+            'total' => 288.75,
+            'created_by' => $user->id,
+        ]);
+
+        foreach ([
+            [$pedicure, 'pedicure', 95, 4.75, 99.75],
+            [$pedicure, 'pedicure', 95, 4.75, 99.75],
+            [$manicure, 'manicure', 85, 4.25, 89.25],
+        ] as [$service, $costCenter, $subtotal, $vat, $total]) {
+            $invoice->items()->create([
+                'salon_service_id' => $service->id,
+                'revenue_category' => 'service_income',
+                'cost_center' => $costCenter,
+                'description' => $service->name,
+                'quantity' => 1,
+                'unit_price' => $subtotal,
+                'discount_amount' => 0,
+                'line_subtotal' => $subtotal,
+                'tax_rate_percent' => 5,
+                'line_tax' => $vat,
+                'line_total' => $total,
+            ]);
+        }
+
+        $this->actingAs($user)
+            ->put(route('finance.invoices.update', $invoice), [
+                'customer_display_name' => 'Samiha Arabic guest',
+                'finalize_after_save' => true,
+                'items' => [
+                    [
+                        'salon_service_id' => $manicure->id,
+                        'revenue_category' => 'service_income',
+                        'cost_center' => 'manicure',
+                        'description' => $manicure->name,
+                        'quantity' => 1,
+                        'unit_price' => 85,
+                        'discount_amount' => 0,
+                    ],
+                ],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $invoice->refresh();
+
+        $this->assertSame(TaxInvoice::STATUS_FINALIZED, $invoice->status);
+        $this->assertNotNull($invoice->invoice_number);
+        $this->assertSame(1, $invoice->items()->count());
+        $this->assertEqualsWithDelta(85.0, (float) $invoice->subtotal, 0.02);
+        $this->assertEqualsWithDelta(4.25, (float) $invoice->vat_amount, 0.02);
+        $this->assertEqualsWithDelta(89.25, (float) $invoice->total, 0.02);
+    }
+
     public function test_owner_can_void_paid_finalized_invoice_and_remove_it_from_payment_totals(): void
     {
         $ownerRole = Role::create([

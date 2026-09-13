@@ -176,6 +176,23 @@ export default function FinanceInvoicesShow({
               vat: Number(invoice.vat_amount || 0),
               total: Number(invoice.total || 0),
           };
+    const invoiceFormPayload = (data, finalizeAfterSave = false) => ({
+        ...data,
+        customer_id: data.customer_id || null,
+        appointment_id: data.appointment_id ? data.appointment_id : null,
+        finalize_after_save: finalizeAfterSave,
+        items: data.items.map((row) => ({
+            salon_service_id: row.salon_service_id || null,
+            inventory_item_id: row.inventory_item_id || null,
+            staff_profile_id: row.staff_profile_id || null,
+            revenue_category: row.revenue_category || null,
+            cost_center: row.cost_center || null,
+            description: row.description,
+            quantity: parseFloat(row.quantity) || 0,
+            unit_price: parseFloat(row.unit_price) || 0,
+            discount_amount: parseFloat(row.discount_amount) || 0,
+        })),
+    });
 
     const addRow = () => editForm.setData('items', [...editForm.data.items, blankItem()]);
     const removeRow = (idx) => {
@@ -394,22 +411,7 @@ export default function FinanceInvoicesShow({
                         <form
                             onSubmit={(e) => {
                                 e.preventDefault();
-                                editForm.transform((data) => ({
-                                    ...data,
-                                    customer_id: data.customer_id || null,
-                                    appointment_id: data.appointment_id ? data.appointment_id : null,
-                                    items: data.items.map((row) => ({
-                                        salon_service_id: row.salon_service_id || null,
-                                        inventory_item_id: row.inventory_item_id || null,
-                                        staff_profile_id: row.staff_profile_id || null,
-                                        revenue_category: row.revenue_category || null,
-                                        cost_center: row.cost_center || null,
-                                        description: row.description,
-                                        quantity: parseFloat(row.quantity) || 0,
-                                        unit_price: parseFloat(row.unit_price) || 0,
-                                        discount_amount: parseFloat(row.discount_amount) || 0,
-                                    })),
-                                }));
+                                editForm.transform((data) => invoiceFormPayload(data));
                                 editForm.put(route('finance.invoices.update', invoice.id));
                             }}
                             className="space-y-4"
@@ -610,7 +612,11 @@ export default function FinanceInvoicesShow({
                                 <button
                                     type="button"
                                     className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800"
-                                    onClick={() => router.post(route('finance.invoices.finalize', invoice.id))}
+                                    disabled={editForm.processing}
+                                    onClick={() => {
+                                        editForm.transform((data) => invoiceFormPayload(data, true));
+                                        editForm.put(route('finance.invoices.update', invoice.id));
+                                    }}
                                 >
                                     Issue tax invoice
                                 </button>
