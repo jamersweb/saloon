@@ -360,7 +360,7 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                             columns={[
                                 { key: 'staff_name', label: 'Staff Total' },
                                 { key: 'service_count', label: 'Completed Lines', cellClassName: numberCell },
-                                { key: 'quantity', label: 'Qty', cellClassName: numberCell },
+                                { key: 'quantity', label: 'Service Lines', cellClassName: numberCell },
                                 { key: 'total', label: 'Sales', render: (row) => toMoney(row.total, currencyCode), cellClassName: moneyCell },
                                 { key: 'avg_sale_per_line', label: 'Avg Sale / Line', render: (row) => toMoney(row.avg_sale_per_line, currencyCode), cellClassName: moneyCell },
                                 { key: 'sales_percent', label: '% of Month', render: (row) => toPercent(row.sales_percent), cellClassName: numberCell },
@@ -382,7 +382,7 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                                 { key: 'staff_name', label: 'Staff' },
                                 { key: 'service_name', label: 'Service' },
                                 { key: 'service_count', label: 'Completed Lines', cellClassName: numberCell },
-                                { key: 'quantity', label: 'Qty', cellClassName: numberCell },
+                                { key: 'quantity', label: 'Service Lines', cellClassName: numberCell },
                                 { key: 'subtotal', label: 'Subtotal', render: (row) => toMoney(row.subtotal, currencyCode), cellClassName: moneyCell },
                                 { key: 'discount_amount', label: 'Discount', render: (row) => toMoney(row.discount_amount, currencyCode), cellClassName: moneyCell },
                                 { key: 'tax', label: 'VAT', render: (row) => toMoney(row.tax, currencyCode), cellClassName: moneyCell },

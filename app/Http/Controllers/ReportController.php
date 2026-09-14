@@ -188,7 +188,7 @@ class ReportController extends Controller
                 break;
 
             case 'staff_services':
-                $headers = ['Row Type', 'Staff', 'Service', 'Completed Lines', 'Quantity', 'Subtotal', 'Discount', 'VAT', 'Sales Total', 'Avg Sale / Line', '% of Month Sales'];
+                $headers = ['Row Type', 'Staff', 'Service', 'Completed Lines', 'Service Lines', 'Subtotal', 'Discount', 'VAT', 'Sales Total', 'Avg Sale / Line', '% of Month Sales'];
                 $rows = $this->staffServiceSalesCsvRows($dateFrom, $dateTo);
                 break;
         }
@@ -544,7 +544,7 @@ class ReportController extends Controller
             'invoice_number' => $invoiceNumbers->implode(', '),
             'invoice_ids' => $invoiceIds->all(),
             'service_name' => $serviceNames->implode(', '),
-            'quantity' => round((float) $rows->sum(fn (array $row) => $this->serviceReportQuantity($row)), 2),
+            'quantity' => round((float) $rows->sum(fn (array $row) => $this->serviceReportServiceUnitCount($row)), 2),
             'unit_price' => $rows->count() === 1
                 ? round((float) ($first['unit_price'] ?? 0), 2)
                 : round((float) $rows->sum(fn (array $row) => (float) ($row['quantity'] ?? 0) * (float) ($row['unit_price'] ?? 0)), 2),
@@ -630,7 +630,7 @@ class ReportController extends Controller
     {
         return [
             'service_count' => count(array_filter($rows, fn (array $row): bool => ! (bool) ($row['is_adjustment'] ?? false))),
-            'service_quantity' => round(array_sum(array_map(fn (array $row) => $this->serviceReportQuantity($row), $rows)), 2),
+            'service_quantity' => round(array_sum(array_map(fn (array $row) => $this->serviceReportServiceUnitCount($row), $rows)), 2),
             'subtotal' => round(array_sum(array_map(fn (array $row) => (float) ($row['subtotal'] ?? 0), $rows)), 2),
             'tax' => round(array_sum(array_map(fn (array $row) => (float) ($row['tax'] ?? 0), $rows)), 2),
             'total' => round(array_sum(array_map(fn (array $row) => (float) ($row['total'] ?? 0), $rows)), 2),
@@ -644,16 +644,24 @@ class ReportController extends Controller
     }
 
     /**
-     * Quantity is a price multiplier. Refund/adjustment rows affect money totals
-     * but should not increase service quantity or service-count style metrics.
+     * Quantity is a price multiplier. A service line counts once in report
+     * summary metrics even when quantity is used to calculate money.
      *
      * @param  array<string, mixed>  $row
      */
-    private function serviceReportQuantity(array $row): float
+    private function serviceReportServiceUnitCount(array $row): float
     {
-        return (bool) ($row['is_adjustment'] ?? false)
-            ? 0.0
-            : (float) ($row['quantity'] ?? 0);
+        if ((bool) ($row['is_adjustment'] ?? false)) {
+            return 0.0;
+        }
+
+        $items = $row['items'] ?? null;
+        if (is_iterable($items)) {
+            return collect($items)
+                ->sum(fn (array $item): float => (bool) ($item['is_adjustment'] ?? false) ? 0.0 : 1.0);
+        }
+
+        return 1.0;
     }
 
     /**
@@ -687,7 +695,7 @@ class ReportController extends Controller
                     'staff_name' => $staffName,
                     'service_name' => $serviceName,
                     'service_count' => $group->filter(fn (array $row): bool => ! (bool) ($row['is_adjustment'] ?? false))->count(),
-                    'quantity' => round((float) $group->sum(fn (array $row) => $this->serviceReportQuantity($row)), 2),
+                    'quantity' => round((float) $group->sum(fn (array $row) => $this->serviceReportServiceUnitCount($row)), 2),
                     'subtotal' => round((float) $group->sum(fn (array $row) => (float) ($row['subtotal'] ?? 0)), 2),
                     'discount_amount' => round((float) $group->sum(fn (array $row) => (float) ($row['discount_amount'] ?? 0)), 2),
                     'tax' => round((float) $group->sum(fn (array $row) => (float) ($row['tax'] ?? 0)), 2),

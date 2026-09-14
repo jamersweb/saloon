@@ -684,6 +684,8 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(50.4, $totals['other_total_payment']);
         $this->assertSame(302.4, $totals['total_payment']);
         $this->assertSame(1, $totals['service_count']);
+        $this->assertSame(2.0, $totals['service_quantity']);
+        $this->assertSame(2.0, $rows[0]['quantity']);
         $this->assertSame(44.0, $rows[0]['items'][0]['quantity']);
         $this->assertSame(1.0, $rows[0]['items'][1]['quantity']);
         $this->assertStringContainsString('Premium Color Mix (COLOR-MIX-01) x2', $rows[0]['service_report']);
@@ -704,6 +706,7 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame('6.00', trim($firstCells->item(6)->textContent));
         $this->assertSame('176.00', trim($firstCells->item(7)->textContent));
         $this->assertSame('88.00', trim($firstCells->item(8)->textContent));
+        $this->assertStringContainsString('Service Lines', $html);
         $this->assertStringContainsString('Products used: Premium Color Mix (COLOR-MIX-01) x2 - Used for root color.', $html);
         $this->assertStringContainsString('Card Total Payment', $html);
     }
@@ -1516,7 +1519,7 @@ class ReportServiceReportTest extends TestCase
 
         $this->assertSame('Nadia Stylist', $rows['Hair Styling']['staff_name']);
         $this->assertSame(1, $rows['Hair Styling']['service_count']);
-        $this->assertSame(2.0, $rows['Hair Styling']['quantity']);
+        $this->assertSame(1.0, $rows['Hair Styling']['quantity']);
         $this->assertSame(147.0, $rows['Hair Styling']['total']);
         $this->assertSame(84.0, $rows['Nail Polish']['total']);
 
@@ -1561,11 +1564,11 @@ class ReportServiceReportTest extends TestCase
 
         $csv = $response->streamedContent();
 
-        $this->assertStringContainsString('"Row Type",Staff,Service,"Completed Lines",Quantity,Subtotal,Discount,VAT,"Sales Total","Avg Sale / Line","% of Month Sales"', $csv);
-        $this->assertStringContainsString('"Staff Summary","Nadia Stylist","All services",1,2,140,10,7,147,147,100', $csv);
-        $this->assertStringContainsString('Detail,"Nadia Stylist","Hair Styling",1,2,140,10,7,147,147,100', $csv);
-        $this->assertStringContainsString('"Staff Total","Nadia Stylist","All services",1,2,140,10,7,147,147,100', $csv);
-        $this->assertStringContainsString('"Grand Total","Grand Total","All staff services",1,2,140,10,7,147,147,100', $csv);
+        $this->assertStringContainsString('"Row Type",Staff,Service,"Completed Lines","Service Lines",Subtotal,Discount,VAT,"Sales Total","Avg Sale / Line","% of Month Sales"', $csv);
+        $this->assertStringContainsString('"Staff Summary","Nadia Stylist","All services",1,1,140,10,7,147,147,100', $csv);
+        $this->assertStringContainsString('Detail,"Nadia Stylist","Hair Styling",1,1,140,10,7,147,147,100', $csv);
+        $this->assertStringContainsString('"Staff Total","Nadia Stylist","All services",1,1,140,10,7,147,147,100', $csv);
+        $this->assertStringContainsString('"Grand Total","Grand Total","All staff services",1,1,140,10,7,147,147,100', $csv);
     }
 
     public function test_staff_services_pdf_export_downloads_pdf(): void

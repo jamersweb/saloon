@@ -44,7 +44,7 @@
                 <th class="staff">Staff</th>
                 <th class="service">Service</th>
                 <th class="count">Completed Lines</th>
-                <th class="qty">Quantity</th>
+                <th class="qty">Service Lines</th>
                 <th class="money">Subtotal</th>
                 <th class="money">Discount</th>
                 <th class="money">VAT</th>
@@ -97,7 +97,7 @@
                 <th class="staff">Staff</th>
                 <th class="service">Service</th>
                 <th class="count">Completed Lines</th>
-                <th class="qty">Quantity</th>
+                <th class="qty">Service Lines</th>
                 <th class="money">Subtotal</th>
                 <th class="money">Discount</th>
                 <th class="money">VAT</th>

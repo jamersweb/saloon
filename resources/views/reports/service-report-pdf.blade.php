@@ -54,7 +54,7 @@
                 <div class="card-value">{{ number_format((int) $totals['service_count']) }}</div>
             </td>
             <td class="card">
-                <div class="card-label">Item Qty</div>
+                <div class="card-label">Service Lines</div>
                 <div class="card-value">{{ rtrim(rtrim(number_format((float) $totals['service_quantity'], 2), '0'), '.') }}</div>
             </td>
             <td class="card">
@@ -101,7 +101,7 @@
         </tr>
     </table>
 
-    <p class="muted">Amounts in {{ $currencyCode }}. Each billed item is shown separately; subtotal is quantity &times; unit price less discount. Payments include all recorded payments for the listed invoices, including payments made after the service date.</p>
+    <p class="muted">Amounts in {{ $currencyCode }}. Each billed item is shown separately; row quantity is used for amount calculation only. Service line totals count each billed service once. Payments include all recorded payments for the listed invoices, including payments made after the service date.</p>
 
     <table class="grid">
         <thead>
