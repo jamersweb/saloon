@@ -440,6 +440,7 @@ class ReportController extends Controller
         $query = TaxInvoice::query()
             ->with(['customer:id,name,phone', 'items.staffProfile.user:id,name'])
             ->where('status', '!=', TaxInvoice::STATUS_VOID)
+            ->where(fn (Builder $query) => $query->whereNull('adjustment_type')->orWhere('adjustment_type', '!=', 'refund_adjustment'))
             ->whereNull('appointment_id')
             ->whereBetween('issued_at', [$dateFrom, $dateTo])
             ->whereHas('items', fn (Builder $itemQuery) => $this->applyRetailProductItemFilter($itemQuery));
@@ -543,7 +544,7 @@ class ReportController extends Controller
             'invoice_number' => $invoiceNumbers->implode(', '),
             'invoice_ids' => $invoiceIds->all(),
             'service_name' => $serviceNames->implode(', '),
-            'quantity' => round((float) $rows->sum(fn (array $row) => (float) ($row['quantity'] ?? 0)), 2),
+            'quantity' => round((float) $rows->sum(fn (array $row) => $this->serviceReportQuantity($row)), 2),
             'unit_price' => $rows->count() === 1
                 ? round((float) ($first['unit_price'] ?? 0), 2)
                 : round((float) $rows->sum(fn (array $row) => (float) ($row['quantity'] ?? 0) * (float) ($row['unit_price'] ?? 0)), 2),
@@ -597,6 +598,10 @@ class ReportController extends Controller
      */
     private function paymentMethodLabelForRow(array $row, array $paymentMethodLabels): string
     {
+        if ((bool) ($row['is_adjustment'] ?? false)) {
+            return '';
+        }
+
         $invoiceIds = collect($row['invoice_ids'] ?? [])
             ->filter()
             ->map(fn ($id): int => (int) $id)
@@ -624,8 +629,8 @@ class ReportController extends Controller
     private function serviceReportTotals(array $rows, array $paymentTotals = []): array
     {
         return [
-            'service_count' => count($rows),
-            'service_quantity' => round(array_sum(array_map(fn (array $row) => (float) ($row['quantity'] ?? 0), $rows)), 2),
+            'service_count' => count(array_filter($rows, fn (array $row): bool => ! (bool) ($row['is_adjustment'] ?? false))),
+            'service_quantity' => round(array_sum(array_map(fn (array $row) => $this->serviceReportQuantity($row), $rows)), 2),
             'subtotal' => round(array_sum(array_map(fn (array $row) => (float) ($row['subtotal'] ?? 0), $rows)), 2),
             'tax' => round(array_sum(array_map(fn (array $row) => (float) ($row['tax'] ?? 0), $rows)), 2),
             'total' => round(array_sum(array_map(fn (array $row) => (float) ($row['total'] ?? 0), $rows)), 2),
@@ -636,6 +641,19 @@ class ReportController extends Controller
             'other_total_payment' => round((float) ($paymentTotals['other_total_payment'] ?? 0), 2),
             'total_payment' => round((float) ($paymentTotals['total_payment'] ?? 0), 2),
         ];
+    }
+
+    /**
+     * Quantity is a price multiplier. Refund/adjustment rows affect money totals
+     * but should not increase service quantity or service-count style metrics.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function serviceReportQuantity(array $row): float
+    {
+        return (bool) ($row['is_adjustment'] ?? false)
+            ? 0.0
+            : (float) ($row['quantity'] ?? 0);
     }
 
     /**
@@ -668,8 +686,8 @@ class ReportController extends Controller
                 return [
                     'staff_name' => $staffName,
                     'service_name' => $serviceName,
-                    'service_count' => $group->count(),
-                    'quantity' => round((float) $group->sum(fn (array $row) => (float) ($row['quantity'] ?? 0)), 2),
+                    'service_count' => $group->filter(fn (array $row): bool => ! (bool) ($row['is_adjustment'] ?? false))->count(),
+                    'quantity' => round((float) $group->sum(fn (array $row) => $this->serviceReportQuantity($row)), 2),
                     'subtotal' => round((float) $group->sum(fn (array $row) => (float) ($row['subtotal'] ?? 0)), 2),
                     'discount_amount' => round((float) $group->sum(fn (array $row) => (float) ($row['discount_amount'] ?? 0)), 2),
                     'tax' => round((float) $group->sum(fn (array $row) => (float) ($row['tax'] ?? 0)), 2),
@@ -856,6 +874,7 @@ class ReportController extends Controller
         return TaxInvoice::query()
             ->with(['items', 'appointment'])
             ->where('status', '!=', TaxInvoice::STATUS_VOID)
+            ->where(fn (Builder $query) => $query->whereNull('adjustment_type')->orWhere('adjustment_type', '!=', 'refund_adjustment'))
             ->whereIn('appointment_id', array_values(array_unique(array_merge($appointmentIds, $visitAppointmentIds))))
             ->whereBetween('issued_at', [$dateFrom, $dateTo])
             ->orderByRaw('invoice_number IS NULL')
@@ -983,7 +1002,7 @@ class ReportController extends Controller
             ->values();
 
         $remainingItems = $invoiceItems
-            ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id !== null)
+            ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id !== null || $this->isRefundAdjustmentInvoiceItem($item))
             ->values();
         $pendingAppointments = $appointments;
         $assignments = [];
@@ -1044,7 +1063,7 @@ class ReportController extends Controller
                     $targetAppointment = $pendingAppointments->first();
                 }
 
-                if (! $targetAppointment && $allowAssigningExtraItemsToMatchedAppointment) {
+                if (! $targetAppointment && ($allowAssigningExtraItemsToMatchedAppointment || $this->isRefundAdjustmentInvoiceItem($item))) {
                     $targetAppointment = $appointments->first();
                 }
 
@@ -1133,6 +1152,7 @@ class ReportController extends Controller
     private function serviceReportRowFromInvoiceItem(Appointment $appointment, TaxInvoiceItem $item, string $invoiceNumber, array $invoiceIds, int $index = 0): array
     {
         $invoice = $item->relationLoaded('taxInvoice') ? $item->taxInvoice : null;
+        $isAdjustment = $this->isRefundAdjustmentInvoiceItem($item);
 
         return [
             'id' => sprintf('%d-%d-%d', $appointment->id, $item->tax_invoice_id, $item->id ?: $index),
@@ -1150,7 +1170,10 @@ class ReportController extends Controller
             'tax' => round((float) $item->line_tax, 2),
             'total' => round((float) $item->line_total, 2),
             'staff_name' => $item->staffProfile?->user?->name ?: $appointment->staffProfile?->user?->name,
-            'service_report' => $this->serviceReportDetails($appointment),
+            'service_report' => $isAdjustment
+                ? trim(collect(['Refund / Adjustment', $invoice?->adjustment_reason])->filter()->implode(': '))
+                : $this->serviceReportDetails($appointment),
+            'is_adjustment' => $isAdjustment,
         ];
     }
 
@@ -1206,6 +1229,10 @@ class ReportController extends Controller
 
     private function isServiceReportInvoiceItem(TaxInvoiceItem $item): bool
     {
+        if ($this->isRefundAdjustmentInvoiceItem($item)) {
+            return true;
+        }
+
         if ($item->salon_service_id === null) {
             return false;
         }
@@ -1223,8 +1250,21 @@ class ReportController extends Controller
         return true;
     }
 
+    private function isRefundAdjustmentInvoiceItem(TaxInvoiceItem $item): bool
+    {
+        $invoice = $item->relationLoaded('taxInvoice') ? $item->taxInvoice : null;
+
+        return $invoice?->adjustment_type === 'refund_adjustment'
+            && $invoice->related_invoice_id !== null
+            && (float) $item->line_total < 0;
+    }
+
     private function isRetailProductReportItem(TaxInvoiceItem $item): bool
     {
+        if ($this->isRefundAdjustmentInvoiceItem($item)) {
+            return false;
+        }
+
         if ($item->salon_service_id !== null) {
             return false;
         }

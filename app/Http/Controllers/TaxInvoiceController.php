@@ -203,13 +203,14 @@ class TaxInvoiceController extends Controller
         ]);
 
         $items = $this->normalizeInvoiceItems($data['items']);
-        $this->validateInvoiceWorkflow($request, isset($data['appointment_id']) ? (int) $data['appointment_id'] : null, $items);
+        $appointmentId = $this->normalizedInvoiceAppointmentId($data['appointment_id'] ?? null, $items);
+        $this->validateInvoiceWorkflow($request, $appointmentId, $items);
 
-        $invoice = DB::transaction(function () use ($data, $items, $request, $vatRate) {
+        $invoice = DB::transaction(function () use ($data, $items, $request, $vatRate, $appointmentId) {
             $invoice = TaxInvoice::query()->create([
                 'customer_id' => $data['customer_id'] ?? null,
                 'customer_display_name' => $data['customer_display_name'],
-                'appointment_id' => $data['appointment_id'] ?? null,
+                'appointment_id' => $appointmentId,
                 'status' => TaxInvoice::STATUS_DRAFT,
                 'cashier_name' => $data['cashier_name'] ?? null,
                 'notes' => $data['notes'] ?? null,
@@ -402,13 +403,14 @@ class TaxInvoiceController extends Controller
         ]);
 
         $items = $this->normalizeInvoiceItems($data['items']);
-        $this->validateInvoiceWorkflow($request, isset($data['appointment_id']) ? (int) $data['appointment_id'] : null, $items);
+        $appointmentId = $this->normalizedInvoiceAppointmentId($data['appointment_id'] ?? null, $items);
+        $this->validateInvoiceWorkflow($request, $appointmentId, $items);
 
-        DB::transaction(function () use ($invoice, $data, $items, $vatRate) {
+        DB::transaction(function () use ($invoice, $data, $items, $vatRate, $appointmentId) {
             $invoice->update([
                 'customer_id' => $data['customer_id'] ?? null,
                 'customer_display_name' => $data['customer_display_name'],
-                'appointment_id' => $data['appointment_id'] ?? null,
+                'appointment_id' => $appointmentId,
                 'cashier_name' => $data['cashier_name'] ?? null,
                 'notes' => $data['notes'] ?? null,
             ]);
@@ -485,10 +487,16 @@ class TaxInvoiceController extends Controller
         }
 
         $invoice->loadMissing('items');
+        $items = $invoice->items->map(fn (TaxInvoiceItem $item) => $item->toArray())->all();
+        $appointmentId = $this->normalizedInvoiceAppointmentId($invoice->appointment_id, $items);
+        if ($appointmentId !== $invoice->appointment_id) {
+            $invoice->update(['appointment_id' => $appointmentId]);
+        }
+
         $this->validateInvoiceWorkflow(
             $request,
-            $invoice->appointment_id ? (int) $invoice->appointment_id : null,
-            $invoice->items->map(fn (TaxInvoiceItem $item) => $item->toArray())->all()
+            $appointmentId,
+            $items
         );
 
         app(TaxInvoiceFinalizeService::class)->finalize($invoice, $request->user()->id);
@@ -679,6 +687,22 @@ class TaxInvoiceController extends Controller
             'vat_amount' => round($invoice->items->sum('line_tax'), 2),
             'total' => round($invoice->items->sum('line_total'), 2),
         ]);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    private function normalizedInvoiceAppointmentId(mixed $appointmentId, array $items): ?int
+    {
+        $id = filled($appointmentId) ? (int) $appointmentId : null;
+
+        if ($id === null) {
+            return null;
+        }
+
+        $hasServiceLine = collect($items)->contains(fn (array $row): bool => $this->isServiceInvoiceRow($row));
+
+        return $hasServiceLine ? $id : null;
     }
 
     /**

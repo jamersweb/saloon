@@ -42,6 +42,18 @@ const blankSplitPayment = (paidAt) => ({
     gift_card_id: '',
 });
 
+const serviceOptionLabel = (service, currencyCode) => [
+    service.name,
+    service.category ? `Category: ${service.category}` : null,
+    `${currencyCode} ${service.price}`,
+].filter(Boolean).join(' - ');
+
+const inventoryOptionLabel = (item, currencyCode) => [
+    item.name,
+    item.sku ? `SKU: ${item.sku}` : null,
+    `${currencyCode} ${item.selling_price}`,
+].filter(Boolean).join(' - ');
+
 const localDateTimeInputValue = (date = new Date()) => {
     const offsetMs = date.getTimezoneOffset() * 60 * 1000;
 
@@ -139,9 +151,17 @@ export default function FinanceInvoicesShow({
     ]), [appointments]);
     const serviceOptions = useMemo(() => ([
         { value: '', label: 'Custom' },
-        ...services.map((s) => ({ value: `service:${s.id}`, label: s.name })),
-        ...inventory_items.map((item) => ({ value: `inventory:${item.id}`, label: `${item.name}${item.sku ? ` (${item.sku})` : ''}` })),
-    ]), [services, inventory_items]);
+        ...services.map((s) => ({
+            value: `service:${s.id}`,
+            label: serviceOptionLabel(s, currency_code),
+            searchText: `${s.name} ${s.category || ''} ${s.price}`,
+        })),
+        ...inventory_items.map((item) => ({
+            value: `inventory:${item.id}`,
+            label: inventoryOptionLabel(item, currency_code),
+            searchText: `${item.name} ${item.sku || ''} ${item.selling_price || ''}`,
+        })),
+    ]), [services, inventory_items, currency_code]);
     const staffOptions = useMemo(() => ([
         { value: '', label: 'Unassigned' },
         ...staff_profiles.map((staff) => ({ value: String(staff.id), label: staff.name || `Staff #${staff.id}` })),

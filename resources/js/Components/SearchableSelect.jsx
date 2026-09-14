@@ -22,7 +22,7 @@ export default function SearchableSelect({
     const filteredOptions = useMemo(() => {
         const needle = query.trim().toLowerCase();
         if (!needle) return options;
-        return options.filter((option) => String(option.label || '').toLowerCase().includes(needle));
+        return options.filter((option) => String(option.searchText || option.label || '').toLowerCase().includes(needle));
     }, [options, query]);
 
     const isDark = variant === 'dark';
@@ -62,7 +62,7 @@ export default function SearchableSelect({
                                     setIsOpen(false);
                                 }}
                             >
-                                <span className="min-w-0 truncate">{option.label}</span>
+                                <span className="min-w-0 whitespace-normal break-words leading-snug">{option.label}</span>
                                 {selected ? <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide ${isDark ? 'text-violet-200' : 'text-amber-900'}`}>Selected</span> : null}
                             </button>
                         );

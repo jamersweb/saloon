@@ -15,6 +15,18 @@ const blankItem = (saleType = 'standard') => ({
     discount_amount: '0',
 });
 
+const serviceOptionLabel = (service, currencyCode) => [
+    service.name,
+    service.category ? `Category: ${service.category}` : null,
+    `${currencyCode} ${service.price}`,
+].filter(Boolean).join(' - ');
+
+const inventoryOptionLabel = (item, currencyCode) => [
+    item.name,
+    item.sku ? `SKU: ${item.sku}` : null,
+    `${currencyCode} ${item.selling_price}`,
+].filter(Boolean).join(' - ');
+
 export default function FinanceInvoicesCreate({ customers, services, staff_profiles = [], inventory_items = [], revenue_categories = {}, cost_centers = {}, appointments, vat_rate_percent, currency_code, sale_type = 'standard' }) {
     const { flash } = usePage().props;
     const isRetailSale = sale_type === 'retail';
@@ -40,8 +52,16 @@ export default function FinanceInvoicesCreate({ customers, services, staff_profi
     ]), [appointments]);
     const serviceOptions = useMemo(() => ([
         { value: '', label: isRetailSale ? 'Custom product line' : 'Custom line' },
-        ...(isRetailSale ? [] : services.map((s) => ({ value: `service:${s.id}`, label: `${s.name} (${currency_code} ${s.price})` }))),
-        ...inventory_items.map((item) => ({ value: `inventory:${item.id}`, label: `${item.name}${item.sku ? ` (${item.sku})` : ''} (${currency_code} ${item.selling_price})` })),
+        ...(isRetailSale ? [] : services.map((s) => ({
+            value: `service:${s.id}`,
+            label: serviceOptionLabel(s, currency_code),
+            searchText: `${s.name} ${s.category || ''} ${s.price}`,
+        }))),
+        ...inventory_items.map((item) => ({
+            value: `inventory:${item.id}`,
+            label: inventoryOptionLabel(item, currency_code),
+            searchText: `${item.name} ${item.sku || ''} ${item.selling_price || ''}`,
+        })),
     ]), [isRetailSale, services, inventory_items, currency_code]);
     const staffOptions = useMemo(() => ([
         { value: '', label: 'Unassigned' },

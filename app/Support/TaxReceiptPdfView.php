@@ -21,14 +21,51 @@ final class TaxReceiptPdfView
     public static function payload(TaxInvoice $invoice): array
     {
         $invoice->load(['items', 'customer', 'payments']);
+        $adjustments = $invoice->adjustments()
+            ->where('status', TaxInvoice::STATUS_FINALIZED)
+            ->orderBy('issued_at')
+            ->get();
         $settings = FinanceSetting::current();
 
         return [
             'settings' => $settings,
             'invoice' => $invoice,
+            'adjustment_summary' => self::adjustmentSummary($invoice, $adjustments),
             'settlement_summary' => self::settlementSummary($invoice),
             'logo_placeholder' => self::LOGO_PLACEHOLDER,
             'receipt_trn' => $settings->tax_registration_number ?: FinanceSetting::DEFAULT_TAX_REGISTRATION_NUMBER,
+        ];
+    }
+
+    /**
+     * @return array{lines:array<int,string>,subtotal:float,vat_amount:float,total:float,net_subtotal:float,net_vat_amount:float,net_total:float}|null
+     */
+    private static function adjustmentSummary(TaxInvoice $invoice, $adjustments): ?array
+    {
+        if ($adjustments->isEmpty()) {
+            return null;
+        }
+
+        $subtotal = round((float) $adjustments->sum('subtotal'), 2);
+        $vatAmount = round((float) $adjustments->sum('vat_amount'), 2);
+        $total = round((float) $adjustments->sum('total'), 2);
+
+        return [
+            'lines' => $adjustments
+                ->map(function (TaxInvoice $adjustment): string {
+                    $number = $adjustment->invoice_number ?: 'Adjustment';
+                    $reason = trim((string) $adjustment->adjustment_reason);
+
+                    return $reason !== '' ? "{$number}: {$reason}" : $number;
+                })
+                ->values()
+                ->all(),
+            'subtotal' => $subtotal,
+            'vat_amount' => $vatAmount,
+            'total' => $total,
+            'net_subtotal' => round((float) $invoice->subtotal + $subtotal, 2),
+            'net_vat_amount' => round((float) $invoice->vat_amount + $vatAmount, 2),
+            'net_total' => round((float) $invoice->total + $total, 2),
         ];
     }
 

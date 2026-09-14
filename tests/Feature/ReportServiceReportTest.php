@@ -78,6 +78,69 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(147.0, $rows[0]['total']);
     }
 
+    public function test_service_report_includes_linked_refund_adjustment_as_negative_row(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Adjusted Client', 'RCT-ADJ-1');
+
+        $invoice->items()->create([
+            'salon_service_id' => $appointment->service_id,
+            'description' => 'Hair Styling',
+            'quantity' => 1,
+            'unit_price' => 100,
+            'discount_amount' => 0,
+            'line_subtotal' => 100,
+            'tax_rate_percent' => 5,
+            'line_tax' => 5,
+            'line_total' => 105,
+        ]);
+
+        $adjustment = TaxInvoice::create([
+            'invoice_number' => 'RCT-ADJ-2',
+            'customer_id' => $invoice->customer_id,
+            'customer_display_name' => $invoice->customer_display_name,
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'appointment_id' => $appointment->id,
+            'related_invoice_id' => $invoice->id,
+            'adjustment_type' => 'refund_adjustment',
+            'adjustment_reason' => 'After-sale correction',
+            'subtotal' => -20,
+            'vat_amount' => -1,
+            'total' => -21,
+            'issued_at' => '2026-05-21 19:15:00',
+        ]);
+
+        $adjustment->items()->create([
+            'description' => 'Refund / Adjustment for RCT-ADJ-1',
+            'quantity' => 1,
+            'unit_price' => -20,
+            'discount_amount' => 0,
+            'line_subtotal' => -20,
+            'tax_rate_percent' => 5,
+            'line_tax' => -1,
+            'line_total' => -21,
+        ]);
+
+        $rowsMethod = new ReflectionMethod(ReportController::class, 'collectAppointmentServiceReportRows');
+        $rowsMethod->setAccessible(true);
+        $totalsMethod = new ReflectionMethod(ReportController::class, 'serviceReportTotals');
+        $totalsMethod->setAccessible(true);
+
+        $rows = $rowsMethod->invoke(app(ReportController::class), Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(), [
+            'customer_name' => 'Adjusted',
+            'invoice_number' => 'RCT-ADJ',
+        ]);
+        $totals = $totalsMethod->invoke(app(ReportController::class), $rows, []);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('RCT-ADJ-1, RCT-ADJ-2', $rows[0]['invoice_number']);
+        $this->assertSame(1.0, $rows[0]['quantity']);
+        $this->assertSame(84.0, $rows[0]['total']);
+        $this->assertSame(1, $totals['service_count']);
+        $this->assertSame(1.0, $totals['service_quantity']);
+        $this->assertSame(84.0, $totals['total']);
+        $this->assertTrue(collect($rows[0]['items'])->contains(fn (array $item): bool => $item['service_name'] === 'Refund / Adjustment for RCT-ADJ-1' && $item['total'] === -21.0));
+    }
+
     public function test_service_report_can_include_retail_product_invoice_lines(): void
     {
         [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Aisha Khan', 'INV-2026-0007');

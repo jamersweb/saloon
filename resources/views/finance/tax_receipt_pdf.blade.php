@@ -22,8 +22,8 @@
         body {
             direction: ltr;
             font-family: DejaVu Sans, sans-serif;
-            font-size: 10px;
-            color: #111;
+            font-size: 11.5px;
+            color: #000;
             margin: 0 !important;
             /* Left gutter unchanged; extra right inset stops DomPDF clipping decimals on narrow thermal. */
             padding: 4pt 14pt 5pt 8pt !important;
@@ -47,15 +47,15 @@
             text-align: center;
         }
         .muted {
-            color: #444;
-            font-size: 8.5px;
+            color: #111;
+            font-size: 10px;
         }
         .receipt-meta {
-            font-size: 10px;
-            line-height: 1.35;
+            font-size: 11.5px;
+            line-height: 1.42;
         }
         .title {
-            font-size: 12px;
+            font-size: 13.5px;
             font-weight: bold;
             margin: 3px 0;
         }
@@ -71,14 +71,14 @@
         table.items th,
         table.items td {
             text-align: left;
-            padding: 1px 0;
-            border-bottom: 1px dashed #ccc;
+            padding: 1.5px 0;
+            border-bottom: 1px dashed #777;
             vertical-align: top;
             word-wrap: break-word;
             overflow-wrap: anywhere;
         }
         table.items th {
-            font-size: 8px;
+            font-size: 9.5px;
             text-transform: uppercase;
         }
         table.items th.num,
@@ -87,19 +87,19 @@
             padding-right: 8px;
         }
         table.items .col-item {
-            width: 34%;
+            width: 30%;
         }
         table.items .col-qty {
             width: 8%;
         }
         table.items .col-price {
-            width: 18%;
+            width: 17%;
         }
         table.items .col-discount {
-            width: 18%;
+            width: 23%;
         }
         table.items .col-line {
-            width: 20%;
+            width: 19%;
         }
         table.items .num {
             text-align: right;
@@ -116,8 +116,8 @@
         }
         table.totals td {
             border: none;
-            padding: 1px 0;
-            font-size: 10px;
+            padding: 1.5px 0;
+            font-size: 11.5px;
         }
         table.totals .num {
             text-align: right;
@@ -134,7 +134,12 @@
         }
         .grand {
             font-weight: bold;
-            font-size: 11px;
+            font-size: 12.5px;
+        }
+        .adjustment-note {
+            font-size: 9.5px;
+            line-height: 1.25;
+            color: #111;
         }
         hr {
             border: none;
@@ -186,11 +191,11 @@
         </colgroup>
         <thead>
             <tr>
-                <th>Item<br/><span class="ar" style="font-size:5.5px;">البند</span></th>
+                <th>Item<br/><span class="ar" style="font-size:7px;">البند</span></th>
                 <th class="num">Qty</th>
                 <th class="num">Price</th>
-                <th class="num">Discount</th>
-                <th class="num">Amt<br/><span class="ar" style="font-size:5.5px;">المبلغ</span></th>
+                <th class="num"><span style="font-size:8px;">Discount</span></th>
+                <th class="num">Amt<br/><span class="ar" style="font-size:7px;">المبلغ</span></th>
             </tr>
         </thead>
         <tbody>
@@ -223,6 +228,21 @@
             <td class="lbl">Total / <span class="ar">المجموع</span> ({{ $settings->currency_code }})</td>
             <td class="num">{{ number_format((float) $invoice->total, 2) }}</td>
         </tr>
+        @if(!empty($adjustment_summary))
+            <tr>
+                <td class="lbl">Refund / Adjustment</td>
+                <td class="num">{{ number_format((float) $adjustment_summary['total'], 2) }}</td>
+            </tr>
+            <tr class="grand">
+                <td class="lbl">Net Total / <span class="ar">صافي المجموع</span> ({{ $settings->currency_code }})</td>
+                <td class="num">{{ number_format((float) $adjustment_summary['net_total'], 2) }}</td>
+            </tr>
+            @foreach(($adjustment_summary['lines'] ?? []) as $line)
+                <tr>
+                    <td colspan="2" class="adjustment-note">{{ $line }}</td>
+                </tr>
+            @endforeach
+        @endif
     </table>
 
     @if(!empty($settlement_summary))

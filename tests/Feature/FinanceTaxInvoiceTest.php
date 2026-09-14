@@ -748,6 +748,73 @@ class FinanceTaxInvoiceTest extends TestCase
         $this->assertStringContainsString('Cash: 94.50', $html);
     }
 
+    public function test_receipt_html_mentions_refund_adjustments_and_net_total(): void
+    {
+        FinanceSetting::current();
+
+        $customer = Customer::create([
+            'customer_code' => 'FIN-C5',
+            'name' => 'Adjusted Customer',
+            'phone' => '5551116677',
+            'is_active' => true,
+        ]);
+
+        $invoice = TaxInvoice::create([
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'invoice_number' => 'RCT-ADJ-1',
+            'issued_at' => now(),
+            'subtotal' => 100,
+            'vat_amount' => 5,
+            'total' => 105,
+        ]);
+
+        $invoice->items()->create([
+            'description' => 'Classic Pedicure',
+            'quantity' => 1,
+            'unit_price' => 100,
+            'discount_amount' => 0,
+            'line_subtotal' => 100,
+            'tax_rate_percent' => 5,
+            'line_tax' => 5,
+            'line_total' => 105,
+        ]);
+
+        $adjustment = TaxInvoice::create([
+            'customer_id' => $customer->id,
+            'customer_display_name' => $customer->name,
+            'status' => TaxInvoice::STATUS_FINALIZED,
+            'invoice_number' => 'RCT-ADJ-2',
+            'issued_at' => now(),
+            'related_invoice_id' => $invoice->id,
+            'adjustment_type' => 'refund_adjustment',
+            'adjustment_reason' => 'After-sale correction',
+            'subtotal' => -20,
+            'vat_amount' => -1,
+            'total' => -21,
+        ]);
+
+        $adjustment->items()->create([
+            'description' => 'Refund / Adjustment for RCT-ADJ-1',
+            'quantity' => 1,
+            'unit_price' => -20,
+            'discount_amount' => 0,
+            'line_subtotal' => -20,
+            'tax_rate_percent' => 5,
+            'line_tax' => -1,
+            'line_total' => -21,
+        ]);
+
+        $html = TaxReceiptPdfView::shapedHtml($invoice->fresh());
+
+        $this->assertStringContainsString('Refund / Adjustment', $html);
+        $this->assertStringContainsString('RCT-ADJ-2: After-sale correction', $html);
+        $this->assertStringContainsString('-21.00', $html);
+        $this->assertStringContainsString('Net Total', $html);
+        $this->assertStringContainsString('84.00', $html);
+    }
+
     public function test_receipt_html_shows_package_membership_settlement_label(): void
     {
         FinanceSetting::current();
@@ -1020,7 +1087,7 @@ class FinanceTaxInvoiceTest extends TestCase
         $this->assertSame(2, $item->fresh()->stock_quantity);
     }
 
-    public function test_linked_visit_invoice_cannot_be_saved_as_product_only(): void
+    public function test_linked_visit_invoice_saved_as_product_only_is_unlinked_from_visit(): void
     {
         $ownerRole = Role::create([
             'name' => 'owner',
@@ -1114,10 +1181,15 @@ class FinanceTaxInvoiceTest extends TestCase
                     ],
                 ],
             ])
-            ->assertSessionHasErrors(['appointment_id']);
+            ->assertSessionHasNoErrors();
 
-        $this->assertSame($appointment->id, $invoice->fresh()->appointment_id);
-        $this->assertSame($service->id, $invoice->items()->firstOrFail()->salon_service_id);
+        $invoice->refresh();
+        $line = $invoice->items()->firstOrFail();
+
+        $this->assertNull($invoice->appointment_id);
+        $this->assertNull($line->salon_service_id);
+        $this->assertSame($item->id, $line->inventory_item_id);
+        $this->assertSame('retail_product_sales', $line->revenue_category);
     }
 
     public function test_finalizing_product_invoice_fails_when_stock_is_insufficient(): void
