@@ -197,7 +197,7 @@ class PackagesAndGiftCardsTest extends TestCase
         ]);
     }
 
-    public function test_staff_can_issue_random_gift_voucher(): void
+    public function test_staff_can_issue_gift_voucher_for_entered_value(): void
     {
         $managerRole = Role::create([
             'name' => 'manager',
@@ -217,15 +217,68 @@ class PackagesAndGiftCardsTest extends TestCase
             ->post(route('loyalty.gift-cards.store'), [
                 'assigned_customer_id' => $customer->id,
                 'random_voucher' => true,
+                'initial_value' => 250,
             ])
             ->assertSessionHasNoErrors()
             ->assertSessionHas('status');
 
         $giftCard = $customer->giftCards()->firstOrFail();
 
-        $this->assertContains((float) $giftCard->initial_value, GiftCardService::RANDOM_VOUCHER_VALUES);
+        $this->assertSame('250.00', $giftCard->initial_value);
         $this->assertSame($giftCard->initial_value, $giftCard->remaining_value);
-        $this->assertStringContainsString('Random gift voucher', (string) $giftCard->notes);
+        $this->assertStringContainsString('Gift voucher', (string) $giftCard->notes);
+    }
+
+    public function test_manager_can_recharge_gift_card_from_gift_cards_page(): void
+    {
+        $managerRole = Role::create([
+            'name' => 'manager',
+            'label' => 'Manager',
+            'permissions' => Permissions::defaultsForRole('manager'),
+        ]);
+        $user = User::factory()->create(['role_id' => $managerRole->id]);
+
+        $customer = Customer::create([
+            'customer_code' => 'CUST-GIFT-TOPUP',
+            'name' => 'Top Up Customer',
+            'phone' => '5554447777',
+            'is_active' => true,
+        ]);
+
+        FinanceSetting::current();
+        $giftCard = app(GiftCardService::class)->issue($customer, 100.00);
+        app(GiftCardService::class)->consume($giftCard, 100.00, 'Initial redemption');
+        $giftCard->refresh();
+
+        $this->assertSame('redeemed', $giftCard->status);
+
+        $this->actingAs($user)
+            ->post(route('loyalty.gift-cards.top-up', $giftCard), [
+                'amount' => 250,
+                'notes' => 'Customer recharge',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'Gift card recharged.');
+
+        $this->assertDatabaseHas('gift_cards', [
+            'id' => $giftCard->id,
+            'initial_value' => 350,
+            'remaining_value' => 250,
+            'status' => 'active',
+        ]);
+
+        $this->assertDatabaseHas('gift_card_transactions', [
+            'gift_card_id' => $giftCard->id,
+            'amount_change' => 250,
+            'balance_after' => 250,
+            'reason' => 'Gift card recharge',
+        ]);
+
+        $this->assertDatabaseHas('tax_invoice_items', [
+            'revenue_category' => 'gift_card_sales',
+            'description' => 'Gift Card Top-up: '.$giftCard->fresh()->code,
+            'unit_price' => 250,
+        ]);
     }
 
     public function test_manager_can_create_update_and_delete_service_package_with_services(): void

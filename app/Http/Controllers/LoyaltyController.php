@@ -463,7 +463,7 @@ class LoyaltyController extends Controller
 
         $data = $request->validate([
             'assigned_customer_id' => ['nullable', 'exists:customers,id'],
-            'initial_value' => ['nullable', Rule::requiredIf(fn () => ! $request->boolean('random_voucher')), 'numeric', 'min:0.01'],
+            'initial_value' => ['required', 'numeric', 'min:0.01'],
             'random_voucher' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string'],
             'nfc_uid' => [
@@ -478,7 +478,7 @@ class LoyaltyController extends Controller
         $customer = ! empty($data['assigned_customer_id']) ? Customer::find((int) $data['assigned_customer_id']) : null;
 
         $giftCard = $request->boolean('random_voucher')
-            ? $giftCardService->issueRandomVoucher($customer, $request->user()?->id, $data['notes'] ?? null, $data['nfc_uid'] ?? null)
+            ? $giftCardService->issueVoucher($customer, (float) $data['initial_value'], $request->user()?->id, $data['notes'] ?? null, $data['nfc_uid'] ?? null)
             : $giftCardService->issue(
                 $customer,
                 (float) $data['initial_value'],
@@ -521,6 +521,42 @@ class LoyaltyController extends Controller
         ]);
 
         return back()->with('status', 'Gift card assigned to customer.');
+    }
+
+    public function topUpGiftCard(Request $request, GiftCard $giftCard, GiftCardService $giftCardService, GiftCardSalePostingService $giftCardSalePostingService): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $amount = (float) $data['amount'];
+        $transaction = $giftCardService->topUp(
+            $giftCard,
+            $amount,
+            'Gift card recharge',
+            $request->user()?->id,
+            $data['notes'] ?? null,
+        );
+
+        $giftCard->refresh()->load('customer');
+        $giftCardSalePostingService->post(
+            $giftCard,
+            $giftCard->customer,
+            $request->user()?->id,
+            $data['notes'] ?? null,
+            $amount,
+            'Gift Card Top-up: '.$giftCard->code,
+        );
+
+        Audit::log($request->user()?->id, 'gift_card.recharged', 'GiftCardTransaction', $transaction->id, [
+            'gift_card_id' => $giftCard->id,
+            'amount' => $amount,
+        ]);
+
+        return back()->with('status', 'Gift card recharged.');
     }
 
     public function unassignGiftCard(Request $request, GiftCard $giftCard): RedirectResponse

@@ -17,6 +17,7 @@ export default function GiftCardsSection({
     canManage,
     giftCardForm,
     assignGiftCardForm,
+    topUpGiftCardForm,
     consumeGiftCardForm,
     giftNfcLookupForm,
     giftNfcLookupResult,
@@ -75,6 +76,12 @@ export default function GiftCardsSection({
         .map((card) => ({
             value: String(card.id),
             label: `${card.code} (${card.remaining_value})${card.customer_name ? ` - currently ${card.customer_name}` : ' - unassigned'}`,
+        }));
+    const rechargeableGiftCardOptions = giftCards
+        .filter((card) => card.status !== 'expired')
+        .map((card) => ({
+            value: String(card.id),
+            label: `${card.code} (${card.remaining_value}) - ${card.status}${card.customer_name ? ` - ${card.customer_name}` : ' - unassigned'}`,
         }));
     const activeGiftCardOptions = giftCards
         .filter((card) => card.status === 'active')
@@ -280,12 +287,63 @@ export default function GiftCardsSection({
                 <h3 className="mb-4 text-sm font-semibold text-slate-700">Create gift card / inventory</h3>
                 <form onSubmit={(e) => { e.preventDefault(); giftCardForm.post(route('loyalty.gift-cards.store'), { onSuccess: () => giftCardForm.reset('assigned_customer_id', 'initial_value', 'random_voucher', 'nfc_uid', 'notes') }); }} className="grid gap-3 md:grid-cols-6">
                     <div><SearchableSelect label="Customer" value={giftCardForm.data.assigned_customer_id} onChange={(id) => giftCardForm.setData('assigned_customer_id', id)} options={[{ value: '', label: 'Unassigned' }, ...customerOptions]} placeholder="Search customer" />{fieldError(giftCardForm, 'assigned_customer_id')}</div>
-                    <div><label className="ta-field-label">Initial value</label><input className="ta-input" type="number" min="0.01" step="0.01" value={giftCardForm.data.initial_value} onChange={(e) => giftCardForm.setData('initial_value', e.target.value)} required={!giftCardForm.data.random_voucher} disabled={giftCardForm.data.random_voucher} />{fieldError(giftCardForm, 'initial_value')}</div>
-                    <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={giftCardForm.data.random_voucher} onChange={(e) => giftCardForm.setData((current) => ({ ...current, random_voucher: e.target.checked, initial_value: e.target.checked ? '' : current.initial_value }))} />Random voucher 100 / 200 / 300</label>
+                    <div><label className="ta-field-label">Initial value</label><input className="ta-input" type="number" min="0.01" step="0.01" value={giftCardForm.data.initial_value} onChange={(e) => giftCardForm.setData('initial_value', e.target.value)} required />{fieldError(giftCardForm, 'initial_value')}</div>
+                    <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={giftCardForm.data.random_voucher} onChange={(e) => giftCardForm.setData('random_voucher', e.target.checked)} />Gift voucher</label>
                     <div><label className="ta-field-label">NFC UID</label><input className="ta-input" value={giftCardForm.data.nfc_uid} onChange={(e) => giftCardForm.setData('nfc_uid', e.target.value)} placeholder="Optional physical NFC gift card" />{fieldError(giftCardForm, 'nfc_uid')}</div>
                     <button type="button" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 disabled:opacity-50" onClick={() => readUidFromBridge('gift_issue')} disabled={!canManage || nfcBridgeLoadingTarget !== null}>{nfcBridgeLoadingTarget === 'gift_issue' ? 'Reading...' : 'Read UID'}</button>
                     <div><label className="ta-field-label">Notes</label><input className="ta-input" value={giftCardForm.data.notes} onChange={(e) => giftCardForm.setData('notes', e.target.value)} />{fieldError(giftCardForm, 'notes')}</div>
                     <button className="ta-btn-primary" disabled={giftCardForm.processing || !canManage}>Issue gift card</button>
+                </form>
+            </section>
+
+            <section className="ta-card p-5">
+                <h3 className="mb-4 text-sm font-semibold text-slate-700">Recharge gift card</h3>
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        topUpGiftCardForm.post(route('loyalty.gift-cards.top-up', topUpGiftCardForm.data.gift_card_id), {
+                            preserveScroll: true,
+                            onSuccess: () => topUpGiftCardForm.reset('gift_card_id', 'amount', 'notes'),
+                        });
+                    }}
+                    className="grid gap-3 md:grid-cols-4"
+                >
+                    <div className="md:col-span-2">
+                        <SearchableSelect
+                            label="Gift card"
+                            value={topUpGiftCardForm.data.gift_card_id}
+                            onChange={(id) => topUpGiftCardForm.setData('gift_card_id', id)}
+                            options={rechargeableGiftCardOptions}
+                            placeholder="Search gift card"
+                        />
+                        {fieldError(topUpGiftCardForm, 'gift_card_id')}
+                    </div>
+                    <div>
+                        <label className="ta-field-label">Amount</label>
+                        <input
+                            className="ta-input"
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={topUpGiftCardForm.data.amount}
+                            onChange={(e) => topUpGiftCardForm.setData('amount', e.target.value)}
+                            required
+                        />
+                        {fieldError(topUpGiftCardForm, 'amount')}
+                    </div>
+                    <div>
+                        <label className="ta-field-label">Notes</label>
+                        <input
+                            className="ta-input"
+                            value={topUpGiftCardForm.data.notes}
+                            onChange={(e) => topUpGiftCardForm.setData('notes', e.target.value)}
+                            placeholder="Optional sale reference"
+                        />
+                        {fieldError(topUpGiftCardForm, 'notes')}
+                    </div>
+                    <button className="ta-btn-primary md:col-span-4" disabled={topUpGiftCardForm.processing || !canManage || !topUpGiftCardForm.data.gift_card_id}>
+                        Recharge gift card
+                    </button>
                 </form>
             </section>
 

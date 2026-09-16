@@ -117,6 +117,7 @@ export default function LoyaltyIndex({
     const consumePackageForm = useForm({ customer_package_id: '', sessions_used: 0, value_used: 0, notes: '' });
     const giftCardForm = useForm({ assigned_customer_id: '', initial_value: '', random_voucher: false, nfc_uid: '', notes: '' });
     const assignGiftCardForm = useForm({ gift_card_id: '', assigned_customer_id: '' });
+    const topUpGiftCardForm = useForm({ gift_card_id: '', amount: '', notes: '' });
     const giftNfcLookupForm = useForm({ gift_nfc_uid: '' });
     const giftNfcBindForm = useForm({ gift_card_id: '', nfc_uid: '', replace_existing: false });
     const consumeGiftCardForm = useForm({ gift_card_id: '', appointment_id: '', tax_invoice_id: '', amount: '', reason: '', notes: '' });
@@ -435,6 +436,7 @@ export default function LoyaltyIndex({
                         canManage={canManage}
                         giftCardForm={giftCardForm}
                         assignGiftCardForm={assignGiftCardForm}
+                        topUpGiftCardForm={topUpGiftCardForm}
                         consumeGiftCardForm={consumeGiftCardForm}
                         giftNfcLookupForm={giftNfcLookupForm}
                         giftNfcLookupResult={giftNfcLookupResult}

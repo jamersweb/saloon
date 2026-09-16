@@ -49,10 +49,9 @@ class GiftCardService
         });
     }
 
-    public function issueRandomVoucher(?Customer $customer, ?int $issuedBy = null, ?string $notes = null, ?string $nfcUid = null): GiftCard
+    public function issueVoucher(?Customer $customer, float $value, ?int $issuedBy = null, ?string $notes = null, ?string $nfcUid = null): GiftCard
     {
-        $value = self::RANDOM_VOUCHER_VALUES[array_rand(self::RANDOM_VOUCHER_VALUES)];
-        $voucherNotes = trim(($notes ? $notes.PHP_EOL : '').'Random gift voucher. Auto-applies when invoice total is at least AED '.number_format(self::VOUCHER_MINIMUM_INVOICE_TOTAL, 2).'.');
+        $voucherNotes = trim(($notes ? $notes.PHP_EOL : '').'Gift voucher. Auto-applies when invoice total is at least AED '.number_format(self::VOUCHER_MINIMUM_INVOICE_TOTAL, 2).'.');
 
         return $this->issue($customer, $value, $issuedBy, $voucherNotes, $nfcUid);
     }
@@ -394,17 +393,10 @@ class GiftCardService
         return in_array($initialValue, self::RANDOM_VOUCHER_VALUES, true);
     }
 
-    public function topUpFromMembershipCard(CustomerMembershipCard $membershipCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null): GiftCardTransaction
+    public function topUp(GiftCard $giftCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null): GiftCardTransaction
     {
         if ($amount <= 0) {
             throw ValidationException::withMessages(['amount' => 'Amount must be greater than zero.']);
-        }
-
-        $giftCard = $this->ensureGiftCardFromMembershipCard($membershipCard, $createdBy);
-        if (! $giftCard) {
-            throw ValidationException::withMessages([
-                'membership_card' => 'This membership card is not configured as a gift card.',
-            ]);
         }
 
         return DB::transaction(function () use ($giftCard, $amount, $reason, $createdBy, $notes) {
@@ -429,5 +421,21 @@ class GiftCardService
                 'created_by' => $createdBy,
             ]);
         });
+    }
+
+    public function topUpFromMembershipCard(CustomerMembershipCard $membershipCard, float $amount, string $reason, ?int $createdBy = null, ?string $notes = null): GiftCardTransaction
+    {
+        if ($amount <= 0) {
+            throw ValidationException::withMessages(['amount' => 'Amount must be greater than zero.']);
+        }
+
+        $giftCard = $this->ensureGiftCardFromMembershipCard($membershipCard, $createdBy);
+        if (! $giftCard) {
+            throw ValidationException::withMessages([
+                'membership_card' => 'This membership card is not configured as a gift card.',
+            ]);
+        }
+
+        return $this->topUp($giftCard, $amount, $reason, $createdBy, $notes);
     }
 }
