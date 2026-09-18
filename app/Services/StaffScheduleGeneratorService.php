@@ -12,6 +12,12 @@ use Carbon\CarbonPeriod;
 
 class StaffScheduleGeneratorService
 {
+    private const AUTO_GENERATED_NOTES = [
+        'Auto-generated shift',
+        'Auto-assigned monthly default shift',
+        'Salon hours refreshed for monthly schedule',
+    ];
+
     /**
      * Fill missing schedule rows for every active staff between two dates (inclusive).
      * Existing rows are left unchanged. Uses default salon shift or a day-off row when
@@ -67,6 +73,78 @@ class StaffScheduleGeneratorService
     public function fillRollingMonth(): int
     {
         return $this->fillGapsForActiveStaff(Carbon::today(), Carbon::today()->copy()->addDays(30));
+    }
+
+    /**
+     * Create missing rows and update system-managed working shifts to the current salon hours.
+     * Day-off/leave rows are kept intact, and custom rows are left alone unless they still match
+     * the previously configured default shift.
+     */
+    public function syncDefaultShiftsForActiveStaff(
+        CarbonInterface $rangeStart,
+        CarbonInterface $rangeEnd,
+        ?array $staffProfileIds = null,
+        ?string $previousStart = null,
+        ?string $previousEnd = null,
+    ): int {
+        $start = Carbon::parse($rangeStart->toDateString())->startOfDay();
+        $end = Carbon::parse($rangeEnd->toDateString())->startOfDay();
+
+        if ($end->lt($start)) {
+            return 0;
+        }
+
+        $changed = 0;
+        $rules = BookingRule::current();
+        $staffIds = StaffProfile::query()
+            ->where('is_active', true)
+            ->assignableToServices()
+            ->when($staffProfileIds !== null, fn ($query) => $query->whereIn('id', $staffProfileIds))
+            ->pluck('id');
+
+        foreach ($staffIds as $staffId) {
+            foreach (CarbonPeriod::create($start, $end) as $date) {
+                $day = Carbon::instance($date)->toDateString();
+                $schedule = StaffSchedule::query()
+                    ->where('staff_profile_id', $staffId)
+                    ->whereDate('schedule_date', $day)
+                    ->first();
+
+                if (! $schedule) {
+                    $this->createMissingRowForStaffAndDate((int) $staffId, $day);
+                    $changed++;
+
+                    continue;
+                }
+
+                if ($schedule->is_day_off || str_starts_with((string) $schedule->notes, 'Approved leave #')) {
+                    continue;
+                }
+
+                if (! $this->canRefreshDefaultShift($schedule, $previousStart, $previousEnd)) {
+                    continue;
+                }
+
+                $attributes = [
+                    'start_time' => $rules->defaultShiftStart(),
+                    'end_time' => $rules->defaultShiftEnd(),
+                    'notes' => 'Salon hours refreshed for monthly schedule',
+                ];
+
+                if (
+                    $this->clock($schedule->start_time) === $attributes['start_time']
+                    && $this->clock($schedule->end_time) === $attributes['end_time']
+                    && $schedule->notes === $attributes['notes']
+                ) {
+                    continue;
+                }
+
+                $schedule->update($attributes);
+                $changed++;
+            }
+        }
+
+        return $changed;
     }
 
     public function seedMonthForNewStaffProfile(StaffProfile $profile): void
@@ -207,5 +285,31 @@ class StaffScheduleGeneratorService
             ->whereDate('end_date', '>=', $dateYmd)
             ->orderBy('id')
             ->value('id');
+    }
+
+    private function canRefreshDefaultShift(StaffSchedule $schedule, ?string $previousStart, ?string $previousEnd): bool
+    {
+        if (in_array($schedule->notes, self::AUTO_GENERATED_NOTES, true)) {
+            return true;
+        }
+
+        return $previousStart !== null
+            && $previousEnd !== null
+            && $this->clock($schedule->start_time) === $this->clock($previousStart)
+            && $this->clock($schedule->end_time) === $this->clock($previousEnd);
+    }
+
+    /**
+     * @param  mixed  $value
+     */
+    private function clock($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $raw = (string) $value;
+
+        return strlen($raw) >= 5 ? substr($raw, 0, 5) : $raw;
     }
 }

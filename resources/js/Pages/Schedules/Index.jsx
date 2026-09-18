@@ -75,6 +75,7 @@ export default function SchedulesIndex({ staffProfiles, schedules, filters, book
         public_requires_approval: Boolean(bookingRules?.public_requires_approval ?? true),
         allow_customer_cancellation: Boolean(bookingRules?.allow_customer_cancellation ?? true),
         cancellation_cutoff_hours: bookingRules?.cancellation_cutoff_hours ?? 12,
+        apply_to_staff_month: true,
     });
 
     const startEdit = (schedule) => {
@@ -165,6 +166,18 @@ export default function SchedulesIndex({ staffProfiles, schedules, filters, book
                         <div className="md:col-span-2 flex flex-wrap items-center gap-4 pt-6">
                             <label className="text-sm text-slate-600"><input type="checkbox" checked={bookingRulesForm.data.public_requires_approval} onChange={(e) => bookingRulesForm.setData('public_requires_approval', e.target.checked)} className="mr-2" />Public bookings require approval</label>
                             <label className="text-sm text-slate-600"><input type="checkbox" checked={bookingRulesForm.data.allow_customer_cancellation} onChange={(e) => bookingRulesForm.setData('allow_customer_cancellation', e.target.checked)} className="mr-2" />Allow customer cancellation</label>
+                        </div>
+                        <div className="md:col-span-4">
+                            <label className="inline-flex items-start gap-2 text-sm text-slate-600">
+                                <input
+                                    type="checkbox"
+                                    checked={bookingRulesForm.data.apply_to_staff_month}
+                                    onChange={(e) => bookingRulesForm.setData('apply_to_staff_month', e.target.checked)}
+                                    className="mt-1"
+                                />
+                                <span>Apply changed salon hours to staff schedules for the next 30 days</span>
+                            </label>
+                            {fieldError(bookingRulesForm, 'apply_to_staff_month')}
                         </div>
                         <div className="md:col-span-4">
                             <button className="ta-btn-primary" disabled={bookingRulesForm.processing}>Save Booking Rules</button>

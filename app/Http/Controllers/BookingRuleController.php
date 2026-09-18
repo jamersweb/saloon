@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BookingRule;
+use App\Services\StaffScheduleGeneratorService;
 use App\Support\Audit;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -10,6 +11,8 @@ use Illuminate\Http\Request;
 
 class BookingRuleController extends Controller
 {
+    public function __construct(private readonly StaffScheduleGeneratorService $staffScheduleGenerator) {}
+
     public function update(Request $request): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
@@ -23,6 +26,7 @@ class BookingRuleController extends Controller
             'public_requires_approval' => ['required', 'boolean'],
             'allow_customer_cancellation' => ['required', 'boolean'],
             'cancellation_cutoff_hours' => ['required', 'integer', 'min:0', 'max:168'],
+            'apply_to_staff_month' => ['nullable', 'boolean'],
         ]);
 
         $open = Carbon::parse('2000-01-01 '.$data['opening_time'].':00');
@@ -32,11 +36,36 @@ class BookingRuleController extends Controller
         }
 
         $rule = BookingRule::current();
+        $previousStart = $rule->defaultShiftStart();
+        $previousEnd = $rule->defaultShiftEnd();
+        $hoursChanged = $previousStart !== $data['opening_time'] || $previousEnd !== $data['closing_time'];
+        $applyToStaffMonth = (bool) ($data['apply_to_staff_month'] ?? false);
+        unset($data['apply_to_staff_month']);
+
         $rule->update($data);
 
-        Audit::log($request->user()?->id, 'booking_rules.updated', 'BookingRule', $rule->id, $data);
+        $refreshed = 0;
+        if ($hoursChanged && $applyToStaffMonth) {
+            $start = now()->startOfDay();
+            $end = now()->copy()->addDays(29)->startOfDay();
+            $refreshed = $this->staffScheduleGenerator->syncDefaultShiftsForActiveStaff(
+                $start,
+                $end,
+                null,
+                $previousStart,
+                $previousEnd,
+            );
+        }
 
-        return back()->with('status', 'Booking rules updated.');
+        Audit::log($request->user()?->id, 'booking_rules.updated', 'BookingRule', $rule->id, array_merge($data, [
+            'staff_month_refreshed' => $refreshed,
+        ]));
+
+        $status = 'Booking rules updated.';
+        if ($hoursChanged && $applyToStaffMonth) {
+            $status .= " Refreshed {$refreshed} staff schedule row(s) for the next 30 days.";
+        }
+
+        return back()->with('status', $status);
     }
 }
-

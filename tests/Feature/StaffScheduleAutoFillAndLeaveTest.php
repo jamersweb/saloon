@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\BookingRule;
 use App\Models\LeaveRequest;
 use App\Models\Role;
 use App\Models\StaffProfile;
@@ -339,6 +340,82 @@ class StaffScheduleAutoFillAndLeaveTest extends TestCase
             0,
             StaffSchedule::query()->where('staff_profile_id', $otherStaff->id)->count(),
         );
+    }
+
+    public function test_booking_rule_hour_change_can_refresh_monthly_default_staff_schedules(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-08 10:00:00'));
+
+        try {
+            $manager = $this->makeManagerUser();
+            BookingRule::current()->update([
+                'opening_time' => '09:00',
+                'closing_time' => '22:00',
+            ]);
+            $staff = StaffProfile::create([
+                'user_id' => User::factory()->create()->id,
+                'employee_code' => 'STF-RULE-MO',
+                'is_active' => true,
+            ]);
+
+            $autoRow = StaffSchedule::create([
+                'staff_profile_id' => $staff->id,
+                'schedule_date' => '2026-06-08',
+                'start_time' => '09:00',
+                'end_time' => '22:00',
+                'is_day_off' => false,
+                'notes' => 'Auto-generated shift',
+            ]);
+            $manualDefaultRow = StaffSchedule::create([
+                'staff_profile_id' => $staff->id,
+                'schedule_date' => '2026-06-09',
+                'start_time' => '09:00',
+                'end_time' => '22:00',
+                'is_day_off' => false,
+            ]);
+            $customRow = StaffSchedule::create([
+                'staff_profile_id' => $staff->id,
+                'schedule_date' => '2026-06-10',
+                'start_time' => '11:00',
+                'end_time' => '19:00',
+                'is_day_off' => false,
+                'notes' => 'Custom shift',
+            ]);
+            $dayOffRow = StaffSchedule::create([
+                'staff_profile_id' => $staff->id,
+                'schedule_date' => '2026-06-11',
+                'start_time' => null,
+                'end_time' => null,
+                'is_day_off' => true,
+                'notes' => 'Approved leave #99',
+            ]);
+
+            $this->actingAs($manager)
+                ->patch(route('booking-rules.update'), [
+                    'slot_interval_minutes' => 30,
+                    'opening_time' => '10:00',
+                    'closing_time' => '21:00',
+                    'min_advance_minutes' => 30,
+                    'max_advance_days' => 60,
+                    'public_requires_approval' => true,
+                    'allow_customer_cancellation' => true,
+                    'cancellation_cutoff_hours' => 12,
+                    'apply_to_staff_month' => true,
+                ])
+                ->assertRedirect()
+                ->assertSessionHas('status');
+
+            $this->assertSame('10:00', substr((string) $autoRow->fresh()->start_time, 0, 5));
+            $this->assertSame('21:00', substr((string) $autoRow->fresh()->end_time, 0, 5));
+            $this->assertSame('10:00', substr((string) $manualDefaultRow->fresh()->start_time, 0, 5));
+            $this->assertSame('21:00', substr((string) $manualDefaultRow->fresh()->end_time, 0, 5));
+            $this->assertSame('11:00', substr((string) $customRow->fresh()->start_time, 0, 5));
+            $this->assertSame('19:00', substr((string) $customRow->fresh()->end_time, 0, 5));
+            $this->assertTrue($dayOffRow->fresh()->is_day_off);
+            $this->assertSame(30, StaffSchedule::query()->where('staff_profile_id', $staff->id)->count());
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_fill_gaps_requires_valid_horizon(): void
