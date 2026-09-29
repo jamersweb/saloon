@@ -19,6 +19,7 @@
         .grid th, .grid td { border: 1px solid #cbd5e1; padding: 4px; text-align: left; vertical-align: top; word-wrap: break-word; }
         .grid th { background: #e2e8f0; font-size: 8px; text-transform: uppercase; color: #0f172a; font-weight: 800; }
         .grid tr { page-break-inside: avoid; }
+        .grid tr.invoice-continuation { page-break-before: avoid; }
         .grid tfoot td { background: #fef3c7; font-weight: 800; }
         .date { width: 7%; }
         .customer { width: 11%; }
@@ -152,7 +153,7 @@
                         ->implode("\n");
                 @endphp
                 @foreach($groupItems as $rowIndex => $row)
-                <tr>
+                <tr @class(['invoice-continuation' => $rowIndex > 0])>
                     @if($rowIndex === 0)
                         <td rowspan="{{ count($groupItems) }}">{{ $groupRow['date'] }}</td>
                         <td rowspan="{{ count($groupItems) }}">

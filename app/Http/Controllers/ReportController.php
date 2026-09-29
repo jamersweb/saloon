@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\AttendanceLog;
-use App\Models\Campaign;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyAccount;
 use App\Models\CustomerLoyaltyLedger;
@@ -351,7 +350,7 @@ class ReportController extends Controller
         $invoiceItems = $this->invoiceItemsForAppointments($appointments, $dateFrom, $dateTo);
 
         $rows = $appointments
-            ->flatMap(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $vatRatePercent, $includeZeroBilledInvoiceFallback): Collection {
+            ->flatMap(function (Appointment $appointment) use ($invoiceLabels, $invoiceIds, $invoiceItems, $includeZeroBilledInvoiceFallback): Collection {
                 $appointmentInvoiceItems = $invoiceItems[$appointment->id] ?? collect();
                 $serviceItems = $appointmentInvoiceItems
                     ->filter(fn (TaxInvoiceItem $item) => $this->isServiceReportInvoiceItem($item))
@@ -940,12 +939,14 @@ class ReportController extends Controller
         $visitIds = $appointments->pluck('visit_id')->filter()->unique()->values()->all();
         $visitAppointmentIds = [];
         $appointmentVisitMap = [];
+        $visitAppointments = collect();
 
         if ($visitIds !== []) {
-            $appointmentVisitMap = Appointment::query()
+            $visitAppointments = Appointment::query()
+                ->with('service:id,name')
                 ->whereIn('visit_id', $visitIds)
-                ->pluck('visit_id', 'id')
-                ->all();
+                ->get(['id', 'visit_id', 'service_id', 'staff_profile_id', 'scheduled_start']);
+            $appointmentVisitMap = $visitAppointments->pluck('visit_id', 'id')->all();
             $visitAppointmentIds = array_keys($appointmentVisitMap);
         }
 
@@ -983,7 +984,11 @@ class ReportController extends Controller
 
             $invoice->items->each(fn (TaxInvoiceItem $item) => $item->setRelation('taxInvoice', $invoice));
 
-            foreach ($this->assignInvoiceItemsToAppointments($invoiceAppointments, $invoice->items, ! $visitId) as $appointmentId => $appointmentItems) {
+            $excludedAppointments = $visitAppointments
+                ->where('visit_id', $visitId)
+                ->whereNotIn('id', $invoiceAppointments->pluck('id')->all());
+
+            foreach ($this->assignInvoiceItemsToAppointments($invoiceAppointments, $invoice->items, $excludedAppointments) as $appointmentId => $appointmentItems) {
                 $items[$appointmentId] = ($items[$appointmentId] ?? collect())->concat($appointmentItems);
             }
         }
@@ -998,9 +1003,10 @@ class ReportController extends Controller
     /**
      * @param  Collection<int, Appointment>  $appointments
      * @param  Collection<int, TaxInvoiceItem>  $invoiceItems
+     * @param  Collection<int, Appointment>|null  $excludedAppointments
      * @return array<int, Collection<int, TaxInvoiceItem>>
      */
-    private function assignInvoiceItemsToAppointments(Collection $appointments, Collection $invoiceItems, bool $allowAssigningExtraItemsToMatchedAppointment = true): array
+    private function assignInvoiceItemsToAppointments(Collection $appointments, Collection $invoiceItems, ?Collection $excludedAppointments = null): array
     {
         $appointments = $appointments
             ->sortBy([
@@ -1012,14 +1018,17 @@ class ReportController extends Controller
         $remainingItems = $invoiceItems
             ->filter(fn (TaxInvoiceItem $item) => $item->salon_service_id !== null || $this->isRefundAdjustmentInvoiceItem($item))
             ->values();
-        $pendingAppointments = $appointments;
+        // Match excluded visit appointments too, so their billed lines cannot
+        // be mistaken for services added directly to the invoice.
+        $reportAppointmentIds = $appointments->pluck('id')->all();
+        $pendingAppointments = $appointments->concat($excludedAppointments ?? collect());
         $assignments = [];
 
-        foreach ($appointments as $appointment) {
+        foreach ($pendingAppointments as $appointment) {
             $assignments[$appointment->id] = collect();
         }
 
-        $assignBy = function (callable $matches) use (&$pendingAppointments, &$remainingItems, &$assignments): void {
+        $assignBy = function (callable $matches) use (&$pendingAppointments, &$remainingItems, &$assignments, $reportAppointmentIds): void {
             $stillPending = collect();
 
             foreach ($pendingAppointments as $appointment) {
@@ -1027,6 +1036,10 @@ class ReportController extends Controller
                 $matchedItem = null;
 
                 foreach ($remainingItems as $key => $item) {
+                    if ($this->isRefundAdjustmentInvoiceItem($item) && ! in_array($appointment->id, $reportAppointmentIds, true)) {
+                        continue;
+                    }
+
                     if ($matches($appointment, $item)) {
                         $matchedKey = $key;
                         $matchedItem = $item;
@@ -1047,6 +1060,11 @@ class ReportController extends Controller
         };
 
         $assignBy(fn (Appointment $appointment, TaxInvoiceItem $item): bool => (int) $appointment->service_id > 0
+            && (int) $item->salon_service_id === (int) $appointment->service_id
+            && $item->staff_profile_id !== null
+            && (int) $item->staff_profile_id === (int) $appointment->staff_profile_id);
+
+        $assignBy(fn (Appointment $appointment, TaxInvoiceItem $item): bool => (int) $appointment->service_id > 0
             && (int) $item->salon_service_id === (int) $appointment->service_id);
 
         $assignBy(function (Appointment $appointment, TaxInvoiceItem $item): bool {
@@ -1056,13 +1074,14 @@ class ReportController extends Controller
                 && mb_strtolower(trim((string) $item->description)) === $serviceName;
         });
 
+        $pendingAppointments = $pendingAppointments->whereIn('id', $reportAppointmentIds)->values();
+
         if ($remainingItems->isNotEmpty()) {
             foreach ($remainingItems->values() as $item) {
                 $targetAppointment = null;
 
                 if ($item->staff_profile_id) {
-                    $staffMatchAppointments = $allowAssigningExtraItemsToMatchedAppointment ? $appointments : $pendingAppointments;
-                    $targetAppointment = $staffMatchAppointments->first(
+                    $targetAppointment = $appointments->first(
                         fn (Appointment $appointment) => (int) $appointment->staff_profile_id === (int) $item->staff_profile_id
                     );
                 }
@@ -1071,12 +1090,16 @@ class ReportController extends Controller
                     $targetAppointment = $pendingAppointments->first();
                 }
 
-                if (! $targetAppointment && ($allowAssigningExtraItemsToMatchedAppointment || $this->isRefundAdjustmentInvoiceItem($item))) {
+                if (! $targetAppointment) {
                     $targetAppointment = $appointments->first();
                 }
 
                 if ($targetAppointment) {
+                    // An invoice-only addition must not inherit another service's staff.
+                    $item->setAttribute('report_invoice_only', ! $this->isRefundAdjustmentInvoiceItem($item)
+                        && ! $pendingAppointments->contains('id', $targetAppointment->id));
                     $assignments[$targetAppointment->id] = $assignments[$targetAppointment->id]->push($item);
+                    $pendingAppointments = $pendingAppointments->reject(fn (Appointment $appointment) => $appointment->id === $targetAppointment->id)->values();
                 }
             }
         }
@@ -1085,7 +1108,7 @@ class ReportController extends Controller
             $assignments[$appointment->id] = $assignments[$appointment->id] ?? collect();
         }
 
-        return $assignments;
+        return array_intersect_key($assignments, array_flip($reportAppointmentIds));
     }
 
     /**
@@ -1177,7 +1200,7 @@ class ReportController extends Controller
             'subtotal' => round((float) $item->line_subtotal, 2),
             'tax' => round((float) $item->line_tax, 2),
             'total' => round((float) $item->line_total, 2),
-            'staff_name' => $item->staffProfile?->user?->name ?: $appointment->staffProfile?->user?->name,
+            'staff_name' => $item->staffProfile?->user?->name ?: ($item->getAttribute('report_invoice_only') ? null : $appointment->staffProfile?->user?->name),
             'service_report' => $isAdjustment
                 ? trim(collect(['Refund / Adjustment', $invoice?->adjustment_reason])->filter()->implode(': '))
                 : $this->serviceReportDetails($appointment),

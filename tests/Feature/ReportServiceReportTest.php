@@ -478,6 +478,8 @@ class ReportServiceReportTest extends TestCase
     {
         [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Tima', 'RCT00125');
 
+        $appointment->update(['visit_id' => 'single-appointment-visit']);
+
         $removalService = SalonService::create([
             'name' => 'Hair Extension removal',
             'category' => 'Hair',
@@ -550,6 +552,131 @@ class ReportServiceReportTest extends TestCase
         $this->assertSame(0.0, $rows->firstWhere('service_name', 'Hair Extension removal')['total']);
         $this->assertSame(1474.2, $rows->firstWhere('service_name', 'Hair Styling')['total']);
         $this->assertSame(784.88, $rows->firstWhere('service_name', 'Hair Extension coloring Large')['total']);
+    }
+
+    public function test_visit_invoice_additions_reconcile_amounts_and_preserve_line_staff(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Report Reconciliation', 'RCT00376');
+        $appointment->update(['visit_id' => 'visit-extra-billed-services']);
+        $invoice->update(['subtotal' => 498, 'vat_amount' => 24.90, 'total' => 522.90]);
+        $extraStaff = StaffProfile::create([
+            'user_id' => User::factory()->create(['name' => 'Additional Service Staff'])->id,
+            'employee_code' => 'EXTRA-STAFF',
+            'is_active' => true,
+        ]);
+
+        foreach ([
+            ['Hair wash', 60, 12, 48, 2.40, 50.40, $appointment->service_id, $appointment->staff_profile_id],
+            ['Hairstayling', 500, 262, 238, 11.90, 249.90, null, $extraStaff->id],
+            ['Basic Manicure (Men)', 100, 20, 80, 4, 84, null, $extraStaff->id],
+            ['Basic Pedicure (Men)', 200, 68, 132, 6.60, 138.60, null, null],
+        ] as [$name, $price, $discount, $subtotal, $tax, $total, $serviceId, $staffId]) {
+            $serviceId ??= SalonService::create([
+                'name' => $name, 'category' => 'Service', 'duration_minutes' => 30,
+                'buffer_minutes' => 0, 'price' => $price, 'is_active' => true,
+            ])->id;
+            $invoice->items()->create([
+                'salon_service_id' => $serviceId, 'staff_profile_id' => $staffId,
+                'description' => $name, 'quantity' => 1, 'unit_price' => $price,
+                'discount_amount' => $discount, 'line_subtotal' => $subtotal,
+                'tax_rate_percent' => 5, 'line_tax' => $tax, 'line_total' => $total,
+            ]);
+        }
+        InvoicePayment::create([
+            'tax_invoice_id' => $invoice->id, 'amount' => 522.90,
+            'method' => InvoicePayment::METHOD_CARD, 'paid_at' => '2026-05-21 19:10:00',
+        ]);
+
+        $controller = app(ReportController::class);
+        $from = Carbon::parse('2026-05-21')->startOfDay();
+        $to = $from->copy()->endOfDay();
+        $rows = (new ReflectionMethod($controller, 'collectAppointmentServiceReportRows'))->invoke(
+            $controller, $from, $to, ['customer_name' => '', 'invoice_number' => 'RCT00376']
+        );
+        $payments = (new ReflectionMethod($controller, 'paymentTotalsForServiceRows'))->invoke($controller, $from, $to, $rows);
+        $totals = (new ReflectionMethod($controller, 'serviceReportTotals'))->invoke($controller, $rows, $payments);
+
+        $this->assertCount(1, $rows);
+        $this->assertCount(4, $rows[0]['items']);
+        $this->assertSame(4.0, $totals['service_quantity']);
+        $this->assertSame(498.0, $totals['subtotal']);
+        $this->assertSame(24.9, $totals['tax']);
+        $this->assertSame(522.9, $totals['total']);
+        $this->assertSame($totals['total'], $totals['card_total_payment']);
+        $items = collect($rows[0]['items'])->keyBy('service_name');
+        $this->assertSame('Additional Service Staff', $items['Hairstayling']['staff_name']);
+        $this->assertSame('Additional Service Staff', $items['Basic Manicure (Men)']['staff_name']);
+        $this->assertNull($items['Basic Pedicure (Men)']['staff_name']);
+    }
+
+    public function test_multi_appointment_visit_keeps_invoice_additions_but_excludes_uncompleted_service_lines(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Mixed Visit', 'RCT-MIXED');
+        $appointment->update(['visit_id' => 'mixed-visit']);
+        $expectedNames = [];
+
+        foreach ([Appointment::STATUS_COMPLETED, Appointment::STATUS_COMPLETED, Appointment::STATUS_CANCELLED, Appointment::STATUS_CONFIRMED, Appointment::STATUS_NO_SHOW, null] as $index => $status) {
+            $service = $index === 0 ? $appointment->service : SalonService::create([
+                'name' => 'Visit service '.$index, 'category' => 'Service',
+                'duration_minutes' => 30, 'buffer_minutes' => 0, 'price' => 100, 'is_active' => true,
+            ]);
+            if ($index > 0 && $status !== null) {
+                $otherAppointment = $appointment->replicate();
+                $otherAppointment->fill(['service_id' => $service->id, 'status' => $status])->save();
+            }
+            if ($status === Appointment::STATUS_COMPLETED || $status === null) {
+                $expectedNames[] = $service->name;
+            }
+            $invoice->items()->create([
+                'salon_service_id' => $service->id, 'staff_profile_id' => $appointment->staff_profile_id,
+                'description' => $service->name, 'quantity' => 1, 'unit_price' => 100,
+                'discount_amount' => 0, 'line_subtotal' => 100, 'tax_rate_percent' => 5,
+                'line_tax' => 5, 'line_total' => 105,
+            ]);
+        }
+
+        $controller = app(ReportController::class);
+        $rows = (new ReflectionMethod($controller, 'collectAppointmentServiceReportRows'))->invoke(
+            $controller, Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(),
+            ['customer_name' => '', 'invoice_number' => 'RCT-MIXED']
+        );
+
+        $this->assertCount(2, $rows);
+        $items = collect($rows)->flatMap(fn (array $row) => $row['items']);
+        $this->assertEqualsCanonicalizing($expectedNames, $items->pluck('service_name')->all());
+        $this->assertSame(315.0, $items->sum('total'));
+        $this->assertCount(3, $items->pluck('id')->unique());
+    }
+
+    public function test_cancelled_duplicate_service_does_not_take_the_completed_staffs_invoice_line(): void
+    {
+        [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Duplicate Service', 'RCT-DUPLICATE');
+        $appointment->update(['visit_id' => 'duplicate-service-visit']);
+        $cancelledStaff = StaffProfile::create([
+            'user_id' => User::factory()->create(['name' => 'Cancelled Staff'])->id,
+            'employee_code' => 'CANCELLED-STAFF', 'is_active' => true,
+        ]);
+        $cancelled = $appointment->replicate();
+        $cancelled->fill(['status' => Appointment::STATUS_CANCELLED, 'staff_profile_id' => $cancelledStaff->id])->save();
+
+        // Put the cancelled staff's line first to catch matching by service ID alone.
+        foreach ([$cancelledStaff->id, $appointment->staff_profile_id] as $staffId) {
+            $invoice->items()->create([
+                'salon_service_id' => $appointment->service_id, 'staff_profile_id' => $staffId,
+                'description' => $appointment->service->name, 'quantity' => 1, 'unit_price' => 100,
+                'discount_amount' => 0, 'line_subtotal' => 100, 'tax_rate_percent' => 5,
+                'line_tax' => 5, 'line_total' => 105,
+            ]);
+        }
+        $controller = app(ReportController::class);
+        $rows = (new ReflectionMethod($controller, 'collectServiceReportRows'))->invoke(
+            $controller, Carbon::parse('2026-05-21')->startOfDay(), Carbon::parse('2026-05-21')->endOfDay(),
+            ['customer_name' => '', 'invoice_number' => 'RCT-DUPLICATE']
+        );
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Nadia Stylist', $rows[0]['staff_name']);
+        $this->assertSame(105.0, $rows[0]['total']);
     }
 
     public function test_service_report_pdf_groups_multiple_invoice_lines_under_one_appointment_record(): void
@@ -1499,6 +1626,7 @@ class ReportServiceReportTest extends TestCase
         $invoice->items()->create([
             'salon_service_id' => $extraService->id,
             'description' => 'Nail Polish',
+            'staff_profile_id' => $appointment->staff_profile_id,
             'quantity' => 1,
             'unit_price' => 80,
             'discount_amount' => 0,
