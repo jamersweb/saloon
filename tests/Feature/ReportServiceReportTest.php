@@ -474,6 +474,84 @@ class ReportServiceReportTest extends TestCase
         $this->assertFalse(collect($rows[0]['items'])->pluck('service_name')->contains('Threading Full face'));
     }
 
+    public function test_service_report_hides_zero_billed_visit_appointment_when_invoice_has_reported_line(): void
+    {
+        [$colorAppointment, $invoice] = $this->completedAppointmentWithInvoice('Raheleh', 'RCT00387');
+
+        $colorAppointment->service->update([
+            'name' => 'Hair color Full head Highlights',
+            'price' => 700,
+        ]);
+
+        $haircutStaffUser = User::factory()->create(['name' => 'Majd Alabaza']);
+        $haircutStaff = StaffProfile::create([
+            'user_id' => $haircutStaffUser->id,
+            'employee_code' => 'SR-RCT00387-HAIRCUT',
+            'is_active' => true,
+        ]);
+        $haircutService = SalonService::create([
+            'name' => 'Haircut trim',
+            'category' => 'Haircut',
+            'duration_minutes' => 30,
+            'buffer_minutes' => 0,
+            'price' => 60,
+            'is_active' => true,
+        ]);
+        $visitId = 'visit-rct00387';
+
+        $colorAppointment->update([
+            'visit_id' => $visitId,
+            'scheduled_start' => '2026-09-28 16:40:00',
+            'scheduled_end' => '2026-09-28 17:40:00',
+        ]);
+        Appointment::create([
+            'customer_id' => $colorAppointment->customer_id,
+            'service_id' => $haircutService->id,
+            'staff_profile_id' => $haircutStaff->id,
+            'source' => 'admin',
+            'status' => Appointment::STATUS_COMPLETED,
+            'scheduled_start' => '2026-09-28 16:40:00',
+            'scheduled_end' => '2026-09-28 17:10:00',
+            'customer_name' => $colorAppointment->customer_name,
+            'customer_phone' => $colorAppointment->customer_phone,
+            'visit_id' => $visitId,
+        ]);
+
+        $invoice->update([
+            'appointment_id' => $colorAppointment->id,
+            'subtotal' => 761.90,
+            'vat_amount' => 38.10,
+            'total' => 800,
+            'issued_at' => '2026-09-29 15:43:28',
+        ]);
+        $invoice->items()->create([
+            'salon_service_id' => $colorAppointment->service_id,
+            'revenue_category' => 'service_income',
+            'staff_profile_id' => $colorAppointment->staff_profile_id,
+            'description' => 'Hair color Full head Highlights',
+            'quantity' => 1,
+            'unit_price' => 800,
+            'discount_amount' => 38.10,
+            'line_subtotal' => 761.90,
+            'tax_rate_percent' => 5,
+            'line_tax' => 38.10,
+            'line_total' => 800,
+        ]);
+
+        $method = new ReflectionMethod(ReportController::class, 'collectAppointmentServiceReportRows');
+        $method->setAccessible(true);
+
+        $rows = $method->invoke(app(ReportController::class), Carbon::parse('2026-09-29')->startOfDay(), Carbon::parse('2026-09-29')->endOfDay(), [
+            'customer_name' => 'Raheleh',
+            'invoice_number' => 'RCT00387',
+        ]);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Hair color Full head Highlights', $rows[0]['service_name']);
+        $this->assertSame(800.0, $rows[0]['total']);
+        $this->assertFalse(collect($rows)->pluck('service_name')->contains('Haircut trim'));
+    }
+
     public function test_service_report_includes_all_service_invoice_lines_for_a_single_completed_appointment(): void
     {
         [$appointment, $invoice] = $this->completedAppointmentWithInvoice('Tima', 'RCT00125');

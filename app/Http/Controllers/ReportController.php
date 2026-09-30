@@ -409,8 +409,24 @@ class ReportController extends Controller
     {
         $rows = collect($this->collectServiceReportRows($dateFrom, $dateTo, $filters, true, true));
         $paymentMethodLabels = $this->paymentMethodLabelsForRows($rows->all());
+        $reportedInvoiceIds = $rows
+            ->reject(fn (array $row): bool => (bool) ($row['is_zero_billed_fallback'] ?? false))
+            ->flatMap(fn (array $row): array => $row['invoice_ids'] ?? [])
+            ->filter()
+            ->map(fn ($id): int => (int) $id)
+            ->unique()
+            ->flip();
 
         return $rows
+            ->reject(function (array $row) use ($reportedInvoiceIds): bool {
+                if (! (bool) ($row['is_zero_billed_fallback'] ?? false)) {
+                    return false;
+                }
+
+                return collect($row['invoice_ids'] ?? [])
+                    ->map(fn ($id): int => (int) $id)
+                    ->contains(fn (int $id): bool => $reportedInvoiceIds->has($id));
+            })
             ->map(function (array $row) use ($paymentMethodLabels): array {
                 return array_replace($row, [
                     'payment_method' => $this->paymentMethodLabelForRow($row, $paymentMethodLabels),
