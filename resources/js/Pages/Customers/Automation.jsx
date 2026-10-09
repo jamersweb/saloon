@@ -184,9 +184,9 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
     const dueServiceForm = useForm({ customer_id: '', salon_service_id: '', due_date: '', notes: '' });
     const templateForm = useForm({
         name: '',
-        channel: 'sms',
+        channel: 'whatsapp',
         content: 'Hi {name}, we have a special offer for you.',
-        whatsapp_message_type: 'text',
+        whatsapp_message_type: 'template',
         whatsapp_template_name: '',
         whatsapp_template_language_code: 'en_US',
         whatsapp_header_type: 'none',
@@ -204,7 +204,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
         header_example: '',
         header_media_handle: '',
         header_media_file: null,
-        body_text: 'Hello {{1}}',
+        body_text: 'Hello {{1}}, thank you for choosing VINA Luxury Beauty Salon. Please reply if you need assistance.',
         footer_text: '',
         example_values: 'Customer',
         buttons: [
@@ -291,7 +291,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
             header_example: '',
             header_media_handle: '',
             header_media_file: null,
-            body_text: 'Hello {{1}}',
+            body_text: 'Hello {{1}}, thank you for choosing VINA Luxury Beauty Salon. Please reply if you need assistance.',
             footer_text: '',
             example_values: 'Customer',
             buttons: [
@@ -663,7 +663,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                         <td className="px-4 py-2 text-slate-600">{row.due_date}</td>
                                         <td className="px-4 py-2 text-slate-600">{row.reminder_sent_at ? formatDateTime(row.reminder_sent_at) : '-'}</td>
                                         <td className="px-4 py-2 text-slate-600">{row.status}</td>
-                                        <td className="px-4 py-2"><div className="flex gap-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700" onClick={() => router.post(route('customers.automation.due-services.remind', row.id), { channel: 'sms' })}>Remind SMS</button><button className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs text-violet-700" onClick={() => router.post(route('customers.automation.due-services.remind', row.id), { channel: 'whatsapp' })}>WhatsApp</button><button className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-700" onClick={() => router.post(route('customers.automation.due-services.remind', row.id), { channel: 'sms', policy: 'fallback_email' })}>SMS?Email</button><button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700" onClick={() => router.patch(route('customers.automation.due-services.status', row.id), { status: 'booked' })}>Booked</button><button className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-700" onClick={() => router.patch(route('customers.automation.due-services.status', row.id), { status: 'dismissed' })}>Dismiss</button></div></td>
+                                        <td className="px-4 py-2"><div className="flex gap-2"><button className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs text-violet-700" onClick={() => router.post(route('customers.automation.due-services.remind', row.id), { channel: 'whatsapp' })}>WhatsApp</button><button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700" onClick={() => router.patch(route('customers.automation.due-services.status', row.id), { status: 'booked' })}>Booked</button><button className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-700" onClick={() => router.patch(route('customers.automation.due-services.status', row.id), { status: 'dismissed' })}>Dismiss</button></div></td>
                                     </tr>
                                 ))}
                                 {dueServices.data.length === 0 && (
@@ -708,7 +708,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                             }));
                                         }}
                                     >
-                                        <option value="sms">SMS</option>
+
                                         <option value="email">Email</option>
                                         <option value="whatsapp">WhatsApp</option>
                                     </select>
@@ -717,7 +717,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                         <>
                                     <select className="ta-input" value={templateForm.data.whatsapp_message_type} onChange={(e) => templateForm.setData('whatsapp_message_type', e.target.value)}>
                                         <option value="template">Approved WhatsApp template</option>
-                                        <option value="text">WhatsApp text (24h window)</option>
+
                                     </select>
                                             <SearchableSelect
                                                 value={templateForm.data.whatsapp_template_name}
@@ -922,7 +922,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                 }}
                             >
                                 <option value="whatsapp">WhatsApp</option>
-                                <option value="sms">SMS</option>
+
                                 <option value="email">Email</option>
                             </select>
                         </div>
@@ -1124,7 +1124,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Channel</th><th className="px-5 py-3">Context</th><th className="px-5 py-3">Recipient</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Details</th></tr></thead>
-                            <tbody>{recentLogs.data.map((log) => <tr key={log.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{formatDateTime(log.accepted_at || log.sent_at || log.failed_at || log.queued_at || log.created_at)}</td><td className="px-5 py-3 text-slate-700">{log.customer_name || '-'}</td><td className="px-5 py-3 text-slate-600">{log.channel}</td><td className="px-5 py-3 text-slate-600">{log.context}</td><td className="px-5 py-3 text-slate-600">{log.recipient || '-'}</td><td className="px-5 py-3 text-slate-600">{log.provider_status ? `${log.status} / ${log.provider_status}` : log.status}</td><td className="max-w-xs px-5 py-3 text-xs text-slate-500">{log.error_message ? <span className="font-semibold text-red-600">{log.error_message}</span> : <span>{log.provider_message_id ? `Provider ID: ${log.provider_message_id}` : log.provider || '-'}</span>}{Number(log.attempt_count || 0) > 0 ? <div className="mt-1">Attempts: {log.attempt_count}</div> : null}</td></tr>)}</tbody>
+                            <tbody>{recentLogs.data.map((log) => <tr key={log.id} className="border-t border-slate-100"><td className="px-5 py-3 text-slate-600">{formatDateTime(log.accepted_at || log.sent_at || log.failed_at || log.queued_at || log.created_at)}</td><td className="px-5 py-3 text-slate-700">{log.customer_name || '-'}</td><td className="px-5 py-3 text-slate-600">{log.channel}</td><td className="px-5 py-3 text-slate-600">{log.context}</td><td className="px-5 py-3 text-slate-600">{log.recipient || '-'}</td><td className="px-5 py-3 text-slate-600">{log.channel === 'sms' && !log.provider_message_id && log.status === 'sent' ? 'Historical log: delivery unverified' : (log.provider_status || log.status)}</td><td className="max-w-xs px-5 py-3 text-xs text-slate-500">{log.error_message ? <span className="font-semibold text-red-600">{log.error_message}</span> : <span>{log.provider_message_id ? `Provider ID: ${log.provider_message_id}` : log.provider || '-'}</span>}{Number(log.attempt_count || 0) > 0 ? <div className="mt-1">Attempts: {log.attempt_count}</div> : null}</td></tr>)}</tbody>
                         </table>
                     </div>
                     <PaginationLinks paginator={recentLogs} />

@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Campaign;
 use App\Models\CommunicationLog;
+use App\Models\CustomerDueService;
 use App\Models\FinanceSetting;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 class WhatsAppWebhookController extends Controller
@@ -34,12 +37,19 @@ class WhatsAppWebhookController extends Controller
 
     public function receive(Request $request): JsonResponse
     {
+        if ($request->input('type') === 'whatsapp.inbound_message.received') {
+            $inbound = $request->input('whatsappInboundMessage', []);
+            $this->recordInbound((string) ($inbound['to'] ?? ''), (string) ($inbound['from'] ?? ''), $inbound['sendTime'] ?? null);
+        }
         if ($request->input('type') === 'whatsapp.message.updated' && is_array($request->input('whatsappMessage'))) {
             $this->applyYCloudStatusPayload($request->input('whatsappMessage'), $request->all());
         }
 
         foreach ($request->input('entry', []) as $entry) {
             foreach (($entry['changes'] ?? []) as $change) {
+                foreach (($change['value']['messages'] ?? []) as $inbound) {
+                    $this->recordInbound((string) data_get($change, 'value.metadata.phone_number_id', ''), (string) ($inbound['from'] ?? ''), isset($inbound['timestamp']) ? Carbon::createFromTimestamp((int) $inbound['timestamp']) : null);
+                }
                 foreach (($change['value']['statuses'] ?? []) as $statusPayload) {
                     $this->applyStatusPayload($statusPayload);
                 }
@@ -50,7 +60,7 @@ class WhatsAppWebhookController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $statusPayload
+     * @param  array<string, mixed>  $statusPayload
      */
     private function applyStatusPayload(array $statusPayload): void
     {
@@ -113,12 +123,12 @@ class WhatsAppWebhookController extends Controller
             $updates['error_message'] = $errorMessage !== '' ? $errorMessage : ($log->error_message ?: 'WhatsApp delivery failed.');
         }
 
-        $log->forceFill($updates)->save();
+        $this->applyLifecycle($log, $updates, $status, $eventAt);
     }
 
     /**
-     * @param array<string, mixed> $statusPayload
-     * @param array<string, mixed> $webhookPayload
+     * @param  array<string, mixed>  $statusPayload
+     * @param  array<string, mixed>  $webhookPayload
      */
     private function applyYCloudStatusPayload(array $statusPayload, array $webhookPayload): void
     {
@@ -159,12 +169,12 @@ class WhatsAppWebhookController extends Controller
             $updates['error_message'] = $this->ycloudErrorMessage($statusPayload) ?: ($log->error_message ?: 'WhatsApp delivery failed.');
         }
 
-        $log->forceFill($updates)->save();
+        $this->applyLifecycle($log, $updates, $status, $eventAt);
     }
 
     /**
-     * @param array<string, mixed> $statusPayload
-     * @param array<string, mixed> $webhookPayload
+     * @param  array<string, mixed>  $statusPayload
+     * @param  array<string, mixed>  $webhookPayload
      */
     private function ycloudEventTime(string $status, array $statusPayload, array $webhookPayload): Carbon
     {
@@ -182,8 +192,73 @@ class WhatsAppWebhookController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $statusPayload
+     * @param  array<string, mixed>  $statusPayload
      */
+    private function recordInbound(string $sender, string $recipient, mixed $timestamp): void
+    {
+        $sender = preg_replace('/\D+/', '', $sender);
+        $recipient = preg_replace('/\D+/', '', $recipient);
+        if ($sender === '' || $recipient === '' || ! $timestamp) {
+            return;
+        }
+        try {
+            $at = Carbon::parse($timestamp);
+        } catch (\Throwable) {
+            return;
+        }
+        if ($at->isFuture()) {
+            return;
+        }
+        DB::table('whatsapp_reply_windows')->insertOrIgnore([
+            'sender' => $sender, 'recipient' => $recipient, 'last_inbound_at' => $at,
+        ]);
+        DB::table('whatsapp_reply_windows')->where('sender', $sender)->where('recipient', $recipient)
+            ->where('last_inbound_at', '<', $at)->update(['last_inbound_at' => $at]);
+    }
+
+    private function applyLifecycle(CommunicationLog $log, array $updates, string $status, Carbon $eventAt): void
+    {
+        if (! in_array($status, ['accepted', 'sent', 'delivered', 'read', 'failed'], true)) {
+            return;
+        }
+        DB::transaction(function () use ($log, $updates, $status, $eventAt) {
+            $current = CommunicationLog::query()->whereKey($log->id)->lockForUpdate()->first();
+            if (! $current || $current->provider_status === $status) {
+                return;
+            }
+            $rank = ['queued' => 0, 'sending' => 0, 'accepted' => 1, 'sent' => 2, 'failed' => 3, 'delivered' => 4, 'read' => 5];
+            if (($rank[$status] ?? 0) < ($rank[$current->provider_status] ?? 0)) {
+                return;
+            }
+            $wasDelivered = $current->delivered_at || $current->read_at;
+            $wasSent = $current->sent_at || $wasDelivered;
+            $wasFailed = $current->status === 'failed';
+            if (in_array($status, ['sent', 'delivered', 'read'], true)) {
+                $updates['sent_at'] = $current->sent_at ?? $eventAt;
+                $updates['error_message'] = null;
+                $updates['failed_at'] = null;
+            }
+            if ($status === 'read') {
+                $updates['delivered_at'] = $current->delivered_at ?? $eventAt;
+            }
+            $current->forceFill($updates)->save();
+            if (preg_match('/^campaign:(\d+)$/', (string) $current->context, $matches)) {
+                if (! $wasSent && in_array($status, ['sent', 'delivered', 'read'], true)) {
+                    Campaign::query()->whereKey($matches[1])->increment('sent_count');
+                }
+                if (! $wasFailed && $status === 'failed') {
+                    Campaign::query()->whereKey($matches[1])->increment('failed_count');
+                } elseif ($wasFailed && in_array($status, ['delivered', 'read'], true)) {
+                    Campaign::query()->whereKey($matches[1])->where('failed_count', '>', 0)->decrement('failed_count');
+                }
+            }
+            if (! $wasDelivered && in_array($status, ['delivered', 'read'], true)
+                && preg_match('/^due_service_reminder(?:_auto)?:(\d+)$/', (string) $current->context, $matches)) {
+                CustomerDueService::query()->whereKey($matches[1])->update(['reminder_sent_at' => $eventAt]);
+            }
+        });
+    }
+
     private function ycloudErrorMessage(array $statusPayload): ?string
     {
         $parts = [

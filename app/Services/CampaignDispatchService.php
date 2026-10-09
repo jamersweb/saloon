@@ -10,6 +10,7 @@ use App\Models\Customer;
 use App\Models\CustomerDueService;
 use App\Models\WhatsAppMessageTemplate;
 use Illuminate\Database\Eloquent\Builder;
+use InvalidArgumentException;
 
 class CampaignDispatchService
 {
@@ -21,13 +22,27 @@ class CampaignDispatchService
     {
         $campaign->loadMissing('template');
 
-        if ($campaign->channel === 'whatsapp' && ! $this->hasApprovedWhatsAppTemplate($campaign->template)) {
+        if ($campaign->channel === 'sms' || $campaign->channel === 'whatsapp' && ! $this->hasApprovedWhatsAppTemplate($campaign->template)) {
             $campaign->update([
-                'status' => 'failed',
+                'status' => 'draft',
                 'last_run_at' => now(),
             ]);
 
-            return ['queued' => 0, 'sent' => 0, 'failed' => 0];
+            return ['queued' => 0, 'sent' => 0, 'failed' => 0, 'error' => 'Select an approved WhatsApp template. SMS is disabled.'];
+        }
+
+        if ($campaign->channel === 'whatsapp') {
+            try {
+                app(WhatsAppTemplateValidator::class)->validate(
+                    (string) $campaign->template->whatsapp_template_name,
+                    $campaign->template->whatsapp_template_language_code ?: 'en_US',
+                    $this->templateSendComponents($campaign->template, 'Customer'),
+                );
+            } catch (InvalidArgumentException $exception) {
+                $campaign->update(['status' => 'draft', 'last_run_at' => now()]);
+
+                return ['queued' => 0, 'sent' => 0, 'failed' => 0, 'error' => $exception->getMessage()];
+            }
         }
 
         $queued = 0;
@@ -124,15 +139,21 @@ class CampaignDispatchService
             ];
         }
 
-        $components[] = [
-            'type' => 'body',
-            'parameters' => [
-                [
-                    'type' => 'text',
-                    'text' => $customerName,
-                ],
-            ],
-        ];
+        $approved = WhatsAppMessageTemplate::query()->where('name', $template->whatsapp_template_name)
+            ->where('language', $template->whatsapp_template_language_code ?: 'en_US')->first();
+        $body = collect($approved?->components ?? [])->first(fn ($c) => strtoupper($c['type'] ?? '') === 'BODY');
+        preg_match_all('/{{\s*([^{}]+?)\s*}}/', $body['text'] ?? '', $matches);
+        $variables = array_values(array_unique($matches[1]));
+        if (count($variables) > 1) {
+            throw new InvalidArgumentException('Campaigns support one customer-name body variable. Select a matching template; due-service reminders use their separate three-variable template.');
+        }
+        if ($variables !== []) {
+            $parameter = ['type' => 'text', 'text' => $customerName];
+            if (! ctype_digit($variables[0])) {
+                $parameter['parameter_name'] = $variables[0];
+            }
+            $components[] = ['type' => 'body', 'parameters' => [$parameter]];
+        }
 
         return $components;
     }

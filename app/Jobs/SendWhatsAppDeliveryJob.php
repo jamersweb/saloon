@@ -4,13 +4,14 @@ namespace App\Jobs;
 
 use App\Models\Campaign;
 use App\Models\CommunicationLog;
-use App\Models\CustomerDueService;
 use App\Services\WhatsAppService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\RateLimited;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
@@ -23,18 +24,18 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
     public int $tries = 5;
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
     public function __construct(
         public int $communicationLogId,
         public array $payload,
-    ) {
-    }
+    ) {}
 
     public function middleware(): array
     {
         return [
             new RateLimited('whatsapp-outbound'),
+            (new WithoutOverlapping('whatsapp-log:'.$this->communicationLogId))->releaseAfter(30)->expireAfter(180),
         ];
     }
 
@@ -47,7 +48,7 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
     {
         $log = CommunicationLog::query()->find($this->communicationLogId);
 
-        if (! $log || $log->channel !== 'whatsapp' || $log->status === 'sent') {
+        if (! $log || $log->channel !== 'whatsapp' || in_array($log->status, ['sent', 'failed'], true) || filled($log->provider_message_id)) {
             return;
         }
 
@@ -56,21 +57,29 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
             'provider_status' => 'sending',
         ])->save();
 
-        $result = ($this->payload['message_type'] ?? 'text') === 'template'
-            ? $whatsAppService->sendTemplate(
-                (string) $this->payload['recipient'],
-                (string) $this->payload['template_name'],
-                (string) ($this->payload['language_code'] ?? 'en_US'),
-                is_array($this->payload['components'] ?? null) ? $this->payload['components'] : [],
-            )
-            : $whatsAppService->sendText(
-                (string) $this->payload['recipient'],
-                (string) $this->payload['message'],
-            );
+        try {
+            if (preg_match('/^(campaign|due_service_reminder(?:_auto)?):/', (string) $log->context) && ($this->payload['message_type'] ?? 'text') !== 'template') {
+                throw new InvalidArgumentException('Automated WhatsApp outreach requires an approved template.');
+            }
+            $result = ($this->payload['message_type'] ?? 'text') === 'template'
+                ? $whatsAppService->sendTemplate(
+                    (string) $this->payload['recipient'],
+                    (string) $this->payload['template_name'],
+                    (string) ($this->payload['language_code'] ?? 'en_US'),
+                    is_array($this->payload['components'] ?? null) ? $this->payload['components'] : [],
+                )
+                : $whatsAppService->sendText(
+                    (string) $this->payload['recipient'],
+                    (string) $this->payload['message'],
+                );
+
+        } catch (InvalidArgumentException $exception) {
+            $result = ['successful' => false, 'error_message' => $exception->getMessage(), 'http_status' => 400];
+        }
 
         if (! $result['successful']) {
             $errorMessage = (string) ($result['error_message'] ?? 'WhatsApp send failed.');
-            $shouldRetry = $this->shouldRetryProviderFailure($errorMessage);
+            $shouldRetry = $this->shouldRetryProviderFailure($result);
 
             $log->forceFill([
                 'status' => $shouldRetry ? $log->status : 'failed',
@@ -95,7 +104,7 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
         }
 
         $log->forceFill([
-            'status' => 'sent',
+            'status' => 'queued',
             'provider' => $result['provider'] ?? $log->provider,
             'provider_status' => 'accepted',
             'provider_message_id' => $result['provider_message_id'] ?? $log->provider_message_id,
@@ -107,14 +116,14 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
             'last_provider_event_at' => now(),
         ])->save();
 
-        $this->applySuccessEffects($log);
+        // Provider acceptance is not a delivery receipt. Webhooks apply success effects.
     }
 
     public function failed(?Throwable $exception): void
     {
         $log = CommunicationLog::query()->find($this->communicationLogId);
 
-        if (! $log) {
+        if (! $log || $log->status === 'failed' || filled($log->provider_message_id)) {
             return;
         }
 
@@ -130,7 +139,7 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
     }
 
     /**
-     * @param array<string, mixed> $result
+     * @param  array<string, mixed>  $result
      * @return array<string, mixed>
      */
     private function providerPayloadSnapshot(array $result): array
@@ -144,19 +153,6 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
         ];
     }
 
-    private function applySuccessEffects(CommunicationLog $log): void
-    {
-        if (preg_match('/^campaign:(\d+)$/', (string) $log->context, $matches) === 1) {
-            Campaign::query()->whereKey((int) $matches[1])->increment('sent_count');
-        }
-
-        if (preg_match('/^due_service_reminder(?:_auto)?:([0-9]+)$/', (string) $log->context, $matches) === 1) {
-            CustomerDueService::query()->whereKey((int) $matches[1])->update([
-                'reminder_sent_at' => now(),
-            ]);
-        }
-    }
-
     private function applyFailureEffects(CommunicationLog $log): void
     {
         if (preg_match('/^campaign:(\d+)$/', (string) $log->context, $matches) === 1) {
@@ -164,8 +160,16 @@ class SendWhatsAppDeliveryJob implements ShouldQueue
         }
     }
 
-    private function shouldRetryProviderFailure(string $errorMessage): bool
+    private function shouldRetryProviderFailure(array $result): bool
     {
-        return ! preg_match('/\b(131047|131049|132000|132012)\b/', $errorMessage);
+        $code = (string) ($result['error_code'] ?? '');
+        $message = (string) ($result['error_message'] ?? '');
+        if (preg_match('/\b(131026|131047|131049|132000|132001|132012|132015|132016|133010)\b/', $code.' '.$message)
+            || preg_match('/template not found|invalid.*phone|not registered|configuration|unsupported post request/i', $message)) {
+            return false;
+        }
+
+        return in_array($code, ['2', '130429', '131000', '131056', 'INTERNAL_SERVER_ERROR', 'TOO_MANY_REQUESTS'], true)
+            || in_array((int) ($result['http_status'] ?? 0), [429, 500, 502, 503, 504], true);
     }
 }

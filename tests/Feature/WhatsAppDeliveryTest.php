@@ -90,7 +90,7 @@ class WhatsAppDeliveryTest extends TestCase
             'provider_status' => 'queued',
             'message_type' => 'template',
         ]);
-        $this->assertNotNull($dueService->fresh()->reminder_sent_at);
+        $this->assertNull($dueService->fresh()->reminder_sent_at);
     }
 
     public function test_campaign_dispatch_queues_whatsapp_delivery_jobs_in_batches(): void
@@ -241,7 +241,7 @@ class WhatsAppDeliveryTest extends TestCase
             'language' => 'en_US',
             'category' => 'MARKETING',
             'status' => 'APPROVED',
-            'components' => [['type' => 'BODY', 'text' => 'Dear {{1}}, view our latest offer.']],
+            'components' => [['type' => 'HEADER', 'format' => 'DOCUMENT'], ['type' => 'BODY', 'text' => 'Dear {{1}}, view our latest offer.']],
             'last_synced_at' => now(),
         ]);
 
@@ -439,6 +439,7 @@ class WhatsAppDeliveryTest extends TestCase
 
     public function test_whatsapp_template_command_posts_template_payload_to_meta(): void
     {
+        WhatsAppMessageTemplate::create(['name' => 'hello_world', 'language' => 'en_US', 'status' => 'APPROVED', 'components' => [['type' => 'BODY', 'text' => 'Hello world']]]);
         config()->set('services.whatsapp.driver', 'meta');
         config()->set('services.whatsapp.phone_number_id', '1023883817485941');
         config()->set('services.whatsapp.token', 'secret-token');
@@ -473,6 +474,7 @@ class WhatsAppDeliveryTest extends TestCase
 
     public function test_whatsapp_template_command_posts_template_payload_to_ycloud(): void
     {
+        WhatsAppMessageTemplate::create(['name' => 'hello_world', 'language' => 'en', 'status' => 'APPROVED', 'components' => [['type' => 'BODY', 'text' => 'Hello world']]]);
         FinanceSetting::current()->update([
             'whatsapp_driver' => 'ycloud',
             'whatsapp_base_url' => 'https://graph.facebook.com',
@@ -509,6 +511,7 @@ class WhatsAppDeliveryTest extends TestCase
 
     public function test_ycloud_text_delivery_uses_e164_numbers_and_api_key_header(): void
     {
+        \Illuminate\Support\Facades\DB::table('whatsapp_reply_windows')->insert(['sender' => '971501111111', 'recipient' => '971502222222', 'last_inbound_at' => now()]);
         FinanceSetting::current()->update([
             'whatsapp_driver' => 'ycloud',
             'whatsapp_phone_number_id' => '+971501111111',
@@ -569,6 +572,7 @@ class WhatsAppDeliveryTest extends TestCase
 
     public function test_ycloud_base_url_uses_api_key_header_even_when_driver_is_meta(): void
     {
+        \Illuminate\Support\Facades\DB::table('whatsapp_reply_windows')->insert(['sender' => '971501111111', 'recipient' => '971502222222', 'last_inbound_at' => now()]);
         FinanceSetting::current()->update([
             'whatsapp_driver' => 'meta',
             'whatsapp_base_url' => 'https://api.ycloud.com',
@@ -688,12 +692,14 @@ class WhatsAppDeliveryTest extends TestCase
         $job = new SendWhatsAppDeliveryJob(1, ['message_type' => 'text', 'recipient' => '923473639710', 'message' => 'Hi']);
 
         $this->assertSame([60, 300, 900, 1800], $job->backoff());
-        $this->assertCount(1, $job->middleware());
+        $this->assertCount(2, $job->middleware());
         $this->assertSame(\Illuminate\Queue\Middleware\RateLimited::class, $job->middleware()[0]::class);
     }
 
     public function test_whatsapp_delivery_job_does_not_retry_ecosystem_engagement_failures(): void
     {
+        \Illuminate\Support\Facades\DB::table('whatsapp_reply_windows')->insert(['sender' => '971501111111', 'recipient' => '971556354004', 'last_inbound_at' => now()]);
+        WhatsAppMessageTemplate::create(['name' => 'engagement_notice', 'language' => 'en_US', 'status' => 'APPROVED', 'components' => [['type' => 'BODY', 'text' => 'Hello there']]]);
         FinanceSetting::current()->update([
             'whatsapp_driver' => 'ycloud',
             'whatsapp_phone_number_id' => '+971501111111',
@@ -723,7 +729,8 @@ class WhatsAppDeliveryTest extends TestCase
             'status' => 'queued',
             'provider' => 'whatsapp',
             'provider_status' => 'queued',
-            'message_type' => 'text',
+            'message_type' => 'template',
+            'template_name' => 'engagement_notice', 'language_code' => 'en_US', 'components' => [],
             'queued_at' => now(),
         ]);
 
@@ -736,7 +743,8 @@ class WhatsAppDeliveryTest extends TestCase
         ]);
 
         $job = new SendWhatsAppDeliveryJob($log->id, [
-            'message_type' => 'text',
+            'message_type' => 'template',
+            'template_name' => 'engagement_notice', 'language_code' => 'en_US', 'components' => [],
             'recipient' => '+971556354004',
             'message' => 'Campaign message',
         ]);
@@ -755,6 +763,7 @@ class WhatsAppDeliveryTest extends TestCase
 
     public function test_whatsapp_delivery_job_does_not_retry_reengagement_window_failures(): void
     {
+        \Illuminate\Support\Facades\DB::table('whatsapp_reply_windows')->insert(['sender' => '971501111111', 'recipient' => '971556354004', 'last_inbound_at' => now()]);
         FinanceSetting::current()->update([
             'whatsapp_driver' => 'ycloud',
             'whatsapp_phone_number_id' => '+971501111111',
@@ -800,6 +809,7 @@ class WhatsAppDeliveryTest extends TestCase
 
     public function test_whatsapp_delivery_job_does_not_retry_template_header_format_failures(): void
     {
+        WhatsAppMessageTemplate::create(['name' => 'document_single', 'language' => 'en_US', 'status' => 'APPROVED', 'components' => [['type' => 'BODY', 'text' => 'Hello there']]]);
         FinanceSetting::current()->update([
             'whatsapp_driver' => 'ycloud',
             'whatsapp_phone_number_id' => '+971501111111',
@@ -1002,7 +1012,7 @@ class WhatsAppDeliveryTest extends TestCase
         });
     }
 
-    public function test_single_whatsapp_template_can_send_explicit_document_header_when_template_metadata_is_stale(): void
+    public function test_single_whatsapp_template_rejects_header_when_template_metadata_is_stale(): void
     {
         Queue::fake();
 
@@ -1041,17 +1051,9 @@ class WhatsAppDeliveryTest extends TestCase
                 'whatsapp_template_header_media_url' => 'https://example.com/manual-menu.pdf',
                 'whatsapp_template_header_media_filename' => 'manual-menu.pdf',
             ])
-            ->assertSessionHasNoErrors();
+            ->assertSessionHasErrors('message');
 
-        Queue::assertPushed(SendWhatsAppDeliveryJob::class, function (SendWhatsAppDeliveryJob $job) {
-            $header = collect($job->payload['components'] ?? [])->firstWhere('type', 'header');
-            $body = collect($job->payload['components'] ?? [])->firstWhere('type', 'body');
-
-            return ($header['parameters'][0]['type'] ?? null) === 'document'
-                && ($header['parameters'][0]['document']['link'] ?? null) === 'https://example.com/manual-menu.pdf'
-                && ($header['parameters'][0]['document']['filename'] ?? null) === 'manual-menu.pdf'
-                && ($body['parameters'][0]['text'] ?? null) === 'Explicit Document Customer';
-        });
+        Queue::assertNothingPushed();
     }
 
     public function test_single_whatsapp_template_requires_remaining_body_variables(): void

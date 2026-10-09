@@ -6,6 +6,7 @@ use App\Models\FinanceSetting;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -33,6 +34,7 @@ class WhatsAppService
         string $languageCode = 'en_US',
         array $components = [],
     ): array {
+        app(WhatsAppTemplateValidator::class)->validate($templateName, $languageCode, $components);
         $driver = $this->resolvedConfig('driver', 'log');
 
         return match ($driver) {
@@ -83,6 +85,8 @@ class WhatsAppService
             return $configurationError;
         }
 
+        $this->assertReplyWindow($recipient);
+
         try {
             $response = $this->http
                 ->asJson()
@@ -109,6 +113,8 @@ class WhatsAppService
                 'recipient' => $normalizedRecipient,
                 'message' => $message,
                 'error_message' => $error,
+                'error_code' => data_get($exception->response?->json(), 'error.code'),
+                'http_status' => $exception->response?->status(),
             ];
         }
 
@@ -163,6 +169,8 @@ class WhatsAppService
                 'recipient' => $normalizedRecipient,
                 'message' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'error_message' => $error,
+                'error_code' => data_get($exception->response?->json(), 'error.code'),
+                'http_status' => $exception->response?->status(),
             ];
         }
 
@@ -195,6 +203,8 @@ class WhatsAppService
             ],
         ];
 
+        $this->assertReplyWindow($recipient);
+
         try {
             $response = $this->http
                 ->asJson()
@@ -209,6 +219,8 @@ class WhatsAppService
                 'recipient' => $normalizedRecipient,
                 'message' => $message,
                 'error_message' => $this->providerErrorMessage($exception),
+                'error_code' => data_get($exception->response?->json(), 'error.whatsappApiError.code') ?? data_get($exception->response?->json(), 'error.code'),
+                'http_status' => $exception->response?->status(),
             ];
         }
 
@@ -261,6 +273,8 @@ class WhatsAppService
                 'recipient' => $normalizedRecipient,
                 'message' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'error_message' => $this->providerErrorMessage($exception),
+                'error_code' => data_get($exception->response?->json(), 'error.whatsappApiError.code') ?? data_get($exception->response?->json(), 'error.code'),
+                'http_status' => $exception->response?->status(),
             ];
         }
 
@@ -347,9 +361,31 @@ class WhatsAppService
         return ["{$baseUrl}/v2/whatsapp/messages", $apiKey, $sender, null];
     }
 
+    public function assertReplyWindow(string $recipient): void
+    {
+        if ($this->resolvedConfig('driver', 'log') === 'log') {
+            return;
+        }
+        $sender = preg_replace('/\D+/', '', $this->resolvedConfig('phone_number_id') ?: (string) config('services.whatsapp.ycloud_sender'));
+        $open = DB::table('whatsapp_reply_windows')
+            ->where('sender', $sender)
+            ->where('recipient', $this->normalizeRecipient($recipient))
+            ->where('last_inbound_at', '>', now()->subHours(24))
+            ->exists();
+        if (! $open) {
+            throw new InvalidArgumentException('131047: No customer reply recorded within 24 hours. Select an approved WhatsApp template instead.');
+        }
+    }
+
     private function normalizeRecipient(string $recipient): string
     {
+        if (! preg_match('/^\+?[0-9\s().-]+$/', trim($recipient))) {
+            throw new InvalidArgumentException('Enter one phone number only, without slashes, commas or extensions.');
+        }
         $normalized = preg_replace('/\D+/', '', $recipient) ?? '';
+        if (str_starts_with($normalized, '00')) {
+            $normalized = substr($normalized, 2);
+        }
 
         if (preg_match('/^0?5\d{8}$/', $normalized) === 1) {
             $normalized = '971'.ltrim($normalized, '0');

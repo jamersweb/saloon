@@ -39,11 +39,17 @@ class DispatchScheduledCampaigns extends Command
 
         if ($campaigns->isEmpty()) {
             $this->info('No scheduled campaigns due.');
+
             return self::SUCCESS;
         }
 
         foreach ($campaigns as $campaign) {
             $result = $dispatcher->dispatch($campaign);
+            if (isset($result['error'])) {
+                $this->warn("Campaign #{$campaign->id} blocked: {$result['error']}");
+
+                continue;
+            }
             $this->info("Campaign #{$campaign->id} queued. Jobs: {$result['queued']}");
         }
 

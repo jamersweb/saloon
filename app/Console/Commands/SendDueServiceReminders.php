@@ -2,11 +2,12 @@
 
 namespace App\Console\Commands;
 
-use App\Models\FinanceSetting;
 use App\Models\CustomerDueService;
+use App\Models\FinanceSetting;
 use App\Models\WhatsAppMessageTemplate;
 use App\Services\CommunicationDeliveryService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class SendDueServiceReminders extends Command
 {
@@ -15,7 +16,7 @@ class SendDueServiceReminders extends Command
      *
      * @var string
      */
-    protected $signature = 'app:send-due-service-reminders {--channel=sms} {--policy=single} {--fallback=email} {--limit=200}';
+    protected $signature = 'app:send-due-service-reminders {--channel=whatsapp} {--policy=single} {--fallback=email} {--limit=200}';
 
     /**
      * The console command description.
@@ -34,18 +35,21 @@ class SendDueServiceReminders extends Command
         $fallback = $this->option('fallback');
         $limit = (int) $this->option('limit');
 
-        if (! in_array($channel, ['sms', 'email', 'whatsapp'], true)) {
-            $this->error('Invalid channel. Use sms, email, or whatsapp.');
+        if (! in_array($channel, ['email', 'whatsapp'], true)) {
+            $this->error('Invalid channel. Use email or whatsapp; SMS is disabled.');
+
             return self::FAILURE;
         }
 
         if (! in_array($policy, ['single', 'fallback'], true)) {
             $this->error('Invalid policy. Use single or fallback.');
+
             return self::FAILURE;
         }
 
-        if (! in_array($fallback, ['sms', 'email', 'whatsapp'], true)) {
-            $this->error('Invalid fallback channel. Use sms, email, or whatsapp.');
+        if (! in_array($fallback, ['email', 'whatsapp'], true)) {
+            $this->error('Invalid fallback channel. Use email or whatsapp; SMS is disabled.');
+
             return self::FAILURE;
         }
 
@@ -54,12 +58,21 @@ class SendDueServiceReminders extends Command
             ->where('status', 'pending')
             ->whereDate('due_date', '<=', now()->toDateString())
             ->whereNull('reminder_sent_at')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')->from('communication_logs')
+                    ->where('channel', 'whatsapp')
+                    ->where(function ($q) {
+                        $q->whereRaw('context = '.(DB::getDriverName() === 'sqlite' ? "'due_service_reminder:' || customer_due_services.id" : "CONCAT('due_service_reminder:', customer_due_services.id)"))
+                            ->orWhereRaw('context = '.(DB::getDriverName() === 'sqlite' ? "'due_service_reminder_auto:' || customer_due_services.id" : "CONCAT('due_service_reminder_auto:', customer_due_services.id)"));
+                    });
+            })
             ->orderBy('due_date')
             ->limit(max(1, $limit))
             ->get();
 
         if ($dueServices->isEmpty()) {
             $this->info('No due-service reminders to dispatch.');
+
             return self::SUCCESS;
         }
 
@@ -93,15 +106,13 @@ class SendDueServiceReminders extends Command
                         $dueService->service?->name ?? 'service',
                         $dueService->due_date?->toDateString()
                     ),
-                    'due_service_reminder_auto:' . $dueService->id,
+                    'due_service_reminder_auto:'.$dueService->id,
                     $deliveryOptions,
                 );
 
                 if (! in_array($log->status, ['queued', 'sent'], true)) {
                     continue;
                 }
-
-                $dueService->update(['reminder_sent_at' => now()]);
 
                 $sent++;
                 $sentForCustomer = true;

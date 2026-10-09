@@ -325,7 +325,7 @@ class CrmAutomationController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'channel' => ['required', 'in:sms,email,whatsapp'],
+            'channel' => ['required', 'in:email,whatsapp'],
             'content' => ['required', 'string', 'max:2000'],
             'whatsapp_message_type' => ['nullable', 'in:text,template'],
             'whatsapp_template_name' => ['nullable', 'string', 'max:255'],
@@ -359,7 +359,7 @@ class CrmAutomationController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'channel' => ['required', 'in:sms,email,whatsapp'],
+            'channel' => ['required', 'in:email,whatsapp'],
             'content' => ['required', 'string', 'max:2000'],
             'whatsapp_message_type' => ['nullable', 'in:text,template'],
             'whatsapp_template_name' => ['nullable', 'string', 'max:255'],
@@ -586,6 +586,9 @@ class CrmAutomationController extends Controller
         }
 
         $result = $dispatcher->dispatch($campaign);
+        if (isset($result['error'])) {
+            return back()->withErrors(['campaign_template_id' => $result['error']]);
+        }
         Audit::log($request->user()?->id, 'campaign.dispatched', 'Campaign', $campaign->id, $result);
 
         return back()->with('status', "Campaign queued. Jobs: {$result['queued']}.");
@@ -732,13 +735,13 @@ class CrmAutomationController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager', 'staff');
 
         $data = $request->validate([
-            'channel' => ['nullable', 'in:sms,email,whatsapp'],
+            'channel' => ['nullable', 'in:email,whatsapp'],
             'policy' => ['nullable', 'in:single,fallback_email'],
         ]);
 
         $dueService->loadMissing(['customer', 'service']);
 
-        $channel = $data['channel'] ?? 'sms';
+        $channel = $data['channel'] ?? 'whatsapp';
         $policy = $data['policy'] ?? 'single';
         $recipient = $this->recipientForChannel($dueService, $channel);
 
@@ -764,9 +767,7 @@ class CrmAutomationController extends Controller
             return back()->withErrors(['channel' => $log->error_message ?? 'Message delivery failed.']);
         }
 
-        $dueService->update(['reminder_sent_at' => now()]);
-
-        Audit::log($request->user()?->id, 'due_service.reminder_sent', 'CustomerDueService', $dueService->id, ['channel' => $channel, 'policy' => $policy]);
+        Audit::log($request->user()?->id, 'due_service.reminder_queued', 'CustomerDueService', $dueService->id, ['channel' => $channel, 'policy' => $policy]);
 
         return back()->with('status', $log->status === 'queued' ? 'Reminder queued for delivery.' : 'Reminder logged as sent.');
     }
@@ -777,7 +778,7 @@ class CrmAutomationController extends Controller
 
         $data = $request->validate([
             'customer_id' => ['required', 'exists:customers,id'],
-            'channel' => ['required', 'in:sms,email,whatsapp'],
+            'channel' => ['required', 'in:email,whatsapp'],
             'message' => ['nullable', 'string', 'max:2000'],
             'whatsapp_message_type' => ['nullable', 'in:text,template'],
             'whatsapp_template_id' => ['nullable', 'exists:whatsapp_message_templates,id'],
@@ -1179,11 +1180,11 @@ class CrmAutomationController extends Controller
 
         $variables = collect(explode(',', (string) ($data['whatsapp_template_variables'] ?? '')))
             ->map(fn (string $value) => trim($value))
-            ->filter()
+            ->filter(fn ($value) => $value !== '')
             ->values();
         $expectedVariables = $this->whatsAppTemplateBodyParameterCount($template);
 
-        if ($expectedVariables > 0 && $variables->count() < $expectedVariables) {
+        if ($expectedVariables === 1 && $variables->isEmpty()) {
             $variables = collect([(string) ($customer->name ?: 'Customer')])
                 ->merge($variables)
                 ->take($expectedVariables)
@@ -1341,6 +1342,9 @@ class CrmAutomationController extends Controller
 
     private function whatsAppCampaignTemplateError(?CampaignTemplate $template): ?string
     {
+        if ($template?->channel === 'sms') {
+            return 'SMS is disabled. Select a WhatsApp template.';
+        }
         if (! $template || $template->channel !== 'whatsapp') {
             return null;
         }
@@ -1391,10 +1395,31 @@ class CrmAutomationController extends Controller
             'buttons.*.phone_number' => ['nullable', 'string', 'max:30'],
         ]);
 
+        preg_match_all('/{{\s*(\d+)\s*}}/', $data['body_text'], $matches);
+        $variables = array_values(array_unique(array_map('intval', $matches[1])));
+        sort($variables);
+        $count = count($variables);
+        $samples = array_map('trim', explode(',', (string) ($data['example_values'] ?? '')));
+        if ($count > 0 && ($variables !== range(1, $count) || count($samples) !== $count || in_array('', $samples, true))) {
+            throw ValidationException::withMessages(['example_values' => 'Number variables sequentially from {{1}} and supply one non-empty comma-separated example for each variable.']);
+        }
+        $fixedText = preg_replace('/{{\s*\d+\s*}}/', '', $data['body_text']);
+        $words = preg_split('/\s+/u', trim($fixedText), -1, PREG_SPLIT_NO_EMPTY);
+        $words = array_filter($words, fn ($word) => preg_match('/[\p{L}\p{N}]/u', $word));
+        if ($count > 0 && count($words) < 2 * $count + 1) {
+            throw ValidationException::withMessages(['body_text' => 'Add more fixed wording or reduce variables. Use at least '.(2 * $count + 1).' fixed words for '.$count.' variables.']);
+        }
+        if (preg_match('/{{/', $fixedText)) {
+            throw ValidationException::withMessages(['body_text' => 'Use numbered variables such as {{1}}, {{2}} in this template editor.']);
+        }
+        if (($data['header_type'] ?? '') === 'text' && str_contains($data['header_text'] ?? '', '{{') && blank($data['header_example'] ?? null)) {
+            throw ValidationException::withMessages(['header_example' => 'Provide a sample for the header variable.']);
+        }
+
         if (
             $this->whatsappTemplateProvider() === 'ycloud'
             && in_array(($data['header_type'] ?? 'none'), ['image', 'video', 'document'], true)
-            && ! filter_var((string) ($data['header_media_handle'] ?? ''), FILTER_VALIDATE_URL)
+            && (! filter_var((string) ($data['header_media_handle'] ?? ''), FILTER_VALIDATE_URL) || parse_url($data['header_media_handle'], PHP_URL_SCHEME) !== 'https')
         ) {
             throw ValidationException::withMessages([
                 'header_media_handle' => 'YCloud media header samples must be public HTTPS URLs.',
@@ -1412,7 +1437,7 @@ class CrmAutomationController extends Controller
     {
         $exampleValues = collect(explode(',', (string) ($data['example_values'] ?? '')))
             ->map(fn (string $value) => trim($value))
-            ->filter()
+            ->filter(fn ($value) => $value !== '')
             ->values()
             ->all();
 

@@ -210,7 +210,7 @@ class WhatsAppTemplateManagerTest extends TestCase
                 'header_type' => 'text',
                 'header_text' => 'Reminder',
                 'header_example' => 'June',
-                'body_text' => 'Hello {{1}}, your {{2}} is due on {{3}}.',
+                'body_text' => 'Hello {{1}}, your {{2}} is due on {{3}}. Please reply to arrange your appointment.',
                 'footer_text' => 'Reply to book',
                 'example_values' => 'Sara,Hair Spa,2026-06-01',
                 'buttons' => [

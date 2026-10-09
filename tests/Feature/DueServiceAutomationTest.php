@@ -158,7 +158,7 @@ class DueServiceAutomationTest extends TestCase
         $this->assertSame('Created from service profile.', $dueService->notes);
     }
 
-    public function test_due_service_reminder_command_marks_successful_reminders_as_sent(): void
+    public function test_due_service_reminder_command_rejects_disabled_sms(): void
     {
         $customer = Customer::create([
             'customer_code' => 'CUST-DUE-SMS',
@@ -186,8 +186,8 @@ class DueServiceAutomationTest extends TestCase
         $this->artisan('app:send-due-service-reminders', [
             '--channel' => 'sms',
             '--limit' => 10,
-        ])->assertSuccessful();
+        ])->assertExitCode(1);
 
-        $this->assertNotNull($dueService->fresh()->reminder_sent_at);
+        $this->assertNull($dueService->fresh()->reminder_sent_at);
     }
 }
