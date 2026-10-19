@@ -39,7 +39,7 @@ export default function Modal({
             <Dialog
                 as="div"
                 id={dialogId}
-                className="fixed inset-0 z-50 flex transform items-center overflow-y-auto px-4 py-6 transition-all sm:px-6"
+                className="fixed inset-0 z-50 overflow-y-auto overscroll-contain"
                 onClose={close}
             >
                 <TransitionChild
@@ -50,23 +50,25 @@ export default function Modal({
                     leaveFrom="opacity-100"
                     leaveTo="opacity-0"
                 >
-                    <div className="absolute inset-0 bg-gray-500/75" />
+                    <div className="fixed inset-0 bg-gray-500/75" aria-hidden="true" />
                 </TransitionChild>
 
-                <TransitionChild
-                    enter="ease-out duration-300"
-                    enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                    enterTo="opacity-100 translate-y-0 sm:scale-100"
-                    leave="ease-in duration-200"
-                    leaveFrom="opacity-100 translate-y-0 sm:scale-100"
-                    leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                >
-                    <DialogPanel
-                        className={`mb-6 w-full min-w-0 max-h-[90vh] transform overflow-auto rounded-lg bg-white shadow-xl transition-all sm:mx-auto sm:w-full ${maxWidthClass}`}
+                <div className="relative flex min-h-full items-center px-4 py-6 sm:px-6">
+                    <TransitionChild
+                        enter="ease-out duration-300"
+                        enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                        enterTo="opacity-100 translate-y-0 sm:scale-100"
+                        leave="ease-in duration-200"
+                        leaveFrom="opacity-100 translate-y-0 sm:scale-100"
+                        leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
                     >
-                        {children}
-                    </DialogPanel>
-                </TransitionChild>
+                        <DialogPanel
+                            className={`w-full min-w-0 transform rounded-lg bg-white shadow-xl transition-all sm:mx-auto sm:w-full ${maxWidthClass}`}
+                        >
+                            {children}
+                        </DialogPanel>
+                    </TransitionChild>
+                </div>
             </Dialog>
         </Transition>
     );

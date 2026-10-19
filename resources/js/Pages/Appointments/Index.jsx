@@ -3072,7 +3072,7 @@ export default function AppointmentsIndex({ appointments, appointmentBlocks = []
                 }}
             /> : null}
 
-            <Modal show={showBoardView} maxWidth="full" onClose={() => {
+            <Modal show={showBoardView && !startServiceId && !completeServiceId} maxWidth="full" onClose={() => {
                 setShowBoardView(false);
                 setCalendarQuickAction(null);
                 setCalendarDrawer(null);
