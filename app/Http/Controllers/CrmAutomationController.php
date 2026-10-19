@@ -278,6 +278,7 @@ class CrmAutomationController extends Controller
                 ->orderBy('name')
                 ->get(),
             'whatsappProvider' => $this->whatsappTemplateProvider(),
+            'dueReminderPresets' => config('due_service_reminders'),
             'metaTemplates' => WhatsAppMessageTemplate::query()
                 ->latest('updated_at')
                 ->paginate(10, ['*'], 'whatsapp_template_page')
@@ -429,6 +430,31 @@ class CrmAutomationController extends Controller
         Audit::log($request->user()?->id, 'campaign.created', 'Campaign', $campaign->id);
 
         return back()->with('status', 'Campaign created.');
+    }
+
+    public function reminderPreset(Request $request, string $preset): \Illuminate\Http\JsonResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+        $definition = config('due_service_reminders.'.$preset);
+        abort_unless(is_array($definition) && isset($definition['name']), 404);
+
+        return response()->json(['template' => WhatsAppMessageTemplate::query()
+            ->where('name', $definition['name'])->where('language', $definition['language'])->first()]);
+    }
+
+    public function refreshTemplates(Request $request, WhatsAppTemplateManagerService $templateManagerService): \Illuminate\Http\JsonResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        try {
+            $templateManagerService->refreshAutomatically();
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json(['message' => 'Automatic template refresh failed. The last saved statuses are shown. Try Sync From Provider.'], 503);
+        }
+
+        return response()->json(['refreshed' => true]);
     }
 
     public function syncMetaTemplates(Request $request, WhatsAppTemplateManagerService $templateManagerService): RedirectResponse
@@ -773,7 +799,7 @@ class CrmAutomationController extends Controller
             $dueService->customer,
             $channel,
             $recipient,
-            sprintf('Hi %s, your %s service is due on %s.', $dueService->customer?->name ?? 'Customer', $dueService->service?->name ?? 'service', $dueService->due_date?->toDateString()),
+            app(\App\Services\DueServiceReminderTemplate::class)->message($dueService),
             'due_service_reminder:'.$dueService->id,
             $this->deliveryOptionsForReminder($channel, $dueService),
         );
@@ -1140,32 +1166,11 @@ class CrmAutomationController extends Controller
             return [];
         }
 
-        $settings = FinanceSetting::current();
-        $templateName = $settings->whatsapp_due_service_template_name;
-        $languageCode = $settings->whatsapp_default_language_code ?: config('services.whatsapp.default_language_code', 'en_US');
-
-        if (! filled($templateName) || ! $this->isApprovedWhatsAppTemplateName((string) $templateName, (string) $languageCode)) {
-            throw ValidationException::withMessages([
-                'channel' => 'Configure an approved due-service WhatsApp template before sending WhatsApp reminders.',
-            ]);
+        try {
+            return app(\App\Services\DueServiceReminderTemplate::class)->options($dueService);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['channel' => $exception->getMessage()]);
         }
-
-        return [
-            'async' => true,
-            'message_type' => 'template',
-            'template_name' => $templateName,
-            'language_code' => $languageCode,
-            'components' => [
-                [
-                    'type' => 'body',
-                    'parameters' => [
-                        ['type' => 'text', 'text' => (string) ($dueService->customer?->name ?? 'Customer')],
-                        ['type' => 'text', 'text' => (string) ($dueService->service?->name ?? 'service')],
-                        ['type' => 'text', 'text' => (string) $dueService->due_date?->toDateString()],
-                    ],
-                ],
-            ],
-        ];
     }
 
     /**

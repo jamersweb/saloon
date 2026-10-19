@@ -203,6 +203,8 @@ Route::middleware('auth')->group(function () {
         Route::put('/customers/automation/campaign-templates/{template}', [CrmAutomationController::class, 'updateCampaignTemplate'])->name('customers.automation.campaign-templates.update');
         Route::post('/customers/automation/campaign-templates/media', [CrmAutomationController::class, 'uploadCampaignTemplateMedia'])->name('customers.automation.campaign-templates.media');
         Route::post('/customers/automation/whatsapp-templates/sync', [CrmAutomationController::class, 'syncMetaTemplates'])->name('customers.automation.whatsapp-templates.sync');
+        Route::post('/customers/automation/whatsapp-templates/refresh', [CrmAutomationController::class, 'refreshTemplates'])->name('customers.automation.whatsapp-templates.refresh');
+        Route::get('/customers/automation/whatsapp-templates/presets/{preset}', [CrmAutomationController::class, 'reminderPreset'])->name('customers.automation.whatsapp-templates.preset');
         Route::post('/customers/automation/whatsapp-templates/header-media', [CrmAutomationController::class, 'uploadMetaTemplateHeaderMedia'])->name('customers.automation.whatsapp-templates.header-media');
         Route::post('/customers/automation/whatsapp-templates', [CrmAutomationController::class, 'storeMetaTemplate'])->name('customers.automation.whatsapp-templates.store');
         Route::put('/customers/automation/whatsapp-templates/{template}', [CrmAutomationController::class, 'updateMetaTemplate'])->name('customers.automation.whatsapp-templates.update');

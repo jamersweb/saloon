@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 
 const fieldError = (form, field) => form.errors?.[field] ? <p className="mt-1 text-xs text-red-600">{form.errors[field]}</p> : null;
 
-export default function ServicesIndex({ services, filters, categories = [] }) {
+export default function ServicesIndex({ services, filters, categories = [], reminderPresets = {} }) {
     const { flash, app_currency_code: currencyCode = 'AED' } = usePage().props;
     const [editingId, setEditingId] = useState(null);
     const [deactivateId, setDeactivateId] = useState(null);
@@ -22,8 +22,8 @@ export default function ServicesIndex({ services, filters, categories = [] }) {
         per_page: String(filters?.per_page || 10),
     });
 
-    const createForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', price: '', is_active: true });
-    const editForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', price: '', is_active: true });
+    const createForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', due_reminder_key: '', price: '', is_active: true });
+    const editForm = useForm({ name: '', category: '', duration_minutes: '', buffer_minutes: '', repeat_after_days: '', due_reminder_key: '', price: '', is_active: true });
 
     const startEdit = (service) => {
         setEditingId(service.id);
@@ -33,6 +33,7 @@ export default function ServicesIndex({ services, filters, categories = [] }) {
             duration_minutes: service.duration_minutes ?? '',
             buffer_minutes: service.buffer_minutes ?? 0,
             repeat_after_days: service.repeat_after_days ?? '',
+            due_reminder_key: service.due_reminder_key ?? '',
             price: service.price ?? '',
             is_active: Boolean(service.is_active),
         });
@@ -107,6 +108,7 @@ export default function ServicesIndex({ services, filters, categories = [] }) {
                         <div><label className="ta-field-label">Duration</label><input className="ta-input" type="number" min="5" placeholder="Duration" value={createForm.data.duration_minutes} onChange={(e) => createForm.setData('duration_minutes', e.target.value)} required />{fieldError(createForm, 'duration_minutes')}</div>
                         <div><label className="ta-field-label">Buffer</label><input className="ta-input" type="number" min="0" placeholder="Buffer" value={createForm.data.buffer_minutes} onChange={(e) => createForm.setData('buffer_minutes', e.target.value)} />{fieldError(createForm, 'buffer_minutes')}</div>
                         <div><label className="ta-field-label">Repeat Days</label><input className="ta-input" type="number" min="1" placeholder="Repeat days" value={createForm.data.repeat_after_days ?? ''} onChange={(e) => createForm.setData('repeat_after_days', e.target.value === '' ? null : e.target.value)} />{fieldError(createForm, 'repeat_after_days')}</div>
+<div><label className="ta-field-label">Due-service message</label><select className="ta-input" value={createForm.data.due_reminder_key || ''} onChange={(e) => createForm.setData('due_reminder_key', e.target.value || null)}><option value="">Default reminder</option>{Object.entries(reminderPresets).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}</select><p className="mt-1 text-xs text-slate-500">Set Repeat Days and create the matching template in CRM → WhatsApp Approval. Sending starts only after approval.</p>{fieldError(createForm, 'due_reminder_key')}</div>
                         <div><label className="ta-field-label">Price</label><input className="ta-input" type="number" step="0.01" min="0" placeholder="Price" value={createForm.data.price} onChange={(e) => createForm.setData('price', e.target.value)} required />{fieldError(createForm, 'price')}</div>
                         <button className="ta-btn-primary" disabled={createForm.processing}>Add</button>
                     </form>
@@ -196,6 +198,7 @@ export default function ServicesIndex({ services, filters, categories = [] }) {
                             <div><label className="ta-field-label">Duration Minutes</label><input className="ta-input" type="number" min="5" value={editForm.data.duration_minutes} onChange={(e) => editForm.setData('duration_minutes', e.target.value)} required />{fieldError(editForm, 'duration_minutes')}</div>
                             <div><label className="ta-field-label">Buffer Minutes</label><input className="ta-input" type="number" min="0" value={editForm.data.buffer_minutes} onChange={(e) => editForm.setData('buffer_minutes', e.target.value)} />{fieldError(editForm, 'buffer_minutes')}</div>
                             <div><label className="ta-field-label">Repeat After Days</label><input className="ta-input" type="number" min="1" value={editForm.data.repeat_after_days ?? ''} onChange={(e) => editForm.setData('repeat_after_days', e.target.value === '' ? null : e.target.value)} />{fieldError(editForm, 'repeat_after_days')}</div>
+<div><label className="ta-field-label">Due-service message</label><select className="ta-input" value={editForm.data.due_reminder_key || ''} onChange={(e) => editForm.setData('due_reminder_key', e.target.value || null)}><option value="">Default reminder</option>{Object.entries(reminderPresets).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}</select><p className="mt-1 text-xs text-slate-500">Set Repeat Days and create the matching template in CRM → WhatsApp Approval. Sending starts only after approval.</p>{fieldError(editForm, 'due_reminder_key')}</div>
                             <div><label className="ta-field-label">Price</label><input className="ta-input" type="number" step="0.01" min="0" value={editForm.data.price} onChange={(e) => editForm.setData('price', e.target.value)} required />{fieldError(editForm, 'price')}</div>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label>{fieldError(editForm, 'is_active')}</div>
                             <div className="md:col-span-6 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={closeEditModal}>Close</button></div>

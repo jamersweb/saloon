@@ -55,6 +55,7 @@ class SalonServiceController extends Controller
                 ->paginate($filters['per_page'])
                 ->withQueryString(),
             'filters' => $filters,
+            'reminderPresets' => config('due_service_reminders'),
             'categories' => SalonService::query()
                 ->whereNotNull('category')
                 ->where('category', '!=', '')
@@ -75,6 +76,7 @@ class SalonServiceController extends Controller
             'duration_minutes' => ['required', 'integer', 'min:5', 'max:480'],
             'buffer_minutes' => ['nullable', 'integer', 'min:0', 'max:120'],
             'repeat_after_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'due_reminder_key' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(config('due_service_reminders')))],
             'price' => ['required', 'numeric', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
         ]);
@@ -100,6 +102,7 @@ class SalonServiceController extends Controller
             'duration_minutes' => ['required', 'integer', 'min:5', 'max:480'],
             'buffer_minutes' => ['nullable', 'integer', 'min:0', 'max:120'],
             'repeat_after_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'due_reminder_key' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(config('due_service_reminders')))],
             'price' => ['required', 'numeric', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
         ]);

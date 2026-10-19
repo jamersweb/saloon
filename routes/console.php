@@ -16,3 +16,10 @@ Schedule::command('app:dispatch-scheduled-campaigns --limit=25')
 
 Schedule::command('schedules:fill --days=31')
     ->dailyAt('00:20');
+
+Artisan::command('whatsapp:sync-templates', function () {
+    app(\App\Services\WhatsAppTemplateManagerService::class)->refreshAutomatically();
+    $this->info('WhatsApp template statuses refreshed.');
+})->purpose('Refresh WhatsApp template approval statuses from the provider');
+
+Schedule::command('whatsapp:sync-templates')->everyFiveMinutes()->withoutOverlapping();

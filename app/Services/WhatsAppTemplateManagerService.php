@@ -8,10 +8,26 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 
 class WhatsAppTemplateManagerService
 {
+    public function refreshAutomatically(): void
+    {
+        $settings = FinanceSetting::current();
+        $key = 'whatsapp-template-refresh:'.hash('sha256', $this->resolvedDriver().'|'.($settings->whatsapp_business_account_id ?: config('services.whatsapp.business_account_id')));
+
+        Cache::lock($key.':lock', 120)->get(function () use ($key): void {
+            if (Cache::has($key)) {
+                return;
+            }
+
+            $this->syncTemplates();
+            Cache::put($key, true, now()->addSeconds(55));
+        });
+    }
+
     public function __construct(
         private readonly HttpFactory $http,
     ) {}

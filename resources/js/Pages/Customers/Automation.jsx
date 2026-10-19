@@ -3,6 +3,7 @@ import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import SearchableSelect from '@/Components/SearchableSelect';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
+import axios from 'axios';
 
 const buildTimeZoneParts = (value, timeZone) => {
     if (!value) {
@@ -132,9 +133,41 @@ const CrmTabButton = ({ active, children, onClick }) => (
     </button>
 );
 
-export default function Automation({ tags, customerOptions, serviceOptions = [], campaignTemplateOptions = [], whatsappTemplateOptions = [], customers, customerFilters, contacts, contactFilters, dueServices, recentLogs, segmentRules, campaignTemplates, whatsappProvider = 'meta', metaTemplates, campaigns }) {
+export default function Automation({ tags, customerOptions, serviceOptions = [], campaignTemplateOptions = [], whatsappTemplateOptions = [], customers, customerFilters, contacts, contactFilters, dueServices, recentLogs, segmentRules, campaignTemplates, dueReminderPresets = {}, whatsappProvider = 'meta', metaTemplates, campaigns }) {
     const { flash, auth, app_timezone: appTimezone = 'Asia/Dubai' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_crm_automation);
+    const [templateRefreshError, setTemplateRefreshError] = useState('');
+    useEffect(() => {
+        if (!canManage) return;
+
+        let disposed = false;
+        let refreshing = false;
+        const controller = new AbortController();
+        const refresh = async () => {
+            if (document.hidden || refreshing || disposed) return;
+            refreshing = true;
+            try {
+                await axios.post(route('customers.automation.whatsapp-templates.refresh'), {}, { signal: controller.signal });
+                if (!disposed) {
+                    setTemplateRefreshError('');
+                    router.reload({ only: ['metaTemplates', 'whatsappTemplateOptions'], preserveScroll: true, preserveState: true });
+                }
+            } catch (error) {
+                if (!disposed) setTemplateRefreshError('Automatic refresh failed. Showing saved statuses; please try Sync From Provider.');
+            } finally {
+                refreshing = false;
+            }
+        };
+        refresh();
+        const timer = window.setInterval(refresh, 60000);
+        document.addEventListener('visibilitychange', refresh);
+        return () => {
+            disposed = true;
+            controller.abort();
+            window.clearInterval(timer);
+            document.removeEventListener('visibilitychange', refresh);
+        };
+    }, [canManage]);
     const [editingRuleId, setEditingRuleId] = useState(null);
     const [deletingCampaign, setDeletingCampaign] = useState(null);
     const deleteCampaignForm = useForm({});
@@ -810,7 +843,25 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                                 <h4 className="text-sm font-semibold text-slate-700">{templateProviderLabel} Templates</h4>
                                 <button className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.whatsapp-templates.sync'))}>Sync From {templateProviderLabel}</button>
                             </div>
+                            {canManage && <p className={`mb-4 text-xs ${templateRefreshError ? 'text-red-600' : 'text-slate-500'}`} role={templateRefreshError ? 'alert' : undefined}>{templateRefreshError || 'Approval statuses refresh automatically every minute while this page is open.'}</p>}
 
+                            <div className="mb-4 rounded-xl border border-slate-200 p-3">
+                                <p className="mb-2 text-sm font-semibold">Service reminder messages</p>
+                                <p className="mb-3 text-xs text-slate-500">Choose a message to review and submit for approval. Keep its template name and language, then select it on each service’s edit form. Existing provider templates are loaded for review.</p>
+                                <div className="flex flex-wrap gap-2">{Object.entries(dueReminderPresets).map(([key, preset]) => <button key={key} type="button" disabled={!canManage || metaTemplateForm.processing} className="ta-btn-secondary text-xs" onClick={async () => {
+                                    try {
+                                        const response = await axios.get(route('customers.automation.whatsapp-templates.preset', key));
+                                        if (response.data.template) {
+                                            loadMetaTemplateIntoForm(response.data.template);
+                                        } else {
+                                            resetMetaTemplateEditor();
+                                            metaTemplateForm.setData((data) => ({ ...data, name: preset.name, language: preset.language, category: preset.category, body_text: preset.body, example_values: 'Sara' }));
+                                        }
+                                    } catch {
+                                        setTemplateRefreshError('Unable to load reminder template. Please try again.');
+                                    }
+                                }}>{preset.label}</button>)}</div>
+                            </div>
                             <form className="mb-4 grid gap-3 md:grid-cols-2" onSubmit={(e) => {
                         e.preventDefault();
                         const routeName = editingMetaTemplateId

@@ -17,6 +17,7 @@ class SalonService extends Model
         'duration_minutes',
         'buffer_minutes',
         'repeat_after_days',
+        'due_reminder_key',
         'price',
         'is_active',
     ];
