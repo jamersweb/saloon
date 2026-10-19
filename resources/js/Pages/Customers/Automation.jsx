@@ -297,7 +297,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
             buttons.push({ type: 'QUICK_REPLY', text: '', url: '', phone_number: '' });
         }
 
-        setEditingMetaTemplateId(template.id);
+        setEditingMetaTemplateId(template.status === 'DRAFT' ? null : template.id);
         const headerFormat = header?.format?.toLowerCase() || 'none';
         metaTemplateForm.setData({
             name: template.name,

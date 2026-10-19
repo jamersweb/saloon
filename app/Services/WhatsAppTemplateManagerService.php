@@ -96,7 +96,7 @@ class WhatsAppTemplateManagerService
             $nextUrl = Arr::get($response, 'paging.next');
         }
 
-        WhatsAppMessageTemplate::query()->whereNotIn('id', array_column($templates, 'id'))->update(['status' => 'UNAVAILABLE']);
+        WhatsAppMessageTemplate::query()->where('status', '!=', 'DRAFT')->whereNotIn('id', array_column($templates, 'id'))->update(['status' => 'UNAVAILABLE']);
 
         return $templates;
     }
@@ -163,7 +163,7 @@ class WhatsAppTemplateManagerService
         $completeList = is_array($response) && (array_is_list($response)
             || collect(['data', 'items', 'list', 'results', 'data.data'])->contains(fn ($key) => is_array(data_get($response, $key)) && array_is_list(data_get($response, $key))));
         if ($completeList && count($items) < $limit) {
-            WhatsAppMessageTemplate::query()->whereNotIn('id', array_column($templates, 'id'))->update(['status' => 'UNAVAILABLE']);
+            WhatsAppMessageTemplate::query()->where('status', '!=', 'DRAFT')->whereNotIn('id', array_column($templates, 'id'))->update(['status' => 'UNAVAILABLE']);
         }
 
         return $templates;
@@ -329,6 +329,14 @@ class WhatsAppTemplateManagerService
 
     public function deleteTemplate(WhatsAppMessageTemplate $template, bool $preserveLocalRecord = false): void
     {
+        if ($template->status === 'DRAFT') {
+            if (! $preserveLocalRecord) {
+                $template->delete();
+            }
+
+            return;
+        }
+
         if ($this->resolvedDriver() === 'ycloud') {
             $this->deleteYCloudTemplate($template, $preserveLocalRecord);
 
