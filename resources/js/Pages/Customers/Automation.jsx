@@ -1,4 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import ConfirmActionModal from '@/Components/ConfirmActionModal';
 import SearchableSelect from '@/Components/SearchableSelect';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
@@ -135,6 +136,8 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
     const { flash, auth, app_timezone: appTimezone = 'Asia/Dubai' } = usePage().props;
     const canManage = Boolean(auth?.permissions?.can_manage_crm_automation);
     const [editingRuleId, setEditingRuleId] = useState(null);
+    const [deletingCampaign, setDeletingCampaign] = useState(null);
+    const deleteCampaignForm = useForm({});
     const [editingMetaTemplateId, setEditingMetaTemplateId] = useState(null);
     const [marketingTab, setMarketingTab] = useState('campaigns');
     const [templateMediaFile, setTemplateMediaFile] = useState(null);
@@ -794,7 +797,7 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                             <div className="overflow-x-auto">
                                 <table className="min-w-full text-sm">
                                     <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-2">Campaign</th><th className="px-4 py-2">Message</th><th className="px-4 py-2">Audience</th><th className="px-4 py-2">Schedule</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Sent</th><th className="px-4 py-2">Failed</th><th className="px-4 py-2">Spend</th><th className="px-4 py-2">Actions</th></tr></thead>
-                                    <tbody>{campaigns.data.map((c) => <tr key={c.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{c.name}</td><td className="px-4 py-2 text-slate-600">{c.template_name}</td><td className="px-4 py-2 text-slate-600">{c.audience_type}{c.tag_name ? ` (${c.tag_name})` : ''}{c.inactivity_days ? ` (${c.inactivity_days}d)` : ''}</td><td className="px-4 py-2 text-slate-600">{c.scheduled_at ? formatDateTime(c.scheduled_at) : 'Now/manual'}</td><td className="px-4 py-2 text-slate-600">{c.status}</td><td className="px-4 py-2 text-emerald-700">{c.sent_count}</td><td className="px-4 py-2 text-red-700">{c.failed_count}</td><td className="px-4 py-2 text-slate-600">{c.spend_total}</td><td className="px-4 py-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.campaigns.dispatch', c.id))}>Dispatch</button></td></tr>)}</tbody>
+                                    <tbody>{campaigns.data.map((c) => <tr key={c.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{c.name}</td><td className="px-4 py-2 text-slate-600">{c.template_name}</td><td className="px-4 py-2 text-slate-600">{c.audience_type}{c.tag_name ? ` (${c.tag_name})` : ''}{c.inactivity_days ? ` (${c.inactivity_days}d)` : ''}</td><td className="px-4 py-2 text-slate-600">{c.scheduled_at ? formatDateTime(c.scheduled_at) : 'Now/manual'}</td><td className="px-4 py-2 text-slate-600">{c.status}</td><td className="px-4 py-2 text-emerald-700">{c.sent_count}</td><td className="px-4 py-2 text-red-700">{c.failed_count}</td><td className="px-4 py-2 text-slate-600">{c.spend_total}</td><td className="px-4 py-2"><button className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => router.post(route('customers.automation.campaigns.dispatch', c.id))}>Dispatch</button><button type="button" className="ml-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => setDeletingCampaign(c)}>Delete</button></td></tr>)}</tbody>
                                 </table>
                             </div>
                             <PaginationLinks paginator={campaigns} />
@@ -1130,6 +1133,17 @@ export default function Automation({ tags, customerOptions, serviceOptions = [],
                     <PaginationLinks paginator={recentLogs} />
                 </section>
             </div>
+            <ConfirmActionModal
+                show={Boolean(deletingCampaign)}
+                title="Delete campaign?"
+                message={`Delete "${deletingCampaign?.name || ''}"? This cannot be undone. The message template and delivery history will remain. Messages already sent or queued will not be recalled.`}
+                processing={deleteCampaignForm.processing}
+                onClose={() => setDeletingCampaign(null)}
+                onConfirm={() => deleteCampaignForm.delete(route('customers.automation.campaigns.destroy', deletingCampaign.id), {
+                    preserveScroll: true,
+                    onSuccess: () => setDeletingCampaign(null),
+                })}
+            />
         </AuthenticatedLayout>
     );
 }

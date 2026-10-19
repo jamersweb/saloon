@@ -572,6 +572,21 @@ class CrmAutomationController extends Controller
         return back()->with('status', $this->whatsappTemplateProviderLabel().' template deleted.');
     }
 
+    public function destroyCampaign(Request $request, Campaign $campaign): RedirectResponse
+    {
+        $this->authorizeRoles($request, 'owner', 'manager');
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($request, $campaign): void {
+            Audit::log($request->user()?->id, 'campaign.deleted', 'Campaign', $campaign->id, [
+                'name' => $campaign->name,
+                'status' => $campaign->status,
+            ]);
+            $campaign->delete();
+        });
+
+        return back()->with('status', 'Campaign deleted.');
+    }
+
     public function dispatchCampaign(Request $request, Campaign $campaign, CampaignDispatchService $dispatcher): RedirectResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');

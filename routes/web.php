@@ -208,6 +208,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/customers/automation/whatsapp-templates/{template}', [CrmAutomationController::class, 'updateMetaTemplate'])->name('customers.automation.whatsapp-templates.update');
         Route::delete('/customers/automation/whatsapp-templates/{template}', [CrmAutomationController::class, 'destroyMetaTemplate'])->name('customers.automation.whatsapp-templates.destroy');
         Route::post('/customers/automation/campaigns', [CrmAutomationController::class, 'storeCampaign'])->name('customers.automation.campaigns.store');
+        Route::delete('/customers/automation/campaigns/{campaign}', [CrmAutomationController::class, 'destroyCampaign'])->name('customers.automation.campaigns.destroy');
         Route::post('/customers/automation/campaigns/{campaign}/dispatch', [CrmAutomationController::class, 'dispatchCampaign'])->name('customers.automation.campaigns.dispatch');
         Route::post('/customers/automation/campaigns/run-scheduled', [CrmAutomationController::class, 'runScheduledCampaigns'])->name('customers.automation.campaigns.run-scheduled');
 
