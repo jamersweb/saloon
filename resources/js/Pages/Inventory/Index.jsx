@@ -24,8 +24,8 @@ export default function InventoryIndex({ items, itemRows = {}, recentTransaction
         per_page: String(filters?.per_page || 10),
     });
 
-    const createForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
-    const editForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, is_active: true });
+    const createForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, expiry_date: '', is_active: true });
+    const editForm = useForm({ sku: '', name: '', category: '', unit: 'pcs', cost_price: '', selling_price: '', stock_quantity: 0, reorder_level: 0, expiry_date: '', is_active: true });
     const adjustForm = useForm({ type: 'in', classification: 'inventory_purchase', quantity: 1, reference: '', notes: '' });
 
     const startEdit = (item) => {
@@ -42,6 +42,7 @@ export default function InventoryIndex({ items, itemRows = {}, recentTransaction
             selling_price: item.selling_price,
             stock_quantity: item.stock_quantity,
             reorder_level: item.reorder_level,
+            expiry_date: item.expiry_date || '',
             is_active: Boolean(item.is_active),
         });
         editForm.clearErrors();
@@ -161,7 +162,7 @@ export default function InventoryIndex({ items, itemRows = {}, recentTransaction
 
                 <section className="ta-card p-5">
                     <h3 className="mb-4 text-sm font-semibold text-slate-700">Create Inventory Item</h3>
-                    <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('inventory.store'), { onSuccess: () => createForm.reset('sku', 'name', 'category', 'cost_price', 'selling_price') }); }} className="grid gap-3 md:grid-cols-5">
+                    <form onSubmit={(e) => { e.preventDefault(); createForm.post(route('inventory.store'), { onSuccess: () => createForm.reset('sku', 'name', 'category', 'cost_price', 'selling_price', 'expiry_date') }); }} className="grid gap-3 md:grid-cols-5">
                         <div><label className="ta-field-label">Sku</label><input className="ta-input" placeholder="SKU" value={createForm.data.sku} onChange={(e) => createForm.setData('sku', e.target.value)} required />{fieldError(createForm, 'sku')}</div>
                         <div><label className="ta-field-label">Item Name</label><input className="ta-input" placeholder="Item name" value={createForm.data.name} onChange={(e) => createForm.setData('name', e.target.value)} required />{fieldError(createForm, 'name')}</div>
                         <div><label className="ta-field-label">Category</label><input className="ta-input" placeholder="Category" value={createForm.data.category} onChange={(e) => createForm.setData('category', e.target.value)} />{fieldError(createForm, 'category')}</div>
@@ -170,6 +171,7 @@ export default function InventoryIndex({ items, itemRows = {}, recentTransaction
                         <div><label className="ta-field-label">Selling Price</label><input className="ta-input" type="number" step="0.01" min="0" placeholder="Selling price" value={createForm.data.selling_price} onChange={(e) => createForm.setData('selling_price', e.target.value)} required />{fieldError(createForm, 'selling_price')}</div>
                         <div><label className="ta-field-label">Opening Stock</label><input className="ta-input" type="number" min="0" placeholder="Opening stock" value={createForm.data.stock_quantity} onChange={(e) => createForm.setData('stock_quantity', e.target.value)} required />{fieldError(createForm, 'stock_quantity')}</div>
                         <div><label className="ta-field-label">Reorder Level</label><input className="ta-input" type="number" min="0" placeholder="Reorder level" value={createForm.data.reorder_level} onChange={(e) => createForm.setData('reorder_level', e.target.value)} required />{fieldError(createForm, 'reorder_level')}</div>
+                        <div><label htmlFor="createForm-expiry-date" className="ta-field-label">Expiry Date (optional)</label><input id="createForm-expiry-date" className="ta-input w-full min-w-0" type="date" value={createForm.data.expiry_date} onChange={(e) => createForm.setData('expiry_date', e.target.value)} />{fieldError(createForm, 'expiry_date')}</div>
                         <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={createForm.data.is_active} onChange={(e) => createForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label></div>
                         <button className="ta-btn-primary" disabled={createForm.processing || !canManage}>Add Item</button>
                     </form>
@@ -230,7 +232,7 @@ export default function InventoryIndex({ items, itemRows = {}, recentTransaction
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Stock</th><th className="px-5 py-3">Reorder</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Item</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Stock</th><th className="px-5 py-3">Reorder</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Expiry Date</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead>
                             <tbody>
                                 {(items?.data || []).map((item) => (
                                     <tr key={item.id} className="border-t border-slate-100">
@@ -240,11 +242,12 @@ export default function InventoryIndex({ items, itemRows = {}, recentTransaction
                                         <td className={`px-5 py-3 font-semibold ${item.stock_quantity <= item.reorder_level ? 'text-red-600' : 'text-slate-700'}`}>{item.stock_quantity} {item.unit}</td>
                                         <td className="px-5 py-3 text-slate-600">{item.reorder_level}</td>
                                         <td className="px-5 py-3 text-slate-600">{new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(Number(item.selling_price || 0))}</td>
+                                        <td className="px-5 py-3 whitespace-nowrap text-slate-600">{item.expiry_date || '—'}</td>
                                         <td className="px-5 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{item.is_active ? 'Active' : 'Inactive'}</span></td>
                                         <td className="px-5 py-3"><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 disabled:opacity-50" disabled={!canManage} onClick={() => startEdit(item)}>Edit</button><button type="button" className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 disabled:opacity-50" disabled={!canManage} onClick={() => startAdjust(item)}>Adjust</button><button type="button" className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 disabled:opacity-50" disabled={!canManage} onClick={() => setDeactivateItemId(item.id)}>Delete</button></div></td>
                                     </tr>
                                 ))}
-                                {(items?.data || []).length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="8">No items match the selected filters.</td></tr>}
+                                {(items?.data || []).length === 0 && <tr><td className="px-5 py-3 text-slate-500" colSpan="9">No items match the selected filters.</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -276,6 +279,7 @@ export default function InventoryIndex({ items, itemRows = {}, recentTransaction
                             <div><label className="ta-field-label">Selling Price</label><input className="ta-input" type="number" step="0.01" min="0" value={editForm.data.selling_price} onChange={(e) => editForm.setData('selling_price', e.target.value)} required />{fieldError(editForm, 'selling_price')}</div>
                             <div><label className="ta-field-label">Stock Quantity</label><input className="ta-input" type="number" min="0" value={editForm.data.stock_quantity} onChange={(e) => editForm.setData('stock_quantity', e.target.value)} required />{fieldError(editForm, 'stock_quantity')}</div>
                             <div><label className="ta-field-label">Reorder Level</label><input className="ta-input" type="number" min="0" value={editForm.data.reorder_level} onChange={(e) => editForm.setData('reorder_level', e.target.value)} required />{fieldError(editForm, 'reorder_level')}</div>
+                            <div><label htmlFor="editForm-expiry-date" className="ta-field-label">Expiry Date (optional)</label><input id="editForm-expiry-date" className="ta-input w-full min-w-0" type="date" value={editForm.data.expiry_date} onChange={(e) => editForm.setData('expiry_date', e.target.value)} />{fieldError(editForm, 'expiry_date')}</div>
                             <div className="flex items-center"><label className="text-sm text-slate-600"><input type="checkbox" checked={editForm.data.is_active} onChange={(e) => editForm.setData('is_active', e.target.checked)} className="mr-2" />Active</label></div>
                             <div className="md:col-span-5 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing || !canManage}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={closeEditModal}>Close</button></div>
                         </form>

@@ -252,6 +252,7 @@ class InventoryController extends Controller
             'selling_price' => ['required', 'numeric', 'min:0'],
             'stock_quantity' => ['required', 'integer', 'min:0'],
             'reorder_level' => ['required', 'integer', 'min:0'],
+            'expiry_date' => ['nullable', 'date_format:Y-m-d'],
             'is_active' => ['nullable', 'boolean'],
         ]);
     }

@@ -19,6 +19,7 @@ class InventoryItem extends Model
         'selling_price',
         'stock_quantity',
         'reorder_level',
+        'expiry_date',
         'is_active',
     ];
 
@@ -28,6 +29,7 @@ class InventoryItem extends Model
             'cost_price' => 'decimal:2',
             'selling_price' => 'decimal:2',
             'is_active' => 'boolean',
+            'expiry_date' => 'date:Y-m-d',
         ];
     }
 
