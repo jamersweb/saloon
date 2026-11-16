@@ -164,6 +164,18 @@ class DashboardTest extends TestCase
             'issued_at' => '2026-09-05 10:00:00',
             'created_by' => $owner->id,
         ]);
+        ExpenseEntry::create([
+            'category' => 'miscellaneous',
+            'cost_center' => FinanceStructure::DEFAULT_COST_CENTER,
+            'expense_type' => 'operational',
+            'expense_subcategory' => 'other_ops',
+            'expense_date' => '2026-09-05',
+            'amount_subtotal' => 50,
+            'vat_amount' => 2.50,
+            'total_amount' => 52.50,
+            'approval_status' => ExpenseEntry::APPROVAL_APPROVED,
+            'created_by' => $owner->id,
+        ]);
         $voidInvoice = TaxInvoice::create([
             'invoice_number' => 'RCT-VOID',
             'customer_display_name' => 'Void Customer',
@@ -198,6 +210,9 @@ class DashboardTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Finance/Dashboard')
+                ->where('vatSummary.Sales excluding VAT', 100)
+                ->where('vatSummary.Recorded input VAT on approved expenses', 2.5)
+                ->where('vatSummary.Net VAT before recovery adjustments', 2.5)
                 ->where('summary.invoiced_total', 105)
                 ->where('summary.payments_collected', 105)
             );

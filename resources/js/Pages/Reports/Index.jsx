@@ -144,7 +144,7 @@ function ExportButton({ children, disabled, onClick, variant = 'default' }) {
     );
 }
 
-export default function ReportsIndex({ filters, overview, statusBreakdown, servicePerformance, staffPerformance, staffServiceSales = [], staffServiceTotals = [], dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, clientRevenue = [], rentalAnalytics = { summary: {}, partners: [] }, marketingSpend = [], currencyCode = 'AED' }) {
+export default function ReportsIndex({ filters, overview, statusBreakdown, retailSales = [], servicePerformance, staffPerformance, staffServiceSales = [], staffServiceTotals = [], dailyRevenue, waitingTimeByStaff, lateMinutesByStaff, clientRevenue = [], rentalAnalytics = { summary: {}, partners: [] }, marketingSpend = [], currencyCode = 'AED' }) {
     const { auth } = usePage().props;
     const canExport = Boolean(auth?.permissions?.can_export_reports);
     const [filterForm, setFilterForm] = useState({
@@ -353,6 +353,20 @@ export default function ReportsIndex({ filters, overview, statusBreakdown, servi
                         </div>
                     </ReportSection>
                 </section>
+
+                <ReportSection title="Retail product sales" subtitle="Product purchases for the selected period">
+                    <ReportTable
+                        columns={[
+                            { key: 'date', label: 'Date' },
+                            { key: 'invoice_number', label: 'Invoice' },
+                            { key: 'service_name', label: 'Product' },
+                            { key: 'quantity', label: 'Qty', cellClassName: numberCell },
+                            { key: 'total', label: 'Sales incl. VAT', render: (row) => toMoney(row.total, currencyCode), cellClassName: moneyCell },
+                        ]}
+                        rows={retailSales}
+                        footer={{ service_name: 'Total', quantity: sumRows(retailSales, 'quantity'), total: toMoney(sumRows(retailSales, 'total'), currencyCode) }}
+                    />
+                </ReportSection>
 
                 <ReportSection title="Staff Service Sales" subtitle="Summary by staff first, then detailed services by staff">
                     <div className="space-y-6 p-5">

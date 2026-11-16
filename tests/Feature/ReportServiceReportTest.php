@@ -1023,6 +1023,8 @@ class ReportServiceReportTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertCount(1, $rows[0]['items']);
         $this->assertSame('Frizz Control Protector 300ML (PROTECT-300)', $rows[0]['items'][0]['service_name']);
+        $this->assertSame(0.0, $totals['service_quantity']);
+        $this->assertSame(1, $totals['product_lines']);
         $this->assertSame(79.0, $totals['subtotal']);
         $this->assertSame(3.95, $totals['tax']);
         $this->assertSame(82.95, $totals['total']);

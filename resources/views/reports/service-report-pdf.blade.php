@@ -98,11 +98,14 @@
                 <div class="card-label">Total Payments</div>
                 <div class="card-value">{{ $currencyCode }} {{ number_format((float) $totals['total_payment'], 2) }}</div>
             </td>
-            <td class="card-spacer"></td>
+            <td class="card">
+                <div class="card-label">Product Lines</div>
+                <div class="card-value">{{ number_format($totals['product_lines']) }}</div>
+            </td>
         </tr>
     </table>
 
-    <p class="muted">Amounts in {{ $currencyCode }}. Each billed item is shown separately; row quantity is used for amount calculation only. Service line totals count each billed service once. Payments include all recorded payments for the listed invoices, including payments made after the service date.</p>
+    <p class="muted">Amounts in {{ $currencyCode }}. Each billed service or retail product counts as one line. Qty shows the quantity used to calculate the amount. Payments include all recorded payments for the listed invoices, including payments made after the service date.</p>
 
     <table class="grid">
         <thead>
@@ -165,7 +168,7 @@
                         <td rowspan="{{ count($groupItems) }}">{{ $groupRow['invoice_number'] ?: '-' }}</td>
                         <td rowspan="{{ count($groupItems) }}">{{ $groupRow['payment_method'] ?: '-' }}</td>
                     @endif
-                    <td>{{ $row['service_name'] ?: '-' }}</td>
+                    <td>@if($row['is_retail_product'] ?? false)<strong>Product</strong> &ndash; @endif{{ $row['service_name'] ?: '-' }}</td>
                     <td class="right">{{ rtrim(rtrim(number_format((float) $row['quantity'], 2), '0'), '.') }}</td>
                     <td class="right">{{ number_format((float) $row['unit_price'], 2) }}</td>
                     <td class="right">{{ number_format((float) $row['discount_amount'], 2) }}</td>
@@ -186,7 +189,7 @@
             <tfoot>
                 <tr>
                     <td colspan="5">Report total</td>
-                    <td class="right">{{ rtrim(rtrim(number_format((float) $totals['service_quantity'], 2), '0'), '.') }}</td>
+                    <td class="right">{{ rtrim(rtrim(number_format((float) ($totals['service_quantity'] + $totals['product_lines']), 2), '0'), '.') }}</td>
                     <td></td>
                     <td></td>
                     <td class="right">{{ number_format((float) $totals['subtotal'], 2) }}</td>

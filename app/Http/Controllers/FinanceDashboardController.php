@@ -24,15 +24,9 @@ class FinanceDashboardController extends Controller
         $dateFrom = $request->date('date_from')?->startOfDay() ?? now()->startOfMonth();
         $dateTo = $request->date('date_to')?->endOfDay() ?? now()->endOfDay();
 
-        $invoicedTotal = (float) TaxInvoice::query()
-            ->where('status', TaxInvoice::STATUS_FINALIZED)
-            ->whereBetween('issued_at', [$dateFrom, $dateTo])
-            ->sum('total');
-
-        $vatCollected = (float) TaxInvoice::query()
-            ->where('status', TaxInvoice::STATUS_FINALIZED)
-            ->whereBetween('issued_at', [$dateFrom, $dateTo])
-            ->sum('vat_amount');
+        $vat = $this->vatSummary($dateFrom, $dateTo);
+        $vatCollected = $vat['Output VAT on sales'];
+        $invoicedTotal = round($vat['Sales excluding VAT'] + $vatCollected, 2);
 
         $paymentsCollected = (float) InvoicePayment::query()
             ->join('tax_invoices', 'invoice_payments.tax_invoice_id', '=', 'tax_invoices.id')
@@ -41,12 +35,14 @@ class FinanceDashboardController extends Controller
             ->sum('invoice_payments.amount');
 
         $expenseTotal = (float) ExpenseEntry::query()
-            ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->where('expense_date', '>=', $dateFrom->toDateString())
+            ->where('expense_date', '<', $dateTo->copy()->addDay()->toDateString())
             ->sum('total_amount');
 
         $expensesPaid = (float) ExpenseEntry::query()
             ->where('payment_status', ExpenseEntry::STATUS_PAID)
-            ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->where('expense_date', '>=', $dateFrom->toDateString())
+            ->where('expense_date', '<', $dateTo->copy()->addDay()->toDateString())
             ->sum('total_amount');
 
         $payrollPaid = (float) PayrollLine::query()
@@ -150,7 +146,8 @@ class FinanceDashboardController extends Controller
             ->all();
 
         $expenseByCategory = ExpenseEntry::query()
-            ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->where('expense_date', '>=', $dateFrom->toDateString())
+            ->where('expense_date', '<', $dateTo->copy()->addDay()->toDateString())
             ->get(['category', 'total_amount'])
             ->groupBy('category')
             ->map(fn ($group, $key) => [
@@ -176,7 +173,8 @@ class FinanceDashboardController extends Controller
             ]);
 
         $expensesByCostCenter = ExpenseEntry::query()
-            ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->where('expense_date', '>=', $dateFrom->toDateString())
+            ->where('expense_date', '<', $dateTo->copy()->addDay()->toDateString())
             ->get(['cost_center', 'total_amount'])
             ->groupBy('cost_center')
             ->map(fn ($group, $key) => (float) $group->sum('total_amount'));
@@ -215,6 +213,7 @@ class FinanceDashboardController extends Controller
                 'date_from' => $dateFrom->toDateString(),
                 'date_to' => $dateTo->toDateString(),
             ],
+            'vatSummary' => $vat,
             'summary' => [
                 'invoiced_total' => $invoicedTotal,
                 'vat_collected' => $vatCollected,
@@ -251,6 +250,29 @@ class FinanceDashboardController extends Controller
         ]);
     }
 
+    private function vatSummary(Carbon $dateFrom, Carbon $dateTo): array
+    {
+        $sales = TaxInvoice::query()
+            ->where('status', TaxInvoice::STATUS_FINALIZED)
+            ->whereBetween('issued_at', [$dateFrom, $dateTo])
+            ->selectRaw('SUM(total) as gross, SUM(vat_amount) as vat')
+            ->first();
+        $expenses = ExpenseEntry::query()
+            ->where('approval_status', ExpenseEntry::APPROVAL_APPROVED)
+            ->where('expense_date', '>=', $dateFrom->toDateString())
+            ->where('expense_date', '<', $dateTo->copy()->addDay()->toDateString())
+            ->selectRaw('SUM(amount_subtotal) as purchases, SUM(vat_amount) as vat')
+            ->first();
+
+        return [
+            'Sales excluding VAT' => round((float) $sales->gross - (float) $sales->vat, 2),
+            'Output VAT on sales' => (float) $sales->vat,
+            'Purchases and expenses excluding VAT' => (float) $expenses->purchases,
+            'Recorded input VAT on approved expenses' => (float) $expenses->vat,
+            'Net VAT before recovery adjustments' => round((float) $sales->vat - (float) $expenses->vat, 2),
+        ];
+    }
+
     public function export(Request $request): StreamedResponse
     {
         $this->authorizeRoles($request, 'owner', 'manager');
@@ -282,11 +304,14 @@ class FinanceDashboardController extends Controller
             ->get();
 
         $expenses = ExpenseEntry::query()
-            ->whereBetween('expense_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->where('expense_date', '>=', $dateFrom->toDateString())
+            ->where('expense_date', '<', $dateTo->copy()->addDay()->toDateString())
             ->orderBy('expense_date')
             ->get();
 
-        return response()->streamDownload(function () use ($invoices, $payments, $expenses) {
+        $vat = $this->vatSummary($dateFrom, $dateTo);
+
+        return response()->streamDownload(function () use ($invoices, $payments, $expenses, $vat) {
             $out = fopen('php://output', 'w');
             fputcsv($out, ['Section', 'Date', 'Reference', 'Party', 'Expense Type', 'Subcategory', 'Subtotal', 'VAT', 'Total', 'Method / Status']);
 
@@ -333,6 +358,12 @@ class FinanceDashboardController extends Controller
                     $ex->total_amount,
                     $ex->payment_status,
                 ]);
+            }
+
+            fputcsv($out, []);
+            fputcsv($out, ['VAT summary', 'Amount (AED)']);
+            foreach ($vat as $label => $amount) {
+                fputcsv($out, [$label, number_format($amount, 2, '.', '')]);
             }
 
             fclose($out);

@@ -39,13 +39,14 @@ class InventoryController extends Controller
 
         $itemsQuery = InventoryItem::query()
             ->when($filters['search'] !== '', function ($query) use ($filters): void {
-                $needle = '%' . $filters['search'] . '%';
-                $query->where(function ($itemQuery) use ($needle): void {
-                    $itemQuery
-                        ->where('sku', 'like', $needle)
-                        ->orWhere('name', 'like', $needle)
-                        ->orWhere('category', 'like', $needle);
-                });
+                foreach (preg_split('/\s+/', $filters['search']) as $word) {
+                    $needle = '%'.$word.'%';
+                    $query->where(function ($itemQuery) use ($needle): void {
+                        $itemQuery->where('sku', 'like', $needle)
+                            ->orWhere('name', 'like', $needle)
+                            ->orWhere('category', 'like', $needle);
+                    });
+                }
             })
             ->when($filters['category'] !== '', fn ($query) => $query->where('category', $filters['category']))
             ->when($filters['stock_status'] === 'active', fn ($query) => $query->where('is_active', true))

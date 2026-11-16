@@ -4,7 +4,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 const money = (value, currency = 'AED') =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: 2 }).format(Number(value || 0));
 
-export default function FinanceDashboard({ filters, summary, accountsReceivable, accountsPayable, periodic, grouped, data_quality = {} }) {
+export default function FinanceDashboard({ filters, summary, vatSummary, accountsReceivable, accountsPayable, periodic, grouped, data_quality = {} }) {
     const { flash } = usePage().props;
 
     const applyFilter = (key, value) => {
@@ -43,6 +43,18 @@ export default function FinanceDashboard({ filters, summary, accountsReceivable,
                             </button>
                         </div>
                     </div>
+                </section>
+
+                <section className="ta-card p-5">
+                    <h3 className="font-semibold text-slate-800">VAT summary</h3>
+                    <p className="mt-1 text-sm text-slate-600">Uses finalized sales by invoice date and approved expenses by expense date. Review input VAT eligibility before filing.</p>
+                    <dl className="mt-3 divide-y">
+                        {Object.entries(vatSummary).map(([label, amount]) => (
+                            <div key={label} className="flex justify-between gap-4 py-2">
+                                <dt>{label}</dt><dd className="font-semibold">{money(amount)}</dd>
+                            </div>
+                        ))}
+                    </dl>
                 </section>
 
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

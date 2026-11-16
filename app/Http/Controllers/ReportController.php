@@ -47,6 +47,7 @@ class ReportController extends Controller
             ],
             'overview' => $report['overview'],
             'statusBreakdown' => $report['statusBreakdown'],
+            'retailSales' => $report['retailSales'],
             'servicePerformance' => $report['servicePerformance'],
             'staffPerformance' => $report['staffPerformance'],
             'staffServiceSales' => $report['staffServiceSales'],
@@ -643,9 +644,13 @@ class ReportController extends Controller
      */
     private function serviceReportTotals(array $rows, array $paymentTotals = []): array
     {
+        $items = collect($rows)->flatMap(fn (array $row): array => $row['items'] ?? [$row]);
+        $productLines = $items->where('is_retail_product', true)->count();
+
         return [
             'service_count' => count(array_filter($rows, fn (array $row): bool => ! (bool) ($row['is_adjustment'] ?? false))),
-            'service_quantity' => round(array_sum(array_map(fn (array $row) => $this->serviceReportServiceUnitCount($row), $rows)), 2),
+            'service_quantity' => (float) $items->where('is_adjustment', false)->reject(fn (array $item): bool => $item['is_retail_product'] ?? false)->count(),
+            'product_lines' => $productLines,
             'subtotal' => round(array_sum(array_map(fn (array $row) => (float) ($row['subtotal'] ?? 0), $rows)), 2),
             'tax' => round(array_sum(array_map(fn (array $row) => (float) ($row['tax'] ?? 0), $rows)), 2),
             'total' => round(array_sum(array_map(fn (array $row) => (float) ($row['total'] ?? 0), $rows)), 2),
@@ -1645,6 +1650,7 @@ class ReportController extends Controller
                 'late_minutes_total' => (int) AttendanceLog::query()->whereBetween('attendance_date', [$dateFrom->toDateString(), $dateTo->toDateString()])->sum('late_minutes'),
             ],
             'statusBreakdown' => $statusBreakdown,
+            'retailSales' => collect($serviceReportRows)->where('is_retail_product', true)->values()->all(),
             'servicePerformance' => $servicePerformance,
             'staffPerformance' => $staffPerformance,
             'staffServiceSales' => $staffServiceSales,
