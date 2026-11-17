@@ -10,9 +10,14 @@
 <body>
 <div class="booking-shell">
     <header class="booking-header"><a class="wordmark" href="{{ route('public.booking') }}"><img class="booking-logo" src="{{ asset('images/vina-site-logo.png') }}" alt="Vina Luxury Beauty Salon"></a>
-        <span id="step-label" aria-live="polite"></span>
     </header>
     <main>
+        <ol class="booking-progress" aria-label="Booking progress">
+            <li data-stage="services" aria-current="step">Services</li>
+            <li data-stage="professional">Professional</li>
+            <li data-stage="schedule">Time</li>
+            <li data-stage="details">Confirm</li>
+        </ol>
         <div class="studio-intro"><div><h1>Book your <em>appointment.</em></h1><p>Choose your treatments and find a time that suits you.</p></div><div class="studio-photo" aria-hidden="true"></div></div>
         <section id="visit-options" class="visit-panel"><h2>Who are you booking for?</h2>
             <button type="button" data-visit="individual">Book for myself <small>Choose my services</small></button>

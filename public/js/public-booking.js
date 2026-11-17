@@ -86,7 +86,11 @@
         document.querySelector('.studio-intro').hidden = step !== 'visit';
         $('editing-guest').hidden = !group || step !== 'services';
         $('editing-guest').textContent = 'Services for ' + guestName(activeGuest);
-        $('step-label').textContent = {visit:'',services:'Services',guests:'Your group',professional:'Professional',schedule:'Date & time',details:'Your details'}[step];
+        const stage = step === 'visit' || step === 'guests' ? 'services' : step;
+        document.querySelectorAll('.booking-progress li').forEach(item => {
+            if (item.dataset.stage === stage) item.setAttribute('aria-current', 'step');
+            else item.removeAttribute('aria-current');
+        });
         if (step === 'guests') renderGuests();
     }
     async function loadSlots() {
