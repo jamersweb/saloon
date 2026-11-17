@@ -187,6 +187,23 @@ class PublicReservationTest extends TestCase
         $this->get('/book/manage/'.str_repeat('x', 64))->assertNotFound();
     }
 
+    public function test_public_picker_omits_managers_and_the_duplicate_mona_profile(): void
+    {
+        $manager = Role::firstOrCreate(['name' => 'manager'], ['label' => 'Manager']);
+        foreach (['VINA-01', 'EMP-108', 'MANAGER-TEST'] as $code) {
+            $user = User::factory()->create([
+                'name' => $code === 'MANAGER-TEST' ? 'Manager Example' : 'Mona Bassagh',
+                'role_id' => $code === 'MANAGER-TEST' ? $manager->id : null,
+            ]);
+            StaffProfile::create(['user_id' => $user->id, 'employee_code' => $code, 'is_active' => true]);
+        }
+
+        $page = $this->get('/embed/book')->assertOk()->assertDontSee('Manager Example');
+        $this->assertSame(1, substr_count($page->getContent(), '<strong>Mona Bassagh</strong>'));
+        $this->assertSame(['EMP-108'], StaffProfile::bookableOnline()
+            ->whereIn('employee_code', ['VINA-01', 'EMP-108', 'MANAGER-TEST'])->pluck('employee_code')->all());
+    }
+
     public function test_leave_and_non_bookable_roles_are_rejected(): void
     {
         \App\Models\LeaveRequest::create(['staff_profile_id' => $this->staff->id, 'start_date' => '2026-11-13', 'end_date' => '2026-11-13', 'reason' => 'Leave', 'status' => 'approved']);

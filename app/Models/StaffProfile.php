@@ -92,11 +92,14 @@ class StaffProfile extends Model
 
     public function scopeBookableOnline(Builder $query): Builder
     {
-        return $query->whereHas('user', function (Builder $userQuery): void {
+        return $query->where(function (Builder $profiles): void {
+            $profiles->whereNull('employee_code')
+                ->orWhereNotIn('employee_code', config('public_booking.excluded_employee_codes', []));
+        })->whereHas('user', function (Builder $userQuery): void {
             $userQuery
                 ->whereDoesntHave('role')
                 ->orWhereHas('role', function (Builder $roleQuery): void {
-                    $roleQuery->whereIn('name', ['owner', 'manager', 'staff']);
+                    $roleQuery->whereIn('name', ['owner', 'staff']);
                 });
         });
     }

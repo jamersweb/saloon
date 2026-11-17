@@ -5,6 +5,8 @@ return [
     'currency' => 'AED',
     'nomod_key' => env('NOMOD_HOSTED_CHECKOUT_API_KEY'),
     'nomod_url' => 'https://api.nomod.com/v1',
+    // Mona Bassagh's older profile is retained for historical appointments.
+    'excluded_employee_codes' => ['VINA-01'],
     'reschedule_days' => 14,
     'approval_cutoff_hours' => 24,
 ];
