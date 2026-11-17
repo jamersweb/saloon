@@ -66,7 +66,7 @@ class PublicReservationAvailability
             ->where('starts_at', '<', $end)->where('ends_at', '>', $start)->exists();
     }
 
-    public function slots(string $date, int $minutes, ?int $ignore = null): array
+    public function slots(string $date, int $minutes, ?int $ignore = null, ?int $professionalId = null): array
     {
         $rules = BookingRule::current();
         $day = Carbon::parse($date)->startOfDay();
@@ -85,7 +85,7 @@ class PublicReservationAvailability
             ->when($ignore, fn ($q) => $q->where('id', '!=', $ignore))->where('starts_at', '<', $close)->where('ends_at', '>', $open)->get()->groupBy('staff_profile_id');
         $blocks = AppointmentBlock::where('starts_at', '<', $close)->where('ends_at', '>', $open)->get();
         $slots = [];
-        foreach (StaffProfile::where('is_active', true)->bookableOnline()->orderBy('id')->pluck('id') as $staffId) {
+        foreach (StaffProfile::where('is_active', true)->bookableOnline()->when($professionalId, fn ($query) => $query->whereKey($professionalId))->orderBy('id')->pluck('id') as $staffId) {
             $schedule = $schedules->get($staffId);
             if (! $schedule || $schedule->is_day_off || ! $schedule->start_time || ! $schedule->end_time || in_array($staffId, $leave)) {
                 continue;

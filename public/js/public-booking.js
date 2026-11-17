@@ -7,6 +7,7 @@
     let activeGuest = 0;
     let selected = people[0];
     let group = false;
+    let professional = null;
     let step = 'visit';
     const guestName = index => index === 0 ? 'Me' : 'Guest ' + (index + 1);
     const complete = () => people.every(person => person.size > 0);
@@ -70,19 +71,22 @@
         $('pay-button').disabled = !slot || !selected.size || paying || loading;
         const next = $('continue-button');
         next.hidden = step === 'details';
-        next.textContent = step === 'services' && group ? 'Save guest services' : step === 'schedule' ? 'Continue to your details' : 'Choose date & time';
-        next.disabled = step === 'services' ? !selected.size : step === 'schedule' ? !slot || loading : !complete();
+        next.textContent = step === 'services' && group ? 'Save guest services' : step === 'schedule' ? 'Continue to your details' : step === 'professional' ? 'Choose date & time' : 'Select professional';
+        next.disabled = step === 'services' ? !selected.size : step === 'schedule' ? !slot || loading : step === 'professional' ? professional === null : !complete();
         $('visit-options').hidden = step !== 'visit';
         $('previous-step').hidden = step === 'visit';
         $('guest-roster').hidden = step !== 'guests';
         $('categories').hidden = $('services').hidden = step !== 'services';
+        $('professionals').hidden = step !== 'professional';
+        $('summary-professional').hidden = !professional || !['professional', 'schedule', 'details'].includes(step);
+        $('summary-professional').textContent = professional?.dataset.name || '';
         $('schedule').hidden = step !== 'schedule';
         $('details').hidden = step !== 'details';
         document.querySelector('.summary').hidden = step === 'visit';
         document.querySelector('.studio-intro').hidden = step !== 'visit';
         $('editing-guest').hidden = !group || step !== 'services';
         $('editing-guest').textContent = 'Services for ' + guestName(activeGuest);
-        $('step-label').textContent = {visit:'',services:'Services',guests:'Your group',schedule:'Date & time',details:'Your details'}[step];
+        $('step-label').textContent = {visit:'',services:'Services',guests:'Your group',professional:'Professional',schedule:'Date & time',details:'Your details'}[step];
         if (step === 'guests') renderGuests();
     }
     async function loadSlots() {
@@ -95,7 +99,9 @@
         }
         if (!complete() || !$('booking-date').value) { loading = false; $('slot-status').textContent = 'Select your services and a date to see available times.'; render(); return; }
         $('slot-status').textContent = 'Finding available appointments…';
-        const query = new URLSearchParams({date: $('booking-date').value}); people.forEach((person, guest) => person.forEach(id => {
+        const query = new URLSearchParams({date: $('booking-date').value});
+        if (professional?.dataset.professional) query.set('staff_id', professional.dataset.professional);
+        people.forEach((person, guest) => person.forEach(id => {
             query.append(group ? 'guests[' + guest + '][]' : 'service_ids[]', id);
         }));
         try {
@@ -167,15 +173,29 @@
         editGuest(people.length - 1);
         loadSlots();
     };
+    const professionalButtons = document.querySelectorAll('[data-professional]');
+    professionalButtons.forEach(button => {
+        button.onclick = () => {
+            professional = button;
+            slot = null;
+            professionalButtons.forEach(option => {
+                option.setAttribute('aria-pressed', String(option === button));
+                option.textContent = option === button ? 'Selected' : 'Select';
+            });
+            render();
+        };
+    });
     $('previous-step').onclick = () => {
         if (step === 'services') navigate(group && activeGuest > 0 ? 'guests' : 'visit');
         else if (step === 'guests') editGuest(0);
-        else if (step === 'schedule') navigate(group ? 'guests' : 'services');
+        else if (step === 'schedule') navigate('professional');
+        else if (step === 'professional') navigate(group ? 'guests' : 'services');
         else navigate('schedule');
     };
     $('continue-button').onclick = () => {
         if (step === 'schedule') return navigate('details');
         if (group && step === 'services') return navigate('guests');
+        if (step !== 'professional') return navigate('professional');
         navigate('schedule');
         loadSlots();
     };

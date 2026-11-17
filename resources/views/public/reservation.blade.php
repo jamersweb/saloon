@@ -19,16 +19,35 @@
             <button type="button" data-visit="group">Book a group appointment <small>Choose services for me and my guests</small></button>
         </section>
         <button id="previous-step" type="button" class="wizard-back" hidden>&larr; Back</button>
-        <section id="guest-roster" class="visit-panel" hidden><h2>Guests and services</h2><p>Up to 15 people. Treatments take place one after another with one professional.</p><div id="guest-list"></div><button id="add-guest" type="button">+ Add guest</button></section>
         <h2 id="editing-guest" hidden></h2>
         <nav id="categories" class="categories" aria-label="Service categories"></nav>
         <div class="booking-grid">
             <div class="booking-workspace">
+                <section id="guest-roster" class="visit-panel" hidden><h2>Guests and services</h2><p>Up to 15 people. Treatments take place one after another with one professional.</p><div id="guest-list"></div><button id="add-guest" type="button">+ Add guest</button></section>
                 <section id="services" aria-label="Choose services">
                     <div class="catalogue-title"><h2 id="category-title">Services</h2><span id="category-count"></span></div>
                     <div id="service-list" class="service-list"></div>
                     <button id="more-services" class="more-services" type="button" hidden>Show more services</button>
                     <noscript>Please enable JavaScript to see services and available appointment times.</noscript>
+                </section>
+                <section id="professionals" hidden>
+                    <h2>Select professional</h2>
+                    <div class="professional-list">
+                        <div class="professional-card">
+                            <div><strong>Any professional</strong><small>Maximum availability</small></div>
+                            <button type="button" data-professional="" data-name="Any professional" aria-pressed="false">Select</button>
+                        </div>
+                        @foreach($professionals as $professional)
+                            <div class="professional-card">
+                                <div><strong>{{ $professional->user->name }}</strong>
+                                    @if($professional->skills)
+                                        <details><summary>View profile</summary><p>{{ implode(', ', $professional->skills) }}</p></details>
+                                    @endif
+                                </div>
+                                <button type="button" data-professional="{{ $professional->id }}" data-name="{{ $professional->user->name }}" aria-pressed="false">Select</button>
+                            </div>
+                        @endforeach
+                    </div>
                 </section>
                 <section id="schedule" class="booking-section">
                     <h2>Choose date & time</h2>
@@ -56,6 +75,7 @@
             </div>
             <aside class="summary" aria-label="Appointment summary">
                 <h2>Appointment summary</h2>
+                <p id="summary-professional" hidden></p>
                 <div id="summary-services"><p class="muted">Select a service to begin.</p></div>
                 <div class="summary-duration"><span>Total appointment time</span><strong id="total-duration">0 min</strong></div>
                 <dl class="totals"><div class="total-row"><dt>Total</dt><dd id="total-price">AED 0.00</dd></div><div><dt>Deposit today (15%)</dt><dd id="deposit-price">AED 0.00</dd></div><div><dt>At the salon</dt><dd id="balance-price">AED 0.00</dd></div></dl>

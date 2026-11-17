@@ -22,6 +22,8 @@ class PublicReservationController extends Controller
         return response()->view('public.reservation', [
             'services' => SalonService::where('is_active', true)->orderBy('category')->orderBy('name')
                 ->get(['id', 'name', 'category', 'price', 'duration_minutes', 'buffer_minutes']),
+            'professionals' => StaffProfile::where('is_active', true)->bookableOnline()->with('user:id,name')
+                ->get(['id', 'user_id', 'skills'])->sortBy('user.name')->values(),
             'today' => today()->toDateString(),
             'lastDate' => today()->addDays(BookingRule::current()->max_advance_days)->toDateString(),
         ])->header('Cache-Control', 'no-store');
@@ -60,11 +62,11 @@ class PublicReservationController extends Controller
 
     public function availability(Request $request, PublicReservationAvailability $availability)
     {
-        $data = $request->validate(['date' => 'required|date_format:Y-m-d', ...$this->selectionRules(),  'token' => 'nullable|string|size:64']);
+        $data = $request->validate(['date' => 'required|date_format:Y-m-d', ...$this->selectionRules(), 'staff_id' => 'nullable|integer|min:1', 'token' => 'nullable|string|size:64']);
         $booking = isset($data['token']) ? PublicReservation::where('token', $data['token'])->where('status', 'confirmed')->firstOrFail() : null;
         $minutes = $booking?->duration_minutes ?? $availability->duration($this->treatments($data, $availability));
 
-        return response()->json(['slots' => $availability->slots($data['date'], $minutes, $booking?->id)])
+        return response()->json(['slots' => $availability->slots($data['date'], $minutes, $booking?->id, $data['staff_id'] ?? null)])
             ->header('Cache-Control', 'no-store');
     }
 

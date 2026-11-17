@@ -21,3 +21,10 @@
 .booking-workspace:has(#schedule:not([hidden])){min-height:0}
 @media(max-width:760px){.booking-grid .summary{order:5}.booking-header{flex-direction:row;align-items:center}}
 @media(max-width:760px){.booking-grid:has(#details:not([hidden])) .summary{order:2}}
+
+.professional-list { display: grid; gap: 12px; }
+.professional-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.professional-card small, .professional-card details { display: block; margin-top: 6px; color: var(--muted); }
+.professional-card summary, .professional-card button { cursor: pointer; }
+.professional-card button { padding: 9px 18px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); color: var(--ink); }
+.professional-card button[aria-pressed=true] { background: var(--accent); color: white; }
