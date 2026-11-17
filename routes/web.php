@@ -32,10 +32,15 @@ use App\Http\Controllers\WhatsAppWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login');
-Route::get('/book', [PublicBookingController::class, 'create'])->name('public.booking');
+Route::get('/book', [\App\Http\Controllers\PublicReservationController::class, 'index'])->name('public.booking');
 Route::get('/privacy-policy', [PublicBookingController::class, 'privacyPolicy'])->name('public.privacy-policy');
 Route::get('/terms-of-service', [PublicBookingController::class, 'termsOfService'])->name('public.terms-of-service');
-Route::post('/book', [PublicBookingController::class, 'store'])->name('public.booking.store');
+Route::post('/book', [\App\Http\Controllers\PublicReservationController::class, 'store'])->middleware('throttle:10,1')->name('public.booking.store');
+Route::get('/book/availability', [\App\Http\Controllers\PublicReservationController::class, 'availability'])->middleware('throttle:60,1')->name('public.reservation.availability');
+Route::get('/book/manage/{token}', [\App\Http\Controllers\PublicReservationController::class, 'show'])->where('token', '[A-Za-z0-9]{64}')->middleware('throttle:30,1')->name('public.reservation.show');
+Route::post('/book/manage/{token}', [\App\Http\Controllers\PublicReservationController::class, 'reschedule'])->where('token', '[A-Za-z0-9]{64}')->middleware('throttle:10,1')->name('public.reservation.reschedule');
+Route::get('/public-booking-management', [\App\Http\Controllers\PublicReservationManagementController::class, 'index'])->middleware(['auth', 'role:owner,manager'])->name('public.reservation.management');
+Route::post('/public-booking-management/{booking}/decision', [\App\Http\Controllers\PublicReservationManagementController::class, 'decision'])->middleware(['auth', 'role:owner,manager'])->name('public.reservation.decision');
 Route::get('/whatsapp-webhook.php', [WhatsAppWebhookController::class, 'verify'])->name('whatsapp.webhook.verify.legacy');
 Route::post('/whatsapp-webhook.php', [WhatsAppWebhookController::class, 'receive'])
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
@@ -45,11 +50,11 @@ Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
     ->name('whatsapp.webhook.receive');
 
-Route::get('/embed/book', [PublicBookingController::class, 'embedCreate'])->name('embed.booking');
-Route::post('/embed/book', [PublicBookingController::class, 'embedStore'])
-    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
+Route::get('/embed/book', [\App\Http\Controllers\PublicReservationController::class, 'index'])->name('embed.booking');
+Route::post('/embed/book', [\App\Http\Controllers\PublicReservationController::class, 'store'])
+    ->middleware('throttle:10,1')
     ->name('embed.booking.store');
-Route::get('/embed/book/thanks', [PublicBookingController::class, 'embedThanks'])->name('embed.booking.thanks');
+Route::redirect('/embed/book/thanks', '/book')->name('embed.booking.thanks');
 Route::get('/portal/{token}', [CustomerPortalController::class, 'show'])->name('customer.portal.show');
 Route::get('/portal/nfc/{nfcUid}', [CustomerPortalController::class, 'showByNfc'])->name('customer.portal.nfc');
 

@@ -23,3 +23,5 @@ Artisan::command('whatsapp:sync-templates', function () {
 })->purpose('Refresh WhatsApp template approval statuses from the provider');
 
 Schedule::command('whatsapp:sync-templates')->everyFiveMinutes()->withoutOverlapping();
+
+Schedule::command('public-booking:reconcile')->everyMinute()->withoutOverlapping();
