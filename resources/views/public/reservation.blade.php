@@ -4,8 +4,8 @@
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Book your appointment · {{ config('public_booking.brand') }}</title>
-    <link rel="stylesheet" href="{{ asset('css/public-booking.css') }}">
-    <link rel="stylesheet" href="{{ asset('css/booking-studio.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/public-booking.css').'?v='.substr(sha1_file(public_path('css/public-booking.css')), 0, 12) }}">
+    <link rel="stylesheet" href="{{ asset('css/booking-studio.css').'?v='.substr(sha1_file(public_path('css/booking-studio.css')), 0, 12) }}">
 </head>
 <body>
 <div class="booking-shell">
@@ -91,6 +91,6 @@
     <footer><span>{{ config('public_booking.brand') }}</span><a href="{{ route('public.privacy-policy') }}" target="_blank" rel="noopener">Privacy</a><a href="{{ route('public.terms-of-service') }}" target="_blank" rel="noopener">Terms</a><a href="{{ route('public.booking') }}" target="_blank" rel="noopener">Open booking in a new tab</a></footer>
 </div>
 <script id="booking-data" type="application/json">{!! json_encode(['services' => $services, 'availabilityUrl' => route('public.reservation.availability'), 'checkoutUrl' => route('public.booking.store')], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!}</script>
-<script src="{{ asset('js/public-booking.js') }}" defer></script>
+<script src="{{ asset('js/public-booking.js').'?v='.substr(sha1_file(public_path('js/public-booking.js')), 0, 12) }}" defer></script>
 </body>
 </html>
