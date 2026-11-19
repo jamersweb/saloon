@@ -23,7 +23,7 @@ class PublicReservationController extends Controller
             'services' => SalonService::where('is_active', true)->orderBy('category')->orderBy('name')
                 ->get(['id', 'name', 'category', 'price', 'duration_minutes', 'buffer_minutes']),
             'professionals' => StaffProfile::where('is_active', true)->bookableOnline()->with('user:id,name')
-                ->get(['id', 'user_id', 'skills'])->sortBy('user.name')->values(),
+                ->get(['id', 'user_id', 'skills', 'photo_path'])->sortBy('user.name')->values(),
             'today' => today()->toDateString(),
             'lastDate' => today()->addDays(BookingRule::current()->max_advance_days)->toDateString(),
         ])->header('Cache-Control', 'no-store');

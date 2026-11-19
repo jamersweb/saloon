@@ -44,7 +44,10 @@
                         </div>
                         @foreach($professionals as $professional)
                             <div class="professional-card">
-                                <div><strong>{{ $professional->user->name }}</strong>
+                                @if($professional->photo_path)
+                                    <img class="professional-photo" src="{{ Storage::disk('public')->url($professional->photo_path) }}" width="54" height="54" alt="" loading="lazy">
+                                @endif
+                                <div class="professional-info"><strong>{{ $professional->user->name }}</strong>
                                     @if($professional->skills)
                                         <details><summary>View profile</summary><p>{{ implode(', ', $professional->skills) }}</p></details>
                                     @endif

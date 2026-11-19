@@ -187,6 +187,22 @@ class PublicReservationTest extends TestCase
         $this->get('/book/manage/'.str_repeat('x', 64))->assertNotFound();
     }
 
+    public function test_staff_photo_upload_appears_in_the_public_picker(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        $role = Role::firstOrCreate(['name' => 'owner'], ['label' => 'Owner']);
+        $owner = User::factory()->create(['role_id' => $role->id]);
+        $staffRole = Role::firstOrCreate(['name' => 'staff'], ['label' => 'Staff']);
+        $photo = \Illuminate\Http\UploadedFile::fake()->image('portrait.jpg');
+        $this->actingAs($owner)->post(route('staff.update', $this->staff), [
+            '_method' => 'PUT', 'name' => $this->staff->user->name, 'email' => $this->staff->user->email,
+            'role_id' => $staffRole->id, 'is_active' => true, 'photo' => $photo,
+        ])->assertSessionHasNoErrors()->assertRedirect();
+        $path = $this->staff->refresh()->photo_path;
+        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($path);
+        $this->get('/embed/book')->assertOk()->assertSee($path);
+    }
+
     public function test_public_picker_omits_managers_and_the_duplicate_mona_profile(): void
     {
         $manager = Role::firstOrCreate(['name' => 'manager'], ['label' => 'Manager']);

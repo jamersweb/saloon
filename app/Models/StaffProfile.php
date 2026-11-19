@@ -17,6 +17,7 @@ class StaffProfile extends Model
     protected $fillable = [
         'user_id',
         'employee_code',
+        'photo_path',
         'phone',
         'skills',
         'hourly_rate',

@@ -133,6 +133,13 @@ export default function InventoryIndex({ items, itemRows = {}, recentTransaction
     return (
         <AuthenticatedLayout header="Inventory">
             <Head title="Inventory" />
+            {(auth?.permissions?.can_collect_payments || auth?.permissions?.can_manage_finance) && (
+                <div className="mb-4 flex justify-end">
+                    <Link className="ta-btn-primary" href={route('finance.invoices.create', { sale_type: 'retail' })}>
+                        New product sale
+                    </Link>
+                </div>
+            )}
             <div className="space-y-6">
                 {flash?.status && <div className="ta-card border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{flash.status}</div>}
 

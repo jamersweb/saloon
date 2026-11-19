@@ -31,3 +31,7 @@
 .professional-card summary, .professional-card button { cursor: pointer; }
 .professional-card button { padding: 9px 18px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); color: var(--ink); }
 .professional-card button[aria-pressed=true] { background: var(--accent); color: white; }
+
+.professional-photo { width: clamp(38px, 10vw, 54px); height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 50%; flex: none; }
+.professional-info { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .professional-card { padding: 14px; gap: 10px; } }

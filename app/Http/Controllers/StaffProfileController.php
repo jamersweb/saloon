@@ -10,6 +10,7 @@ use App\Support\Audit;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -72,6 +73,7 @@ class StaffProfileController extends Controller
                 ->through(function (StaffProfile $staff) {
                     return [
                     'id' => $staff->id,
+                    'photo_url' => $staff->photo_path ? Storage::disk('public')->url($staff->photo_path) : null,
                     'employee_code' => $staff->employee_code,
                     'phone' => $staff->phone,
                     'skills' => $staff->skills ?? [],
@@ -146,6 +148,7 @@ class StaffProfileController extends Controller
         $this->authorizeRoles($request, 'owner', 'manager');
 
         $data = $request->validate([
+            'photo' => ['nullable', 'image', 'mimes:jpeg,png,webp', 'max:4096'],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$staff->user_id],
             'phone' => ['nullable', 'string', 'max:30'],
@@ -164,6 +167,12 @@ class StaffProfileController extends Controller
             'password' => ! empty($data['password']) ? Hash::make($data['password']) : null,
         ], fn ($value) => $value !== null));
 
+        $oldPhoto = $staff->photo_path;
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('staff-photos', 'public');
+            abort_unless($path, 500, 'Could not save the staff photo.');
+            $staff->photo_path = $path;
+        }
         $staff->update([
             'phone' => $data['phone'] ?? null,
             'skills' => $this->parseSkills($data['skills'] ?? ''),
@@ -175,6 +184,10 @@ class StaffProfileController extends Controller
                 : $staff->monthly_salary,
             'is_active' => (bool) ($data['is_active'] ?? false),
         ]);
+
+        if ($oldPhoto && $request->hasFile('photo')) {
+            Storage::disk('public')->delete($oldPhoto);
+        }
 
         Audit::log($request->user()->id, 'staff.updated', 'StaffProfile', $staff->id);
 

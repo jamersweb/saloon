@@ -16,6 +16,7 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
     const importFileRef = useRef(null);
     const safeRoles = Array.isArray(roles) ? roles : [];
     const safeStaffProfiles = Array.isArray(staffProfiles?.data) ? staffProfiles.data : [];
+    const currentPhoto = safeStaffProfiles.find(staff => staff.id === editingId)?.photo_url;
     const filterForm = useForm({
         search: filters?.search || '',
         role_id: filters?.role_id ? String(filters.role_id) : '',
@@ -24,7 +25,7 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
     });
 
     const createForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', monthly_salary: '', password: '', role_id: '' });
-    const editForm = useForm({ name: '', email: '', phone: '', skills: '', hourly_rate: '', monthly_salary: '', is_active: true, role_id: '', password: '', password_confirmation: '' });
+    const editForm = useForm({ photo: null, name: '', email: '', phone: '', skills: '', hourly_rate: '', monthly_salary: '', is_active: true, role_id: '', password: '', password_confirmation: '' });
 
     useEffect(() => {
         filterForm.setData({
@@ -79,6 +80,7 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
         }
         setEditingId(staff.id);
         editForm.setData({
+            photo: null,
             name: staff.user?.name || '',
             email: staff.user?.email || '',
             phone: staff.phone || '',
@@ -358,10 +360,11 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
                                 e.preventDefault();
                                 editForm.transform((d) => ({
                                 ...d,
+                                _method: 'put',
                                 hourly_rate: d.hourly_rate === '' ? null : d.hourly_rate,
                                 monthly_salary: d.monthly_salary === '' ? null : d.monthly_salary,
                             }));
-                                editForm.put(route('staff.update', editingId), {
+                                editForm.post(route('staff.update', editingId), {
                                     onSuccess: () => {
                                         setUiError('');
                                         closeEditModal();
@@ -381,6 +384,13 @@ export default function StaffIndex({ staffProfiles, roles, filters, showDeleted 
                             <div><label className="ta-field-label">Hourly rate</label><input className="ta-input" type="number" min="0" step="0.01" value={editForm.data.hourly_rate} onChange={(e) => editForm.setData('hourly_rate', e.target.value)} />{fieldError(editForm, 'hourly_rate')}</div>
                             <div><label className="ta-field-label">Monthly salary</label><input className="ta-input" type="number" min="0" step="0.01" value={editForm.data.monthly_salary} onChange={(e) => editForm.setData('monthly_salary', e.target.value)} />{fieldError(editForm, 'monthly_salary')}</div>
                             <div className="md:col-span-2 xl:col-span-2"><label className="ta-field-label">Skills</label><input className="ta-input" value={editForm.data.skills} onChange={(e) => editForm.setData('skills', e.target.value)} placeholder="Comma separated skills" />{fieldError(editForm, 'skills')}</div>
+                            <div className="md:col-span-2">
+                                {currentPhoto && <img className="mb-2 h-12 w-12 rounded-full object-cover" src={currentPhoto} alt="Current staff profile" />}
+                                <label className="ta-field-label">Public booking profile photo
+                                    <input type="file" accept="image/jpeg,image/png,image/webp" className="ta-input" onChange={e => editForm.setData('photo', e.target.files[0] || null)} />
+                                </label>
+                                {fieldError(editForm, 'photo')}
+                            </div>
                             <div><label className="ta-field-label">New Password</label><input className="ta-input" type="password" value={editForm.data.password} onChange={(e) => editForm.setData('password', e.target.value)} placeholder="Leave blank to keep current password" />{fieldError(editForm, 'password')}</div>
                             <div><label className="ta-field-label">Confirm Password</label><input className="ta-input" type="password" value={editForm.data.password_confirmation} onChange={(e) => editForm.setData('password_confirmation', e.target.value)} placeholder="Repeat new password" />{fieldError(editForm, 'password_confirmation')}</div>
                             <div className="md:col-span-4 flex gap-2"><button className="ta-btn-primary" disabled={editForm.processing}>Save</button><button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={closeEditModal}>Cancel</button></div>
